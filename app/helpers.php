@@ -1,0 +1,377 @@
+<?php
+/**
+ * Helper Functions
+ * Pricetag.co.za - Enterprise E-commerce Platform
+ */
+
+declare(strict_types=1);
+
+/**
+ * Load environment variables from .env file
+ */
+function loadEnv(string $path): void
+{
+    if (!file_exists($path)) {
+        return;
+    }
+
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) {
+            continue;
+        }
+
+        if (strpos($line, '=') === false) {
+            continue;
+        }
+
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value);
+
+        // Remove quotes
+        if (preg_match('/^(["\']).*\1$/', $value)) {
+            $value = substr($value, 1, -1);
+        }
+
+        // Handle variable substitution
+        $value = preg_replace_callback('/\$\{([^}]+)\}/', function ($matches) {
+            return $_ENV[$matches[1]] ?? getenv($matches[1]) ?: '';
+        }, $value);
+
+        $_ENV[$key] = $value;
+        putenv("$key=$value");
+    }
+}
+
+/**
+ * Get environment variable
+ */
+function env(string $key, $default = null)
+{
+    $value = $_ENV[$key] ?? getenv($key);
+
+    if ($value === false) {
+        return $default;
+    }
+
+    switch (strtolower($value)) {
+        case 'true':
+        case '(true)':
+            return true;
+        case 'false':
+        case '(false)':
+            return false;
+        case 'null':
+        case '(null)':
+            return null;
+        case 'empty':
+        case '(empty)':
+            return '';
+    }
+
+    return $value;
+}
+
+/**
+ * Get configuration value using dot notation
+ */
+function config(string $key, $default = null)
+{
+    $keys = explode('.', $key);
+    $value = $GLOBALS['config'] ?? [];
+
+    foreach ($keys as $k) {
+        if (!is_array($value) || !array_key_exists($k, $value)) {
+            return $default;
+        }
+        $value = $value[$k];
+    }
+
+    return $value;
+}
+
+/**
+ * Generate URL
+ */
+function url(string $path = ''): string
+{
+    $base = rtrim(config('app.url', ''), '/');
+    $path = ltrim($path, '/');
+    return $path ? "$base/$path" : $base;
+}
+
+/**
+ * Generate asset URL (CDN-aware)
+ */
+function asset(string $path): string
+{
+    $path = ltrim($path, '/');
+
+    if (env('CDN_ENABLED', false) && env('CDN_URL')) {
+        return rtrim(env('CDN_URL'), '/') . '/' . $path;
+    }
+
+    return url("assets/$path");
+}
+
+/**
+ * Escape HTML
+ */
+function e(?string $value): string
+{
+    return htmlspecialchars($value ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+/**
+ * Get CSRF token
+ */
+function csrfToken(): string
+{
+    return $_SESSION['csrf_token'] ?? '';
+}
+
+/**
+ * Generate CSRF field
+ */
+function csrfField(): string
+{
+    return '<input type="hidden" name="_token" value="' . csrfToken() . '">';
+}
+
+/**
+ * Regenerate CSRF token
+ */
+function regenerateCsrfToken(): void
+{
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    $_SESSION['csrf_token_time'] = time();
+}
+
+/**
+ * Verify CSRF token
+ */
+function verifyCsrfToken(string $token): bool
+{
+    return hash_equals($_SESSION['csrf_token'] ?? '', $token);
+}
+
+/**
+ * Redirect
+ */
+function redirect(string $url, int $status = 302): void
+{
+    header("Location: $url", true, $status);
+    exit;
+}
+
+/**
+ * JSON response
+ */
+function jsonResponse(array $data, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json');
+    echo json_encode($data, JSON_THROW_ON_ERROR);
+    exit;
+}
+
+/**
+ * Format price
+ */
+function formatPrice(float $amount): string
+{
+    $config = config('payment.currency', []);
+    $symbol = $config['symbol'] ?? 'R';
+    $decimals = $config['decimal_places'] ?? 2;
+    $decSep = $config['decimal_separator'] ?? '.';
+    $thousandsSep = $config['thousands_separator'] ?? ' ';
+    $position = $config['symbol_position'] ?? 'before';
+
+    $formatted = number_format($amount, $decimals, $decSep, $thousandsSep);
+
+    return $position === 'before' ? "$symbol$formatted" : "$formatted$symbol";
+}
+
+/**
+ * Generate slug
+ */
+function slugify(string $text): string
+{
+    $text = preg_replace('~[^\pL\d]+~u', '-', $text);
+    $text = iconv('utf-8', 'us-ascii//TRANSLIT', $text);
+    $text = preg_replace('~[^-\w]+~', '', $text);
+    $text = trim($text, '-');
+    $text = preg_replace('~-+~', '-', $text);
+    $text = strtolower($text);
+
+    return $text ?: 'n-a';
+}
+
+/**
+ * Truncate text
+ */
+function truncate(string $text, int $length = 100, string $suffix = '...'): string
+{
+    if (mb_strlen($text) <= $length) {
+        return $text;
+    }
+
+    return mb_substr($text, 0, $length - mb_strlen($suffix)) . $suffix;
+}
+
+/**
+ * Get old form input
+ */
+function old(string $key, $default = ''): mixed
+{
+    return $_SESSION['_old_input'][$key] ?? $default;
+}
+
+/**
+ * Flash message
+ */
+function flash(string $key, ?string $message = null): ?string
+{
+    if ($message !== null) {
+        $_SESSION['_flash'][$key] = $message;
+        return null;
+    }
+
+    $value = $_SESSION['_flash'][$key] ?? null;
+    unset($_SESSION['_flash'][$key]);
+    return $value;
+}
+
+/**
+ * Check if user is logged in
+ */
+function auth(): bool
+{
+    return isset($_SESSION['user_id']);
+}
+
+/**
+ * Get current user
+ */
+function user(): ?array
+{
+    if (!auth()) {
+        return null;
+    }
+
+    if (!isset($_SESSION['_user_cache'])) {
+        $db = \App\Core\Database::getInstance();
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'");
+        $stmt->execute([$_SESSION['user_id']]);
+        $_SESSION['_user_cache'] = $stmt->fetch() ?: null;
+    }
+
+    return $_SESSION['_user_cache'];
+}
+
+/**
+ * Check user role
+ */
+function hasRole(string $role): bool
+{
+    $user = user();
+    return $user && $user['role'] === $role;
+}
+
+/**
+ * Check if user is admin
+ */
+function isAdmin(): bool
+{
+    $user = user();
+    return $user && in_array($user['role'], ['admin', 'super_admin'], true);
+}
+
+/**
+ * Get cart count
+ */
+function cartCount(): int
+{
+    return $_SESSION['cart_count'] ?? 0;
+}
+
+/**
+ * Get wishlist count
+ */
+function wishlistCount(): int
+{
+    return $_SESSION['wishlist_count'] ?? 0;
+}
+
+/**
+ * Log message
+ */
+function logMessage(string $level, string $message, array $context = []): void
+{
+    $logFile = STORAGE_PATH . '/logs/app.log';
+    $formatted = sprintf(
+        "[%s] %s: %s %s\n",
+        date('Y-m-d H:i:s'),
+        strtoupper($level),
+        $message,
+        $context ? json_encode($context) : ''
+    );
+
+    error_log($formatted, 3, $logFile);
+}
+
+/**
+ * Check if request is AJAX
+ */
+function isAjax(): bool
+{
+    return isset($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+           strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+}
+
+/**
+ * Get client IP
+ */
+function clientIp(): string
+{
+    $headers = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'REMOTE_ADDR'];
+
+    foreach ($headers as $header) {
+        if (!empty($_SERVER[$header])) {
+            $ip = $_SERVER[$header];
+            if (strpos($ip, ',') !== false) {
+                $ip = trim(explode(',', $ip)[0]);
+            }
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                return $ip;
+            }
+        }
+    }
+
+    return '0.0.0.0';
+}
+
+/**
+ * Generate unique order number
+ */
+function generateOrderNumber(): string
+{
+    return 'PT-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6));
+}
+
+/**
+ * Generate invoice number
+ */
+function generateInvoiceNumber(): string
+{
+    $db = \App\Core\Database::getInstance();
+    $stmt = $db->query("SELECT MAX(invoice_number) as max_num FROM orders WHERE invoice_number IS NOT NULL");
+    $result = $stmt->fetch();
+
+    $lastNum = $result['max_num'] ?? 'INV-00000';
+    $num = (int) substr($lastNum, 4) + 1;
+
+    return 'INV-' . str_pad((string) $num, 5, '0', STR_PAD_LEFT);
+}

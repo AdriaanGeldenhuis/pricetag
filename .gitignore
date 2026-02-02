@@ -15,18 +15,29 @@ Thumbs.db
 
 # Logs
 *.log
-logs/
+storage/logs/*
+!storage/logs/.gitkeep
 
 # Dependencies
 /vendor/
 /node_modules/
 
 # Cache
-/cache/
+storage/cache/*
+!storage/cache/.gitkeep
 *.cache
 
-# Uploads (if user-generated)
-/uploads/
+# Sessions
+storage/sessions/*
+!storage/sessions/.gitkeep
+
+# Uploads
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Invoices
+storage/invoices/*
+!storage/invoices/.gitkeep
 
 # Sensitive files
 config.local.php

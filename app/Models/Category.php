@@ -16,7 +16,7 @@ class Category extends Model
     protected static array $fillable = [
         'parent_id', 'name', 'slug', 'description', 'icon', 'image',
         'meta_title', 'meta_description', 'meta_keywords',
-        'sort_order', 'is_featured', 'is_active'
+        'sort_order', 'is_featured', 'is_active', 'show_in_menu'
     ];
 
     /**

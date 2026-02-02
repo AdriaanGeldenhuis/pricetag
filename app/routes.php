@@ -195,6 +195,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     // SEO
     $router->get('/seo', 'Admin\Controllers\SeoController@index', 'admin.seo.index');
     $router->post('/seo', 'Admin\Controllers\SeoController@update', 'admin.seo.update');
+    $router->post('/seo/sitemap', 'Admin\Controllers\SeoController@generateSitemap', 'admin.seo.sitemap');
 
     // Stock Sync
     $router->get('/stock-sync', 'Admin\Controllers\StockSyncController@index', 'admin.stock.index');

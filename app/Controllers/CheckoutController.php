@@ -191,6 +191,38 @@ class CheckoutController extends Controller
         }
     }
 
+    public function processEft(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $orderId = $_POST['order_id'] ?? null;
+
+        if (!$orderId) {
+            $this->json(['success' => false, 'message' => 'Invalid request'], 400);
+            return;
+        }
+
+        $order = Order::find($orderId);
+
+        if (!$order || $order->payment_status !== 'pending') {
+            $this->json(['success' => false, 'message' => 'Order not found'], 404);
+            return;
+        }
+
+        // Update payment method to EFT
+        $order->updatePaymentMethod('eft');
+
+        // For EFT, we would typically integrate with a payment provider like Ozow or Stitch
+        // For now, redirect to a pending payment page
+        $this->json([
+            'success' => true,
+            'redirect' => url('/checkout/success/' . $order->order_number . '?pending=1'),
+            'message' => 'EFT payment initiated',
+        ]);
+    }
+
     public function success(string $orderNumber): void
     {
         $order = Order::findByOrderNumber($orderNumber);

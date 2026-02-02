@@ -10,6 +10,8 @@ use App\Core\Controller;
 use App\Core\Database;
 use App\Models\User;
 use App\Models\Order;
+use App\Services\SessionManager;
+use App\Services\MfaService;
 
 class AccountController extends Controller
 {
@@ -330,18 +332,11 @@ class AccountController extends Controller
     public function security(): void
     {
         $user = User::find($_SESSION['user_id']);
+        $sessionManager = new SessionManager();
 
-        $db = Database::getInstance();
-
-        // Get active sessions
-        $stmt = $db->prepare("SELECT * FROM user_sessions WHERE user_id = ? ORDER BY last_activity DESC");
-        $stmt->execute([$user->id]);
-        $sessions = $stmt->fetchAll();
-
-        // Get recent login activity
-        $stmt = $db->prepare("SELECT * FROM login_attempts WHERE email = ? ORDER BY created_at DESC LIMIT 10");
-        $stmt->execute([$user->email]);
-        $loginHistory = $stmt->fetchAll();
+        $sessions = $sessionManager->getUserSessions($user->id);
+        $loginHistory = $sessionManager->getLoginHistory($user->id, 10);
+        $warnings = $sessionManager->checkSuspiciousActivity($user->id);
 
         $this->layout('main');
         $this->view('pages/account/security', [
@@ -350,23 +345,261 @@ class AccountController extends Controller
             'user' => $user,
             'sessions' => $sessions,
             'loginHistory' => $loginHistory,
+            'warnings' => $warnings,
+            'mfaEnabled' => (bool) $user->mfa_enabled,
         ]);
     }
 
     public function activity(): void
     {
         $user = User::find($_SESSION['user_id']);
+        $sessionManager = new SessionManager();
 
-        $db = Database::getInstance();
-        $stmt = $db->prepare("SELECT * FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50");
-        $stmt->execute([$user->id]);
-        $activities = $stmt->fetchAll();
+        $activities = $sessionManager->getActivityLogs($user->id, 50);
 
         $this->layout('main');
         $this->view('pages/account/activity', [
             'meta_title' => 'Activity Log | ' . config('app.name'),
             'meta_robots' => 'noindex, nofollow',
             'activities' => $activities,
+        ]);
+    }
+
+    /**
+     * Terminate a specific session
+     */
+    public function terminateSession(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $sessionManager = new SessionManager();
+        $success = $sessionManager->terminateSession($_SESSION['user_id'], (int) $id);
+
+        if (isAjax()) {
+            $this->json(['success' => $success]);
+            return;
+        }
+
+        flash($success ? 'success' : 'error', $success ? 'Session terminated' : 'Failed to terminate session');
+        $this->redirect('/account/security');
+    }
+
+    /**
+     * Terminate all other sessions
+     */
+    public function terminateOtherSessions(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $sessionManager = new SessionManager();
+        $count = $sessionManager->terminateOtherSessions($_SESSION['user_id']);
+
+        $sessionManager->logActivity($_SESSION['user_id'], 'sessions_terminated', "Terminated $count other sessions");
+
+        if (isAjax()) {
+            $this->json(['success' => true, 'terminated' => $count]);
+            return;
+        }
+
+        flash('success', "Terminated $count other sessions");
+        $this->redirect('/account/security');
+    }
+
+    /**
+     * Show MFA setup page
+     */
+    public function setupMfa(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+
+        if ($user->mfa_enabled) {
+            flash('info', 'Two-factor authentication is already enabled');
+            $this->redirect('/account/security');
+            return;
+        }
+
+        $mfaService = new MfaService();
+        $secret = $mfaService->generateSecret();
+
+        // Store secret temporarily in session
+        $_SESSION['mfa_setup_secret'] = $secret;
+
+        $qrCodeUrl = $mfaService->getQrCodeUrl($secret, $user->email, config('app.name', 'Pricetag'));
+
+        $this->layout('main');
+        $this->view('pages/account/mfa-setup', [
+            'meta_title' => 'Setup Two-Factor Authentication | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'secret' => $secret,
+            'qrCodeUrl' => $qrCodeUrl,
+        ]);
+    }
+
+    /**
+     * Verify and enable MFA
+     */
+    public function enableMfa(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $secret = $_SESSION['mfa_setup_secret'] ?? null;
+        $code = $_POST['code'] ?? '';
+
+        if (!$secret) {
+            flash('error', 'MFA setup session expired. Please try again.');
+            $this->redirect('/account/security');
+            return;
+        }
+
+        $mfaService = new MfaService();
+
+        if (!$mfaService->verifyCode($secret, $code)) {
+            flash('error', 'Invalid verification code. Please try again.');
+            $this->redirect('/account/mfa/setup');
+            return;
+        }
+
+        // Generate backup codes
+        $backupCodes = $mfaService->generateBackupCodes();
+        $hashedBackupCodes = $mfaService->hashBackupCodes($backupCodes);
+
+        // Save to user
+        $db = Database::getInstance();
+        $stmt = $db->prepare("
+            UPDATE users SET mfa_enabled = 1, mfa_secret = ?, updated_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([$secret, $_SESSION['user_id']]);
+
+        // Store backup codes (in practice, store hashed versions in a separate table)
+        $stmt = $db->prepare("
+            DELETE FROM user_mfa_backup_codes WHERE user_id = ?
+        ");
+        $stmt->execute([$_SESSION['user_id']]);
+
+        foreach ($hashedBackupCodes as $hashedCode) {
+            $stmt = $db->prepare("
+                INSERT INTO user_mfa_backup_codes (user_id, code_hash, created_at)
+                VALUES (?, ?, NOW())
+            ");
+            $stmt->execute([$_SESSION['user_id'], $hashedCode]);
+        }
+
+        // Clear session secret
+        unset($_SESSION['mfa_setup_secret']);
+        unset($_SESSION['_user_cache']);
+
+        // Log activity
+        $sessionManager = new SessionManager();
+        $sessionManager->logActivity($_SESSION['user_id'], 'mfa_enabled', 'Two-factor authentication enabled');
+
+        // Show backup codes once
+        $this->layout('main');
+        $this->view('pages/account/mfa-backup-codes', [
+            'meta_title' => 'Backup Codes | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'backupCodes' => $backupCodes,
+        ]);
+    }
+
+    /**
+     * Disable MFA
+     */
+    public function disableMfa(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $user = User::find($_SESSION['user_id']);
+
+        // Require password confirmation
+        if (!$user->verifyPassword($_POST['password'] ?? '')) {
+            flash('error', 'Incorrect password');
+            $this->redirect('/account/security');
+            return;
+        }
+
+        // Disable MFA
+        $db = Database::getInstance();
+        $stmt = $db->prepare("
+            UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, updated_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([$_SESSION['user_id']]);
+
+        // Delete backup codes
+        $stmt = $db->prepare("DELETE FROM user_mfa_backup_codes WHERE user_id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+
+        unset($_SESSION['_user_cache']);
+
+        // Log activity
+        $sessionManager = new SessionManager();
+        $sessionManager->logActivity($_SESSION['user_id'], 'mfa_disabled', 'Two-factor authentication disabled');
+
+        flash('success', 'Two-factor authentication has been disabled');
+        $this->redirect('/account/security');
+    }
+
+    /**
+     * Regenerate backup codes
+     */
+    public function regenerateBackupCodes(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $user = User::find($_SESSION['user_id']);
+
+        if (!$user->mfa_enabled) {
+            flash('error', 'Two-factor authentication is not enabled');
+            $this->redirect('/account/security');
+            return;
+        }
+
+        // Require password confirmation
+        if (!$user->verifyPassword($_POST['password'] ?? '')) {
+            flash('error', 'Incorrect password');
+            $this->redirect('/account/security');
+            return;
+        }
+
+        $mfaService = new MfaService();
+        $backupCodes = $mfaService->generateBackupCodes();
+        $hashedBackupCodes = $mfaService->hashBackupCodes($backupCodes);
+
+        // Replace backup codes
+        $db = Database::getInstance();
+        $stmt = $db->prepare("DELETE FROM user_mfa_backup_codes WHERE user_id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+
+        foreach ($hashedBackupCodes as $hashedCode) {
+            $stmt = $db->prepare("
+                INSERT INTO user_mfa_backup_codes (user_id, code_hash, created_at)
+                VALUES (?, ?, NOW())
+            ");
+            $stmt->execute([$_SESSION['user_id'], $hashedCode]);
+        }
+
+        // Log activity
+        $sessionManager = new SessionManager();
+        $sessionManager->logActivity($_SESSION['user_id'], 'backup_codes_regenerated', 'MFA backup codes regenerated');
+
+        // Show new backup codes
+        $this->layout('main');
+        $this->view('pages/account/mfa-backup-codes', [
+            'meta_title' => 'New Backup Codes | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'backupCodes' => $backupCodes,
+            'regenerated' => true,
         ]);
     }
 }

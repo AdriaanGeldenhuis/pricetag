@@ -5,9 +5,41 @@
  *
  * This file initializes the application environment, loads configuration,
  * and sets up essential services before routing begins.
+ *
+ * CORE TECH STACK (LOCKED):
+ * - Backend: PHP 8.1+, PDO (prepared statements only), MVC, REST-ready
+ * - Frontend: HTML5, CSS3 (Grid + Flex), Vanilla JS (ES6+)
+ * - Database: MySQL 8.0+
+ * - Caching: File-based (Cache service)
+ * - Cron: Scheduler service
  */
 
 declare(strict_types=1);
+
+// ============================================================================
+// PHP VERSION CHECK - ENFORCED
+// ============================================================================
+if (version_compare(PHP_VERSION, '8.1.0', '<')) {
+    http_response_code(500);
+    die('Pricetag requires PHP 8.1 or higher. Current version: ' . PHP_VERSION);
+}
+
+// ============================================================================
+// REQUIRED EXTENSIONS CHECK
+// ============================================================================
+$requiredExtensions = ['pdo', 'pdo_mysql', 'json', 'mbstring', 'openssl', 'curl'];
+$missingExtensions = [];
+
+foreach ($requiredExtensions as $ext) {
+    if (!extension_loaded($ext)) {
+        $missingExtensions[] = $ext;
+    }
+}
+
+if (!empty($missingExtensions)) {
+    http_response_code(500);
+    die('Missing required PHP extensions: ' . implode(', ', $missingExtensions));
+}
 
 // Define paths
 define('ROOT_PATH', __DIR__);

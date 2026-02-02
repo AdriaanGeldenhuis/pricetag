@@ -49,27 +49,82 @@
                 <?php if (!empty($item['is_mega'])): ?>
                 <!-- Mega Menu -->
                 <div class="mega-menu" role="menu">
-                    <div class="mega-menu-grid">
-                        <?php
-                        // Get categories for mega menu
-                        $categories = $categories ?? [];
-                        $columns = array_chunk($categories, 5);
-                        foreach ($columns as $column):
-                        ?>
-                        <div class="mega-menu-column">
-                            <?php foreach ($column as $category): ?>
-                            <a href="<?= url('/categories/' . $category['slug']) ?>" class="mega-menu-link" role="menuitem">
-                                <?= e($category['name']) ?>
+                    <div class="mega-menu-inner">
+                        <!-- Categories with icons -->
+                        <div class="mega-menu-categories">
+                            <h3 class="mega-menu-section-title">Shop by Category</h3>
+                            <div class="mega-menu-category-grid">
+                                <?php
+                                $categories = $categories ?? [];
+                                foreach (array_slice($categories, 0, 12) as $category):
+                                    $iconClass = $category['icon'] ?? 'default';
+                                ?>
+                                <a href="<?= url('/categories/' . $category['slug']) ?>" class="mega-menu-category-item" role="menuitem">
+                                    <span class="mega-menu-category-icon" data-icon="<?= e($iconClass) ?>">
+                                        <?php if (!empty($category['image'])): ?>
+                                        <img src="<?= e($category['image']) ?>" alt="" width="32" height="32">
+                                        <?php else: ?>
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <rect x="3" y="3" width="7" height="7"></rect>
+                                            <rect x="14" y="3" width="7" height="7"></rect>
+                                            <rect x="14" y="14" width="7" height="7"></rect>
+                                            <rect x="3" y="14" width="7" height="7"></rect>
+                                        </svg>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="mega-menu-category-name"><?= e($category['name']) ?></span>
+                                    <?php if (!empty($category['product_count'])): ?>
+                                    <span class="mega-menu-category-count"><?= $category['product_count'] ?></span>
+                                    <?php endif; ?>
+                                </a>
+                                <?php endforeach; ?>
+                            </div>
+                            <a href="<?= url('/categories') ?>" class="mega-menu-view-all">
+                                View All Categories
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    <polyline points="12 5 19 12 12 19"></polyline>
+                                </svg>
                             </a>
-                            <?php endforeach; ?>
                         </div>
-                        <?php endforeach; ?>
 
-                        <!-- Promo section -->
-                        <div class="mega-menu-promo">
-                            <div class="mega-menu-promo-title">Featured Collection</div>
-                            <p class="mega-menu-promo-text">Discover our latest arrivals</p>
-                            <a href="<?= url('/products?featured=1') ?>" class="btn btn-sm btn-primary mt-4">Shop Now</a>
+                        <!-- Promo Banners -->
+                        <div class="mega-menu-promos">
+                            <?php if (!empty($megaMenuPromos)): ?>
+                            <?php foreach (array_slice($megaMenuPromos, 0, 2) as $promo): ?>
+                            <div class="mega-menu-promo-card" style="<?= !empty($promo['bg_color']) ? 'background-color:' . e($promo['bg_color']) : '' ?>">
+                                <?php if (!empty($promo['image'])): ?>
+                                <img src="<?= e($promo['image']) ?>" alt="" class="mega-menu-promo-img">
+                                <?php endif; ?>
+                                <div class="mega-menu-promo-content">
+                                    <?php if (!empty($promo['badge'])): ?>
+                                    <span class="mega-menu-promo-badge"><?= e($promo['badge']) ?></span>
+                                    <?php endif; ?>
+                                    <div class="mega-menu-promo-title"><?= e($promo['title']) ?></div>
+                                    <p class="mega-menu-promo-text"><?= e($promo['subtitle'] ?? '') ?></p>
+                                    <a href="<?= url($promo['url'] ?? '/products') ?>" class="btn btn-sm btn-primary">Shop Now</a>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                            <?php else: ?>
+                            <!-- Default promo -->
+                            <div class="mega-menu-promo-card">
+                                <div class="mega-menu-promo-content">
+                                    <span class="mega-menu-promo-badge">Featured</span>
+                                    <div class="mega-menu-promo-title">New Collection</div>
+                                    <p class="mega-menu-promo-text">Discover our latest arrivals</p>
+                                    <a href="<?= url('/products?featured=1') ?>" class="btn btn-sm btn-primary">Shop Now</a>
+                                </div>
+                            </div>
+                            <div class="mega-menu-promo-card" style="background-color: var(--color-accent-100)">
+                                <div class="mega-menu-promo-content">
+                                    <span class="mega-menu-promo-badge badge-danger">Sale</span>
+                                    <div class="mega-menu-promo-title">Up to 50% Off</div>
+                                    <p class="mega-menu-promo-text">Limited time deals</p>
+                                    <a href="<?= url('/products?on_sale=1') ?>" class="btn btn-sm btn-accent">View Deals</a>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

@@ -15,6 +15,9 @@ $router = new Router();
 // Home
 $router->get('/', 'App\Controllers\HomeController@index', 'home');
 
+// Offline page (for PWA)
+$router->get('/offline', 'App\Controllers\PageController@offline', 'offline');
+
 // Products
 $router->get('/products', 'App\Controllers\ProductController@index', 'products.index');
 $router->get('/products/{slug}', 'App\Controllers\ProductController@show', 'products.show');
@@ -26,6 +29,7 @@ $router->get('/categories/{slug}', 'App\Controllers\CategoryController@show', 'c
 // Search
 $router->get('/search', 'App\Controllers\SearchController@index', 'search');
 $router->get('/search/suggest', 'App\Controllers\SearchController@suggest', 'search.suggest');
+$router->post('/search/filter', 'App\Controllers\SearchController@filter', 'search.filter');
 
 // Cart
 $router->get('/cart', 'App\Controllers\CartController@index', 'cart.index');
@@ -33,14 +37,19 @@ $router->post('/cart/add', 'App\Controllers\CartController@add', 'cart.add');
 $router->post('/cart/update', 'App\Controllers\CartController@update', 'cart.update');
 $router->post('/cart/remove', 'App\Controllers\CartController@remove', 'cart.remove');
 $router->get('/cart/data', 'App\Controllers\CartController@data', 'cart.data');
+$router->post('/cart/apply-coupon', 'App\Controllers\CartController@applyCoupon', 'cart.coupon');
 
 // Wishlist
 $router->get('/wishlist', 'App\Controllers\WishlistController@index', 'wishlist.index');
 $router->post('/wishlist/toggle', 'App\Controllers\WishlistController@toggle', 'wishlist.toggle');
+$router->post('/wishlist/remove', 'App\Controllers\WishlistController@remove', 'wishlist.remove');
+$router->post('/wishlist/move-to-cart', 'App\Controllers\WishlistController@moveToCart', 'wishlist.move');
 
 // Checkout
 $router->get('/checkout', 'App\Controllers\CheckoutController@index', 'checkout.index');
 $router->post('/checkout/process', 'App\Controllers\CheckoutController@process', 'checkout.process');
+$router->post('/checkout/process-payment', 'App\Controllers\CheckoutController@processPayment', 'checkout.payment');
+$router->post('/checkout/process-eft', 'App\Controllers\CheckoutController@processEft', 'checkout.eft');
 $router->get('/checkout/success/{order}', 'App\Controllers\CheckoutController@success', 'checkout.success');
 $router->post('/checkout/webhook', 'App\Controllers\CheckoutController@webhook', 'checkout.webhook');
 
@@ -83,6 +92,16 @@ $router->group(['prefix' => 'account', 'middleware' => ['App\Middleware\AuthMidd
     $router->post('/settings/password', 'App\Controllers\AccountController@updatePassword', 'account.password.update');
     $router->get('/security', 'App\Controllers\AccountController@security', 'account.security');
     $router->get('/activity', 'App\Controllers\AccountController@activity', 'account.activity');
+
+    // Session Management
+    $router->post('/sessions/{id}/terminate', 'App\Controllers\AccountController@terminateSession', 'account.sessions.terminate');
+    $router->post('/sessions/terminate-others', 'App\Controllers\AccountController@terminateOtherSessions', 'account.sessions.terminate-others');
+
+    // Two-Factor Authentication (MFA)
+    $router->get('/mfa/setup', 'App\Controllers\AccountController@setupMfa', 'account.mfa.setup');
+    $router->post('/mfa/enable', 'App\Controllers\AccountController@enableMfa', 'account.mfa.enable');
+    $router->post('/mfa/disable', 'App\Controllers\AccountController@disableMfa', 'account.mfa.disable');
+    $router->post('/mfa/backup-codes', 'App\Controllers\AccountController@regenerateBackupCodes', 'account.mfa.backup-codes');
 });
 
 // ============================================================================
@@ -179,6 +198,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     // SEO
     $router->get('/seo', 'Admin\Controllers\SeoController@index', 'admin.seo.index');
     $router->post('/seo', 'Admin\Controllers\SeoController@update', 'admin.seo.update');
+    $router->post('/seo/sitemap', 'Admin\Controllers\SeoController@generateSitemap', 'admin.seo.sitemap');
 
     // Stock Sync
     $router->get('/stock-sync', 'Admin\Controllers\StockSyncController@index', 'admin.stock.index');

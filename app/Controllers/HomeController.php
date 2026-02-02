@@ -40,8 +40,14 @@ class HomeController extends Controller
         // Get new arrivals
         $newArrivals = Product::newArrivals(8);
 
+        // Get best sellers
+        $bestSellers = Product::featured(8);
+
         // Get on sale products
         $onSaleProducts = Product::onSale(8);
+
+        // Get active flash sale (if any)
+        $flashSale = $this->getActiveFlashSale($db);
 
         // Get testimonials
         $stmt = $db->query("SELECT * FROM settings WHERE `group` = 'testimonials'");
@@ -56,8 +62,28 @@ class HomeController extends Controller
             'featuredCategories' => $featuredCategories,
             'trendingProducts' => $trendingProducts,
             'newArrivals' => $newArrivals,
+            'bestSellers' => $bestSellers,
             'onSaleProducts' => $onSaleProducts,
+            'flashSale' => $flashSale,
             'testimonials' => $testimonials,
         ]);
+    }
+
+    /**
+     * Get active flash sale
+     */
+    private function getActiveFlashSale($db): ?array
+    {
+        $stmt = $db->query("
+            SELECT * FROM promotions
+            WHERE type = 'flash_sale'
+            AND is_active = 1
+            AND starts_at <= NOW()
+            AND ends_at > NOW()
+            ORDER BY ends_at ASC
+            LIMIT 1
+        ");
+
+        return $stmt->fetch() ?: null;
     }
 }

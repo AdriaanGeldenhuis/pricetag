@@ -375,3 +375,55 @@ function generateInvoiceNumber(): string
 
     return 'INV-' . str_pad((string) $num, 5, '0', STR_PAD_LEFT);
 }
+
+// ============================================================================
+// CACHE HELPERS
+// ============================================================================
+
+/**
+ * Get cache instance
+ */
+function cache(): \App\Services\Cache
+{
+    return \App\Services\Cache::getInstance();
+}
+
+/**
+ * Get value from cache
+ */
+function cacheGet(string $key, mixed $default = null): mixed
+{
+    return cache()->get($key, $default);
+}
+
+/**
+ * Store value in cache
+ */
+function cachePut(string $key, mixed $value, ?int $ttl = null): bool
+{
+    return cache()->put($key, $value, $ttl);
+}
+
+/**
+ * Remember value (get from cache or execute callback and store)
+ */
+function cacheRemember(string $key, int $ttl, callable $callback): mixed
+{
+    return cache()->remember($key, $ttl, $callback);
+}
+
+/**
+ * Clear specific cache key
+ */
+function cacheForget(string $key): bool
+{
+    return cache()->forget($key);
+}
+
+/**
+ * Clear all cache
+ */
+function cacheFlush(): bool
+{
+    return cache()->flush();
+}

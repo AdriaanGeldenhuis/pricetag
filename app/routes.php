@@ -83,6 +83,16 @@ $router->group(['prefix' => 'account', 'middleware' => ['App\Middleware\AuthMidd
     $router->post('/settings/password', 'App\Controllers\AccountController@updatePassword', 'account.password.update');
     $router->get('/security', 'App\Controllers\AccountController@security', 'account.security');
     $router->get('/activity', 'App\Controllers\AccountController@activity', 'account.activity');
+
+    // Session Management
+    $router->post('/sessions/{id}/terminate', 'App\Controllers\AccountController@terminateSession', 'account.sessions.terminate');
+    $router->post('/sessions/terminate-others', 'App\Controllers\AccountController@terminateOtherSessions', 'account.sessions.terminate-others');
+
+    // Two-Factor Authentication (MFA)
+    $router->get('/mfa/setup', 'App\Controllers\AccountController@setupMfa', 'account.mfa.setup');
+    $router->post('/mfa/enable', 'App\Controllers\AccountController@enableMfa', 'account.mfa.enable');
+    $router->post('/mfa/disable', 'App\Controllers\AccountController@disableMfa', 'account.mfa.disable');
+    $router->post('/mfa/backup-codes', 'App\Controllers\AccountController@regenerateBackupCodes', 'account.mfa.backup-codes');
 });
 
 // ============================================================================

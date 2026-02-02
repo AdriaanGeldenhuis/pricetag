@@ -15,6 +15,26 @@ $router = new Router();
 // Home
 $router->get('/', 'App\Controllers\HomeController@index', 'home');
 
+// TEMP DEBUG - DELETE AFTER USE
+$router->get('/debug-admin', function() {
+    header('Content-Type: text/plain');
+    echo "=== Admin Access Debug ===\n\n";
+    echo "1. Auth: " . (auth() ? 'YES' : 'NO') . "\n";
+    echo "2. Session user_id: " . ($_SESSION['user_id'] ?? 'NOT SET') . "\n\n";
+    if (auth()) {
+        $db = \App\Core\Database::getInstance();
+        $stmt = $db->prepare("SELECT id, email, role, status FROM users WHERE id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+        echo "3. User from DB:\n";
+        print_r($user);
+        echo "\n4. isAdmin(): " . (isAdmin() ? 'YES' : 'NO') . "\n";
+        echo "5. Role check: '" . ($user['role'] ?? 'NULL') . "' in ['admin','super_admin'] = ";
+        echo (in_array($user['role'] ?? '', ['admin', 'super_admin'], true) ? 'YES' : 'NO') . "\n";
+    }
+    exit;
+});
+
 // Offline page (for PWA)
 $router->get('/offline', 'App\Controllers\PageController@offline', 'offline');
 

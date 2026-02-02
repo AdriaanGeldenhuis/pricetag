@@ -390,4 +390,125 @@ class Product extends Model
             ] : null,
         ];
     }
+
+    /**
+     * Get products with filters (for API)
+     */
+    public function getProducts(array $filters = [], string $sort = 'newest', int $page = 1, int $limit = 20): array
+    {
+        $db = Database::getInstance();
+
+        $where = ["status = 'active'"];
+        $params = [];
+
+        if (!empty($filters['category_id'])) {
+            $where[] = "id IN (SELECT product_id FROM product_categories WHERE category_id = ?)";
+            $params[] = $filters['category_id'];
+        }
+
+        if (!empty($filters['is_featured'])) {
+            $where[] = "is_featured = 1";
+        }
+
+        if (!empty($filters['is_on_sale'])) {
+            $where[] = "is_on_sale = 1";
+        }
+
+        if (!empty($filters['is_new'])) {
+            $where[] = "is_new = 1";
+        }
+
+        $whereClause = implode(' AND ', $where);
+
+        $orderBy = match ($sort) {
+            'price_asc' => 'price ASC',
+            'price_desc' => 'price DESC',
+            'popular' => 'sold_count DESC',
+            'rating' => 'rating_average DESC',
+            'name_asc' => 'name ASC',
+            'name_desc' => 'name DESC',
+            default => 'created_at DESC'
+        };
+
+        $offset = ($page - 1) * $limit;
+        $stmt = $db->prepare("
+            SELECT p.*, c.name as category_name
+            FROM products p
+            LEFT JOIN product_categories pc ON pc.product_id = p.id AND pc.is_primary = 1
+            LEFT JOIN categories c ON c.id = pc.category_id
+            WHERE p.{$whereClause}
+            ORDER BY p.{$orderBy}
+            LIMIT ? OFFSET ?
+        ");
+        $params[] = $limit;
+        $params[] = $offset;
+        $stmt->execute($params);
+
+        $products = [];
+        while ($data = $stmt->fetch()) {
+            $product = new self($data);
+            $product->exists = true;
+            $product->category_name = $data['category_name'] ?? null;
+            $products[] = $product;
+        }
+
+        return $products;
+    }
+
+    /**
+     * Count products with filters (for API pagination)
+     */
+    public function countProducts(array $filters = []): int
+    {
+        $db = Database::getInstance();
+
+        $where = ["status = 'active'"];
+        $params = [];
+
+        if (!empty($filters['category_id'])) {
+            $where[] = "id IN (SELECT product_id FROM product_categories WHERE category_id = ?)";
+            $params[] = $filters['category_id'];
+        }
+
+        if (!empty($filters['is_featured'])) {
+            $where[] = "is_featured = 1";
+        }
+
+        if (!empty($filters['is_on_sale'])) {
+            $where[] = "is_on_sale = 1";
+        }
+
+        if (!empty($filters['is_new'])) {
+            $where[] = "is_new = 1";
+        }
+
+        $whereClause = implode(' AND ', $where);
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE {$whereClause}");
+        $stmt->execute($params);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Get product images (for API)
+     */
+    public function getProductImages(int $productId): array
+    {
+        $db = Database::getInstance();
+        $stmt = $db->prepare("SELECT id, path as image_path, is_primary, sort_order FROM product_images WHERE product_id = ? ORDER BY sort_order, is_primary DESC");
+        $stmt->execute([$productId]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Get product variants (for API)
+     */
+    public function getProductVariants(int $productId): array
+    {
+        $db = Database::getInstance();
+        $stmt = $db->prepare("SELECT id, sku, price, stock_quantity, attributes, name FROM product_variants WHERE product_id = ? AND is_active = 1 ORDER BY price");
+        $stmt->execute([$productId]);
+        return $stmt->fetchAll();
+    }
 }

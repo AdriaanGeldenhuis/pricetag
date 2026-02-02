@@ -16,7 +16,8 @@ class User extends Model
     protected static array $fillable = [
         'email', 'password', 'first_name', 'last_name', 'phone',
         'role', 'status', 'avatar', 'mfa_enabled', 'mfa_secret',
-        'email_verified_at', 'password_changed_at', 'last_login_at', 'last_login_ip'
+        'email_verified_at', 'password_changed_at', 'last_login_at', 'last_login_ip',
+        'remember_token'
     ];
 
     protected static array $hidden = ['password', 'mfa_secret', 'remember_token'];

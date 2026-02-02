@@ -18,7 +18,7 @@ abstract class Model
 
     protected array $attributes = [];
     protected array $original = [];
-    protected bool $exists = false;
+    public bool $exists = false;
 
     public function __construct(array $attributes = [])
     {
@@ -43,6 +43,17 @@ abstract class Model
                 $this->attributes[$key] = $value;
             }
         }
+        return $this;
+    }
+
+    /**
+     * Set original data (used when loading from database)
+     */
+    public function setOriginal(array $data): self
+    {
+        $this->original = $data;
+        // Also set all attributes from original data for proper model hydration
+        $this->attributes = array_merge($data, $this->attributes);
         return $this;
     }
 
@@ -85,9 +96,9 @@ abstract class Model
             return null;
         }
 
-        $model = new static($data);
+        $model = new static();
+        $model->setOriginal($data);
         $model->exists = true;
-        $model->original = $data;
         return $model;
     }
 
@@ -114,9 +125,9 @@ abstract class Model
         $results = [];
 
         while ($data = $stmt->fetch()) {
-            $model = new static($data);
+            $model = new static();
+            $model->setOriginal($data);
             $model->exists = true;
-            $model->original = $data;
             $results[] = $model;
         }
 
@@ -367,9 +378,9 @@ class QueryBuilder
 
         $results = [];
         while ($data = $stmt->fetch()) {
-            $model = new $this->modelClass($data);
+            $model = new $this->modelClass();
+            $model->setOriginal($data);
             $model->exists = true;
-            $model->original = $data;
             $results[] = $model;
         }
 

@@ -17,19 +17,29 @@ class HomeController extends Controller
     {
         $db = Database::getInstance();
 
-        // Get home sections
-        $stmt = $db->query("SELECT * FROM home_sections WHERE is_active = 1 ORDER BY sort_order");
-        $sections = $stmt->fetchAll();
+        // Get home sections (graceful fallback if table doesn't exist)
+        $sections = [];
+        try {
+            $stmt = $db->query("SELECT * FROM home_sections WHERE is_active = 1 ORDER BY sort_order");
+            $sections = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            // Table doesn't exist yet, use empty array
+        }
 
-        // Get hero banners
-        $stmt = $db->query("
-            SELECT * FROM banners
-            WHERE location = 'hero' AND is_active = 1
-            AND (starts_at IS NULL OR starts_at <= NOW())
-            AND (expires_at IS NULL OR expires_at > NOW())
-            ORDER BY sort_order
-        ");
-        $heroBanners = $stmt->fetchAll();
+        // Get hero banners (graceful fallback if table doesn't exist)
+        $heroBanners = [];
+        try {
+            $stmt = $db->query("
+                SELECT * FROM banners
+                WHERE location = 'hero' AND is_active = 1
+                AND (starts_at IS NULL OR starts_at <= NOW())
+                AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY sort_order
+            ");
+            $heroBanners = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            // Table doesn't exist yet, use empty array
+        }
 
         // Get featured categories
         $featuredCategories = Category::featured(6);
@@ -50,7 +60,6 @@ class HomeController extends Controller
         $flashSale = $this->getActiveFlashSale($db);
 
         // Get testimonials
-        $stmt = $db->query("SELECT * FROM settings WHERE `group` = 'testimonials'");
         $testimonials = [];
 
         $this->layout('main');
@@ -74,16 +83,20 @@ class HomeController extends Controller
      */
     private function getActiveFlashSale($db): ?array
     {
-        $stmt = $db->query("
-            SELECT * FROM promotions
-            WHERE type = 'flash_sale'
-            AND is_active = 1
-            AND starts_at <= NOW()
-            AND ends_at > NOW()
-            ORDER BY ends_at ASC
-            LIMIT 1
-        ");
-
-        return $stmt->fetch() ?: null;
+        try {
+            $stmt = $db->query("
+                SELECT * FROM promotions
+                WHERE type = 'flash_sale'
+                AND is_active = 1
+                AND starts_at <= NOW()
+                AND ends_at > NOW()
+                ORDER BY ends_at ASC
+                LIMIT 1
+            ");
+            return $stmt->fetch() ?: null;
+        } catch (\PDOException $e) {
+            // Table doesn't exist yet
+            return null;
+        }
     }
 }

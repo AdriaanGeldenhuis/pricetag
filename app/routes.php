@@ -144,9 +144,16 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     // Orders
     $router->get('/orders', 'Admin\Controllers\OrderController@index', 'admin.orders.index');
     $router->get('/orders/{id}', 'Admin\Controllers\OrderController@show', 'admin.orders.show');
-    $router->put('/orders/{id}/status', 'Admin\Controllers\OrderController@updateStatus', 'admin.orders.status');
+    $router->post('/orders/{id}/status', 'Admin\Controllers\OrderController@updateStatus', 'admin.orders.status');
+    $router->post('/orders/{id}/note', 'Admin\Controllers\OrderController@addNote', 'admin.orders.note');
 
-    // Users
+    // Customers
+    $router->get('/customers', 'Admin\Controllers\CustomerController@index', 'admin.customers.index');
+    $router->get('/customers/{id}', 'Admin\Controllers\CustomerController@show', 'admin.customers.show');
+    $router->get('/customers/{id}/edit', 'Admin\Controllers\CustomerController@edit', 'admin.customers.edit');
+    $router->put('/customers/{id}', 'Admin\Controllers\CustomerController@update', 'admin.customers.update');
+
+    // Users (Admin)
     $router->get('/users', 'Admin\Controllers\UserController@index', 'admin.users.index');
     $router->get('/users/{id}', 'Admin\Controllers\UserController@show', 'admin.users.show');
     $router->put('/users/{id}', 'Admin\Controllers\UserController@update', 'admin.users.update');

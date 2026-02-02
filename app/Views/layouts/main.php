@@ -103,6 +103,11 @@
     <!-- Mobile Menu -->
     <?php include APP_PATH . '/Views/components/mobile-menu.php'; ?>
 
+    <!-- AI Shopping Assistant -->
+    <?php if (config('app.ai_assistant_enabled', true)): ?>
+    <?php include APP_PATH . '/Views/components/ai-assistant.php'; ?>
+    <?php endif; ?>
+
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
 

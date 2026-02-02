@@ -143,12 +143,14 @@ CREATE TABLE IF NOT EXISTS `categories` (
     `sort_order` INT NOT NULL DEFAULT 0,
     `is_featured` TINYINT(1) NOT NULL DEFAULT 0,
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `show_in_menu` TINYINT(1) NOT NULL DEFAULT 0,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `categories_slug_unique` (`slug`),
     KEY `categories_parent_idx` (`parent_id`),
     KEY `categories_active_idx` (`is_active`),
+    KEY `categories_menu_idx` (`show_in_menu`),
     CONSTRAINT `categories_parent_fk` FOREIGN KEY (`parent_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -208,6 +208,27 @@
     background: var(--color-success);
 }
 
+.nav-badge.admin {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    font-size: 0.5625rem;
+    padding: 0.125rem 0.375rem;
+}
+
+.account-nav-admin {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+    border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.account-nav-admin:hover {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #6366f1;
+}
+
+.account-nav-admin svg {
+    color: #6366f1;
+}
+
 .account-nav-divider {
     height: 1px;
     background: var(--color-border);

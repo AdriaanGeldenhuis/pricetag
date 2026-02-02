@@ -115,6 +115,23 @@
         <div class="account-nav-divider"></div>
 
         <ul class="account-nav-list">
+            <?php
+            // Show Admin Panel link for admin/super_admin users
+            $currentUserRole = $currentUser['role'] ?? '';
+            if (in_array($currentUserRole, ['admin', 'super_admin'])):
+            ?>
+            <li class="account-nav-item">
+                <a href="<?= url('/admin') ?>" class="account-nav-link account-nav-admin">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="9" y1="21" x2="9" y2="9"></line>
+                    </svg>
+                    <span>Admin Panel</span>
+                    <span class="nav-badge admin"><?= $currentUserRole === 'super_admin' ? 'Super' : 'Admin' ?></span>
+                </a>
+            </li>
+            <?php endif; ?>
             <li class="account-nav-item">
                 <a href="<?= url('/contact') ?>" class="account-nav-link">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

@@ -1,14 +1,32 @@
-# Force HTTPS
+# Force HTTPS and non-www
 RewriteEngine On
+
+# Redirect www to non-www
+RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
+RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
+# Force HTTPS
 RewriteCond %{HTTPS} off
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-# Security Headers
+# Serve static assets from public folder
+RewriteCond %{REQUEST_URI} ^/assets/
+RewriteRule ^assets/(.*)$ public/assets/$1 [L]
+
+# Serve storage uploads
+RewriteCond %{REQUEST_URI} ^/storage/
+RewriteRule ^storage/(.*)$ storage/$1 [L]
+
+# Route all requests through index.php (except existing files)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [L,QSA]
+
+# Override Content Security Policy - Allow all for now
 <IfModule mod_headers.c>
+    Header always unset Content-Security-Policy
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "SAMEORIGIN"
-    Header always set X-XSS-Protection "1; mode=block"
-    Header always set Referrer-Policy "strict-origin-when-cross-origin"
 </IfModule>
 
 # Prevent directory listing
@@ -20,12 +38,12 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
-<FilesMatch "(composer\.json|composer\.lock|\.env|config\.php)$">
+<FilesMatch "(composer\.json|composer\.lock|\.env|bootstrap\.php)$">
     Order allow,deny
     Deny from all
 </FilesMatch>
 
-# PHP settings (adjust as needed)
+# PHP settings
 <IfModule mod_php.c>
     php_value upload_max_filesize 64M
     php_value post_max_size 64M

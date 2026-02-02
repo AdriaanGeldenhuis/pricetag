@@ -1,0 +1,372 @@
+<?php
+/**
+ * Account Controller
+ * Pricetag.co.za - Enterprise E-commerce Platform
+ */
+
+namespace App\Controllers;
+
+use App\Core\Controller;
+use App\Core\Database;
+use App\Models\User;
+use App\Models\Order;
+
+class AccountController extends Controller
+{
+    public function __construct()
+    {
+        $this->requireAuth();
+    }
+
+    public function dashboard(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+        $recentOrders = $user->getOrders(5);
+
+        $db = Database::getInstance();
+
+        // Get stats
+        $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
+        $stmt->execute([$user->id]);
+        $totalOrders = $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM wishlists WHERE user_id = ?");
+        $stmt->execute([$user->id]);
+        $wishlistCount = $stmt->fetchColumn();
+
+        $this->layout('main');
+        $this->view('pages/account/dashboard', [
+            'meta_title' => 'My Account | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'user' => $user,
+            'recentOrders' => $recentOrders,
+            'stats' => [
+                'orders' => $totalOrders,
+                'wishlist' => $wishlistCount,
+            ],
+        ]);
+    }
+
+    public function orders(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+
+        $db = Database::getInstance();
+        $perPage = 10;
+        $offset = ($page - 1) * $perPage;
+
+        // Count total
+        $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
+        $stmt->execute([$user->id]);
+        $total = (int) $stmt->fetchColumn();
+
+        // Get orders
+        $stmt = $db->prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        $stmt->execute([$user->id, $perPage, $offset]);
+        $orders = $stmt->fetchAll();
+
+        $this->layout('main');
+        $this->view('pages/account/orders', [
+            'meta_title' => 'My Orders | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'orders' => $orders,
+            'pagination' => [
+                'total' => $total,
+                'per_page' => $perPage,
+                'current_page' => $page,
+                'last_page' => (int) ceil($total / $perPage),
+            ],
+        ]);
+    }
+
+    public function orderDetail(string $id): void
+    {
+        $order = Order::find((int) $id);
+
+        if (!$order || $order->user_id !== $_SESSION['user_id']) {
+            http_response_code(404);
+            $this->layout('main');
+            $this->view('errors/404');
+            return;
+        }
+
+        $items = $order->getItems();
+        $statusHistory = $order->getStatusHistory();
+
+        $this->layout('main');
+        $this->view('pages/account/order-detail', [
+            'meta_title' => 'Order #' . $order->order_number . ' | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'order' => $order,
+            'items' => $items,
+            'statusHistory' => $statusHistory,
+        ]);
+    }
+
+    public function invoice(string $id): void
+    {
+        $order = Order::find((int) $id);
+
+        if (!$order || $order->user_id !== $_SESSION['user_id']) {
+            http_response_code(404);
+            exit;
+        }
+
+        $items = $order->getItems();
+
+        // For now, just output HTML invoice
+        // In production, use a PDF library like TCPDF or Dompdf
+        header('Content-Type: text/html');
+
+        include APP_PATH . '/Views/pages/account/invoice.php';
+        exit;
+    }
+
+    public function addresses(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+        $addresses = $user->getAddresses();
+
+        $this->layout('main');
+        $this->view('pages/account/addresses', [
+            'meta_title' => 'My Addresses | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'addresses' => $addresses,
+        ]);
+    }
+
+    public function saveAddress(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $validation = $this->validate([
+            'first_name' => 'required|min:2|max:100',
+            'last_name' => 'required|min:2|max:100',
+            'address_line_1' => 'required|min:5|max:255',
+            'city' => 'required|min:2|max:100',
+            'province' => 'required',
+            'postal_code' => 'required|min:4|max:20',
+        ]);
+
+        if (!$validation['valid']) {
+            if (isAjax()) {
+                $this->json(['success' => false, 'errors' => $validation['errors']], 422);
+            }
+            $this->redirect('/account/addresses');
+            return;
+        }
+
+        $db = Database::getInstance();
+        $userId = $_SESSION['user_id'];
+        $addressId = $_POST['address_id'] ?? null;
+        $isDefault = !empty($_POST['is_default']);
+
+        // If setting as default, unset other defaults
+        if ($isDefault) {
+            $stmt = $db->prepare("UPDATE user_addresses SET is_default = 0 WHERE user_id = ? AND type = ?");
+            $stmt->execute([$userId, $_POST['type'] ?? 'shipping']);
+        }
+
+        $data = [
+            $_POST['type'] ?? 'shipping',
+            $isDefault ? 1 : 0,
+            $_POST['first_name'],
+            $_POST['last_name'],
+            $_POST['company'] ?? null,
+            $_POST['address_line_1'],
+            $_POST['address_line_2'] ?? null,
+            $_POST['city'],
+            $_POST['province'],
+            $_POST['postal_code'],
+            $_POST['country'] ?? 'ZA',
+            $_POST['phone'] ?? null,
+        ];
+
+        if ($addressId) {
+            // Update existing
+            $stmt = $db->prepare("
+                UPDATE user_addresses SET
+                    type = ?, is_default = ?, first_name = ?, last_name = ?, company = ?,
+                    address_line_1 = ?, address_line_2 = ?, city = ?, province = ?,
+                    postal_code = ?, country = ?, phone = ?, updated_at = NOW()
+                WHERE id = ? AND user_id = ?
+            ");
+            $data[] = $addressId;
+            $data[] = $userId;
+            $stmt->execute($data);
+        } else {
+            // Create new
+            $stmt = $db->prepare("
+                INSERT INTO user_addresses
+                    (user_id, type, is_default, first_name, last_name, company,
+                     address_line_1, address_line_2, city, province, postal_code, country, phone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            array_unshift($data, $userId);
+            $stmt->execute($data);
+        }
+
+        if (isAjax()) {
+            $this->json(['success' => true]);
+            return;
+        }
+
+        flash('success', 'Address saved');
+        $this->redirect('/account/addresses');
+    }
+
+    public function deleteAddress(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $db = Database::getInstance();
+        $stmt = $db->prepare("DELETE FROM user_addresses WHERE id = ? AND user_id = ?");
+        $stmt->execute([(int) $id, $_SESSION['user_id']]);
+
+        if (isAjax()) {
+            $this->json(['success' => true]);
+            return;
+        }
+
+        flash('success', 'Address deleted');
+        $this->redirect('/account/addresses');
+    }
+
+    public function settings(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+
+        $this->layout('main');
+        $this->view('pages/account/settings', [
+            'meta_title' => 'Account Settings | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'user' => $user,
+        ]);
+    }
+
+    public function updateSettings(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $validation = $this->validate([
+            'first_name' => 'required|min:2|max:100',
+            'last_name' => 'required|min:2|max:100',
+            'email' => 'required|email',
+        ]);
+
+        if (!$validation['valid']) {
+            $this->redirect('/account/settings');
+            return;
+        }
+
+        $user = User::find($_SESSION['user_id']);
+
+        // Check if email changed and is unique
+        if ($_POST['email'] !== $user->email) {
+            $existing = User::findByEmail($_POST['email']);
+            if ($existing) {
+                flash('error', 'Email address is already in use');
+                $this->redirect('/account/settings');
+                return;
+            }
+        }
+
+        $user->first_name = $_POST['first_name'];
+        $user->last_name = $_POST['last_name'];
+        $user->email = $_POST['email'];
+        $user->phone = $_POST['phone'] ?? null;
+        $user->save();
+
+        unset($_SESSION['_user_cache']);
+
+        flash('success', 'Settings updated');
+        $this->redirect('/account/settings');
+    }
+
+    public function updatePassword(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $user = User::find($_SESSION['user_id']);
+
+        // Verify current password
+        if (!$user->verifyPassword($_POST['current_password'] ?? '')) {
+            flash('error', 'Current password is incorrect');
+            $this->redirect('/account/settings');
+            return;
+        }
+
+        // Validate new password
+        $newPassword = $_POST['new_password'] ?? '';
+        $confirmPassword = $_POST['new_password_confirmation'] ?? '';
+
+        if (strlen($newPassword) < 8) {
+            flash('error', 'New password must be at least 8 characters');
+            $this->redirect('/account/settings');
+            return;
+        }
+
+        if ($newPassword !== $confirmPassword) {
+            flash('error', 'Passwords do not match');
+            $this->redirect('/account/settings');
+            return;
+        }
+
+        $user->updatePassword($newPassword);
+
+        flash('success', 'Password updated');
+        $this->redirect('/account/settings');
+    }
+
+    public function security(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+
+        $db = Database::getInstance();
+
+        // Get active sessions
+        $stmt = $db->prepare("SELECT * FROM user_sessions WHERE user_id = ? ORDER BY last_activity DESC");
+        $stmt->execute([$user->id]);
+        $sessions = $stmt->fetchAll();
+
+        // Get recent login activity
+        $stmt = $db->prepare("SELECT * FROM login_attempts WHERE email = ? ORDER BY created_at DESC LIMIT 10");
+        $stmt->execute([$user->email]);
+        $loginHistory = $stmt->fetchAll();
+
+        $this->layout('main');
+        $this->view('pages/account/security', [
+            'meta_title' => 'Security | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'user' => $user,
+            'sessions' => $sessions,
+            'loginHistory' => $loginHistory,
+        ]);
+    }
+
+    public function activity(): void
+    {
+        $user = User::find($_SESSION['user_id']);
+
+        $db = Database::getInstance();
+        $stmt = $db->prepare("SELECT * FROM activity_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50");
+        $stmt->execute([$user->id]);
+        $activities = $stmt->fetchAll();
+
+        $this->layout('main');
+        $this->view('pages/account/activity', [
+            'meta_title' => 'Activity Log | ' . config('app.name'),
+            'meta_robots' => 'noindex, nofollow',
+            'activities' => $activities,
+        ]);
+    }
+}

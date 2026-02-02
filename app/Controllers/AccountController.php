@@ -61,7 +61,7 @@ class AccountController extends Controller
     /**
      * Get database instance with error handling
      */
-    private function db(): Database
+    private function db(): \PDO
     {
         return Database::getInstance();
     }

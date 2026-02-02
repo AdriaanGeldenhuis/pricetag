@@ -38,11 +38,6 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
-# Protect app directories
-<DirectoryMatch "^(app|admin|config|database)/">
-    Order allow,deny
-    Deny from all
-</DirectoryMatch>
 
 # PHP settings
 <IfModule mod_php.c>

@@ -1,49 +1,43 @@
 <?php
-declare(strict_types=1);
-
 /**
  * Admin Attribute Controller
  * Pricetag.co.za - Enterprise E-commerce Platform
- *
- * Manages product attributes and their values (colors, sizes, etc.)
  */
 
 namespace Admin\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class AttributeController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Get all attributes with value counts
-        $attributes = $db->query("
+        $stmt = $db->query("
             SELECT a.*,
-                   COUNT(av.id) as value_count,
-                   (SELECT COUNT(DISTINCT pa.product_id)
-                    FROM product_attributes pa
-                    WHERE pa.attribute_id = a.id) as product_count
+                   COUNT(av.id) as value_count
             FROM attributes a
             LEFT JOIN attribute_values av ON a.id = av.attribute_id
             GROUP BY a.id
             ORDER BY a.sort_order, a.name
-        ")->fetchAll();
+        ");
+        $attributes = $stmt->fetchAll();
 
         // Get attribute values grouped by attribute
         $attributeValues = [];
         foreach ($attributes as $attr) {
-            $values = $db->query(
-                "SELECT * FROM attribute_values WHERE attribute_id = ? ORDER BY sort_order, value",
-                [$attr['id']]
-            )->fetchAll();
-            $attributeValues[$attr['id']] = $values;
+            $stmt = $db->prepare("SELECT * FROM attribute_values WHERE attribute_id = ? ORDER BY sort_order, value");
+            $stmt->execute([$attr['id']]);
+            $attributeValues[$attr['id']] = $stmt->fetchAll();
         }
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/attributes/index', [
-            'title' => 'Attributes',
+        $this->layout('admin');
+        $this->view('pages/attributes/index', [
+            'page_title' => 'Attributes',
+            'active_page' => 'attributes',
             'attributes' => $attributes,
             'attributeValues' => $attributeValues,
         ]);
@@ -55,55 +49,48 @@ class AttributeController extends Controller
             return;
         }
 
-        $validation = $this->validate([
-            'name' => 'required|min:2|max:255',
-            'type' => 'required',
-        ]);
+        $name = trim($_POST['name'] ?? '');
+        $type = $_POST['type'] ?? 'select';
 
-        if (!$validation['valid']) {
+        if (empty($name)) {
             if (isAjax()) {
-                $this->json(['success' => false, 'errors' => $validation['errors']], 422);
+                $this->json(['success' => false, 'error' => 'Name is required'], 422);
                 return;
             }
-            flash('error', 'Please correct the errors below.');
+            flash('error', 'Name is required');
             $this->redirect('/admin/attributes');
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Generate slug
-        $slug = $this->generateSlug($_POST['name']);
+        $slug = slugify($name);
 
         // Get max sort order
-        $maxSort = (int) $db->query("SELECT MAX(sort_order) FROM attributes")->fetchColumn();
+        $stmt = $db->query("SELECT MAX(sort_order) FROM attributes");
+        $maxSort = (int) $stmt->fetchColumn();
 
         // Insert attribute
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO attributes (name, slug, type, is_filterable, is_visible, sort_order, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-        ", [
-            trim($_POST['name']),
+        ");
+        $stmt->execute([
+            $name,
             $slug,
-            $_POST['type'],
+            $type,
             isset($_POST['is_filterable']) ? 1 : 0,
             isset($_POST['is_visible']) ? 1 : 0,
             $maxSort + 1,
         ]);
 
-        $attributeId = $db->lastInsertId();
-
-        // Add values if provided
-        if (!empty($_POST['values'])) {
-            $this->saveValues($attributeId, $_POST['values']);
-        }
-
         if (isAjax()) {
-            $this->json(['success' => true, 'id' => $attributeId, 'message' => 'Attribute created successfully.']);
+            $this->json(['success' => true, 'id' => $db->lastInsertId(), 'message' => 'Attribute created']);
             return;
         }
 
-        flash('success', 'Attribute created successfully.');
+        flash('success', 'Attribute created successfully');
         $this->redirect('/admin/attributes');
     }
 
@@ -113,68 +100,58 @@ class AttributeController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $attribute = $db->query("SELECT * FROM attributes WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM attributes WHERE id = ?");
+        $stmt->execute([$id]);
+        $attribute = $stmt->fetch();
 
         if (!$attribute) {
             if (isAjax()) {
-                $this->json(['success' => false, 'error' => 'Attribute not found.'], 404);
+                $this->json(['success' => false, 'error' => 'Attribute not found'], 404);
                 return;
             }
-            flash('error', 'Attribute not found.');
+            flash('error', 'Attribute not found');
             $this->redirect('/admin/attributes');
             return;
         }
 
-        $validation = $this->validate([
-            'name' => 'required|min:2|max:255',
-            'type' => 'required',
-        ]);
-
-        if (!$validation['valid']) {
+        $name = trim($_POST['name'] ?? '');
+        if (empty($name)) {
             if (isAjax()) {
-                $this->json(['success' => false, 'errors' => $validation['errors']], 422);
+                $this->json(['success' => false, 'error' => 'Name is required'], 422);
                 return;
             }
-            flash('error', 'Please correct the errors below.');
+            flash('error', 'Name is required');
             $this->redirect('/admin/attributes');
             return;
         }
 
         // Update slug if name changed
         $slug = $attribute['slug'];
-        if ($_POST['name'] !== $attribute['name']) {
-            $slug = $this->generateSlug($_POST['name'], $id);
+        if ($name !== $attribute['name']) {
+            $slug = slugify($name);
         }
 
-        // Update attribute
-        $db->query("
-            UPDATE attributes SET
-                name = ?, slug = ?, type = ?, is_filterable = ?, is_visible = ?,
-                sort_order = ?, updated_at = NOW()
+        $stmt = $db->prepare("
+            UPDATE attributes SET name = ?, slug = ?, type = ?, is_filterable = ?, is_visible = ?, updated_at = NOW()
             WHERE id = ?
-        ", [
-            trim($_POST['name']),
+        ");
+        $stmt->execute([
+            $name,
             $slug,
-            $_POST['type'],
+            $_POST['type'] ?? $attribute['type'],
             isset($_POST['is_filterable']) ? 1 : 0,
             isset($_POST['is_visible']) ? 1 : 0,
-            (int) ($_POST['sort_order'] ?? $attribute['sort_order']),
             $id,
         ]);
 
-        // Update values if provided
-        if (isset($_POST['values'])) {
-            $this->saveValues($id, $_POST['values']);
-        }
-
         if (isAjax()) {
-            $this->json(['success' => true, 'message' => 'Attribute updated successfully.']);
+            $this->json(['success' => true, 'message' => 'Attribute updated']);
             return;
         }
 
-        flash('success', 'Attribute updated successfully.');
+        flash('success', 'Attribute updated successfully');
         $this->redirect('/admin/attributes');
     }
 
@@ -184,76 +161,60 @@ class AttributeController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Check if attribute is in use
-        $inUse = (int) $db->query(
-            "SELECT COUNT(*) FROM product_attributes WHERE attribute_id = ?",
-            [$id]
-        )->fetchColumn();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM product_attributes WHERE attribute_id = ?");
+        $stmt->execute([$id]);
+        $inUse = (int) $stmt->fetchColumn();
 
         if ($inUse > 0) {
             if (isAjax()) {
-                $this->json(['success' => false, 'error' => "Cannot delete attribute. It's used by {$inUse} product(s)."], 400);
+                $this->json(['success' => false, 'error' => "Cannot delete - used by {$inUse} products"], 400);
                 return;
             }
-            flash('error', "Cannot delete attribute. It's used by {$inUse} product(s).");
+            flash('error', "Cannot delete - attribute is used by {$inUse} products");
             $this->redirect('/admin/attributes');
             return;
         }
 
-        // Delete attribute (values will cascade)
-        $db->query("DELETE FROM attributes WHERE id = ?", [$id]);
+        $stmt = $db->prepare("DELETE FROM attributes WHERE id = ?");
+        $stmt->execute([$id]);
 
         if (isAjax()) {
-            $this->json(['success' => true, 'message' => 'Attribute deleted successfully.']);
+            $this->json(['success' => true, 'message' => 'Attribute deleted']);
             return;
         }
 
-        flash('success', 'Attribute deleted successfully.');
+        flash('success', 'Attribute deleted successfully');
         $this->redirect('/admin/attributes');
     }
 
-    /**
-     * API endpoint to add a value to an attribute
-     */
-    public function addValue(): void
+    public function storeValue(int $attributeId): void
     {
         if (!$this->validateCsrf()) {
             return;
         }
 
-        $attributeId = (int) ($_POST['attribute_id'] ?? 0);
         $value = trim($_POST['value'] ?? '');
-
-        if (!$attributeId || !$value) {
-            $this->json(['success' => false, 'error' => 'Attribute ID and value are required.'], 400);
+        if (empty($value)) {
+            $this->json(['success' => false, 'error' => 'Value is required'], 422);
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        // Check attribute exists
-        $attribute = $db->query("SELECT * FROM attributes WHERE id = ?", [$attributeId])->fetch();
-        if (!$attribute) {
-            $this->json(['success' => false, 'error' => 'Attribute not found.'], 404);
-            return;
-        }
+        $slug = slugify($value);
 
-        // Generate slug for value
-        $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $value), '-'));
+        $stmt = $db->prepare("SELECT MAX(sort_order) FROM attribute_values WHERE attribute_id = ?");
+        $stmt->execute([$attributeId]);
+        $maxSort = (int) $stmt->fetchColumn();
 
-        // Get max sort order
-        $maxSort = (int) $db->query(
-            "SELECT MAX(sort_order) FROM attribute_values WHERE attribute_id = ?",
-            [$attributeId]
-        )->fetchColumn();
-
-        // Insert value
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO attribute_values (attribute_id, value, slug, color_code, sort_order, created_at)
             VALUES (?, ?, ?, ?, ?, NOW())
-        ", [
+        ");
+        $stmt->execute([
             $attributeId,
             $value,
             $slug,
@@ -261,123 +222,40 @@ class AttributeController extends Controller
             $maxSort + 1,
         ]);
 
-        $this->json([
-            'success' => true,
-            'id' => $db->lastInsertId(),
-            'message' => 'Value added successfully.',
-        ]);
+        $this->json(['success' => true, 'id' => $db->lastInsertId(), 'message' => 'Value added']);
     }
 
-    /**
-     * API endpoint to delete a value
-     */
-    public function deleteValue(int $id): void
+    public function updateValue(int $id): void
     {
         if (!$this->validateCsrf()) {
             return;
         }
 
-        $db = db();
-
-        // Check if value is in use
-        $inUse = (int) $db->query(
-            "SELECT COUNT(*) FROM product_variant_attributes WHERE attribute_value_id = ?",
-            [$id]
-        )->fetchColumn();
-
-        if ($inUse > 0) {
-            $this->json(['success' => false, 'error' => "Cannot delete value. It's used by product variants."], 400);
+        $value = trim($_POST['value'] ?? '');
+        if (empty($value)) {
+            $this->json(['success' => false, 'error' => 'Value is required'], 422);
             return;
         }
 
-        $db->query("DELETE FROM attribute_values WHERE id = ?", [$id]);
+        $db = Database::getInstance();
 
-        $this->json(['success' => true, 'message' => 'Value deleted successfully.']);
+        $stmt = $db->prepare("UPDATE attribute_values SET value = ?, slug = ?, color_code = ? WHERE id = ?");
+        $stmt->execute([$value, slugify($value), $_POST['color_code'] ?? null, $id]);
+
+        $this->json(['success' => true, 'message' => 'Value updated']);
     }
 
-    private function generateSlug(string $name, ?int $excludeId = null): string
+    public function destroyValue(int $id): void
     {
-        $db = db();
-        $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $name), '-'));
-        $baseSlug = $slug;
-        $counter = 1;
-
-        while (true) {
-            $sql = "SELECT id FROM attributes WHERE slug = ?";
-            $params = [$slug];
-
-            if ($excludeId) {
-                $sql .= " AND id != ?";
-                $params[] = $excludeId;
-            }
-
-            $existing = $db->query($sql, $params)->fetch();
-
-            if (!$existing) {
-                break;
-            }
-
-            $slug = $baseSlug . '-' . $counter;
-            $counter++;
+        if (!$this->validateCsrf()) {
+            return;
         }
 
-        return $slug;
-    }
+        $db = Database::getInstance();
 
-    private function saveValues(int $attributeId, array $values): void
-    {
-        $db = db();
+        $stmt = $db->prepare("DELETE FROM attribute_values WHERE id = ?");
+        $stmt->execute([$id]);
 
-        // Get existing values
-        $existingIds = $db->query(
-            "SELECT id FROM attribute_values WHERE attribute_id = ?",
-            [$attributeId]
-        )->fetchAll(\PDO::FETCH_COLUMN);
-
-        $submittedIds = [];
-
-        foreach ($values as $index => $valueData) {
-            if (is_string($valueData)) {
-                $valueData = ['value' => $valueData];
-            }
-
-            $value = trim($valueData['value'] ?? '');
-            if (empty($value)) {
-                continue;
-            }
-
-            $id = $valueData['id'] ?? null;
-            $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $value), '-'));
-            $colorCode = $valueData['color_code'] ?? null;
-
-            if ($id && in_array($id, $existingIds)) {
-                // Update existing
-                $db->query("
-                    UPDATE attribute_values SET value = ?, slug = ?, color_code = ?, sort_order = ?
-                    WHERE id = ? AND attribute_id = ?
-                ", [$value, $slug, $colorCode, $index, $id, $attributeId]);
-                $submittedIds[] = $id;
-            } else {
-                // Insert new
-                $db->query("
-                    INSERT INTO attribute_values (attribute_id, value, slug, color_code, sort_order, created_at)
-                    VALUES (?, ?, ?, ?, ?, NOW())
-                ", [$attributeId, $value, $slug, $colorCode, $index]);
-                $submittedIds[] = $db->lastInsertId();
-            }
-        }
-
-        // Delete removed values (only if not in use)
-        $toDelete = array_diff($existingIds, $submittedIds);
-        foreach ($toDelete as $deleteId) {
-            $inUse = (int) $db->query(
-                "SELECT COUNT(*) FROM product_variant_attributes WHERE attribute_value_id = ?",
-                [$deleteId]
-            )->fetchColumn();
-
-            if ($inUse === 0) {
-                $db->query("DELETE FROM attribute_values WHERE id = ?", [$deleteId]);
-            }
-        }
+        $this->json(['success' => true, 'message' => 'Value deleted']);
     }
 }

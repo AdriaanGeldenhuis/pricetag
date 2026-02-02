@@ -9,43 +9,62 @@ declare(strict_types=1);
 namespace Admin\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class SeoController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Get SEO settings
-        $settings = $db->query("SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE 'seo_%'")->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $stmt = $db->prepare("SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE 'seo_%'");
+        $stmt->execute();
+        $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
 
         // Get products without SEO descriptions
-        $productsWithoutSeo = $db->query("
+        $stmt = $db->prepare("
             SELECT id, name, slug, short_description
             FROM products
             WHERE (short_description IS NULL OR short_description = '')
             AND status = 1
             LIMIT 10
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $productsWithoutSeo = $stmt->fetchAll();
 
         // Get pages without meta descriptions
-        $pagesWithoutMeta = $db->query("
+        $stmt = $db->prepare("
             SELECT id, title, slug
             FROM pages
             WHERE (meta_description IS NULL OR meta_description = '')
             AND status = 'published'
             LIMIT 10
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $pagesWithoutMeta = $stmt->fetchAll();
 
         // Get sitemap statistics
+        $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE status = 1");
+        $stmt->execute();
+        $productCount = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM categories WHERE is_active = 1");
+        $stmt->execute();
+        $categoryCount = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM pages WHERE status = 'published'");
+        $stmt->execute();
+        $pageCount = (int) $stmt->fetchColumn();
+
         $sitemapStats = [
-            'products' => (int) $db->query("SELECT COUNT(*) FROM products WHERE status = 1")->fetchColumn(),
-            'categories' => (int) $db->query("SELECT COUNT(*) FROM categories WHERE is_active = 1")->fetchColumn(),
-            'pages' => (int) $db->query("SELECT COUNT(*) FROM pages WHERE status = 'published'")->fetchColumn(),
+            'products' => $productCount,
+            'categories' => $categoryCount,
+            'pages' => $pageCount,
         ];
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/seo/index', [
+        $this->layout('admin');
+        $this->view('pages/seo/index', [
             'title' => 'SEO Settings',
             'settings' => [
                 'site_title' => $settings['seo_site_title'] ?? config('app.name'),
@@ -73,7 +92,7 @@ class SeoController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Define allowed SEO settings
         $seoSettings = [
@@ -97,18 +116,16 @@ class SeoController extends Controller
 
             $value = trim((string) $value);
 
-            $existing = $db->query("SELECT id FROM settings WHERE setting_key = ?", [$settingKey])->fetch();
+            $stmt = $db->prepare("SELECT id FROM settings WHERE setting_key = ?");
+            $stmt->execute([$settingKey]);
+            $existing = $stmt->fetch();
 
             if ($existing) {
-                $db->query(
-                    "UPDATE settings SET setting_value = ?, updated_at = NOW() WHERE setting_key = ?",
-                    [$value, $settingKey]
-                );
+                $stmt = $db->prepare("UPDATE settings SET setting_value = ?, updated_at = NOW() WHERE setting_key = ?");
+                $stmt->execute([$value, $settingKey]);
             } else {
-                $db->query(
-                    "INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES (?, ?, NOW(), NOW())",
-                    [$settingKey, $value]
-                );
+                $stmt = $db->prepare("INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES (?, ?, NOW(), NOW())");
+                $stmt->execute([$settingKey, $value]);
             }
         }
 
@@ -122,7 +139,7 @@ class SeoController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
         $baseUrl = config('app.url');
 
         // Build sitemap content
@@ -133,19 +150,25 @@ class SeoController extends Controller
         $xml .= $this->sitemapUrl($baseUrl, 'daily', '1.0');
 
         // Static pages
-        $pages = $db->query("SELECT slug, updated_at FROM pages WHERE status = 'published'")->fetchAll();
+        $stmt = $db->prepare("SELECT slug, updated_at FROM pages WHERE status = 'published'");
+        $stmt->execute();
+        $pages = $stmt->fetchAll();
         foreach ($pages as $page) {
             $xml .= $this->sitemapUrl("{$baseUrl}/page/{$page['slug']}", 'monthly', '0.5', $page['updated_at']);
         }
 
         // Categories
-        $categories = $db->query("SELECT slug, updated_at FROM categories WHERE is_active = 1")->fetchAll();
+        $stmt = $db->prepare("SELECT slug, updated_at FROM categories WHERE is_active = 1");
+        $stmt->execute();
+        $categories = $stmt->fetchAll();
         foreach ($categories as $cat) {
             $xml .= $this->sitemapUrl("{$baseUrl}/categories/{$cat['slug']}", 'daily', '0.8', $cat['updated_at']);
         }
 
         // Products
-        $products = $db->query("SELECT slug, updated_at FROM products WHERE status = 1")->fetchAll();
+        $stmt = $db->prepare("SELECT slug, updated_at FROM products WHERE status = 1");
+        $stmt->execute();
+        $products = $stmt->fetchAll();
         foreach ($products as $product) {
             $xml .= $this->sitemapUrl("{$baseUrl}/products/{$product['slug']}", 'weekly', '0.7', $product['updated_at']);
         }

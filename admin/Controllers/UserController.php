@@ -11,13 +11,13 @@ declare(strict_types=1);
 namespace Admin\Controllers;
 
 use App\Core\Controller;
-use App\Models\User;
+use App\Core\Database;
 
 class UserController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Get filter parameters
         $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -50,30 +50,36 @@ class UserController extends Controller
         $whereClause = implode(' AND ', $where);
 
         // Get total count
-        $total = (int) $db->query("SELECT COUNT(*) FROM users WHERE {$whereClause}", $params)->fetchColumn();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE {$whereClause}");
+        $stmt->execute($params);
+        $total = (int) $stmt->fetchColumn();
         $totalPages = (int) ceil($total / $perPage);
 
         // Get users
         $offset = ($page - 1) * $perPage;
-        $users = $db->query("
+        $stmt = $db->prepare("
             SELECT id, email, first_name, last_name, phone, role, status,
                    avatar, mfa_enabled, last_login_at, created_at
             FROM users
             WHERE {$whereClause}
             ORDER BY created_at DESC
             LIMIT {$perPage} OFFSET {$offset}
-        ", $params)->fetchAll();
+        ");
+        $stmt->execute($params);
+        $users = $stmt->fetchAll();
 
         // Get role counts
-        $roleCounts = $db->query("
+        $stmt = $db->prepare("
             SELECT role, COUNT(*) as count
             FROM users
             WHERE role IN ('admin', 'super_admin')
             GROUP BY role
-        ")->fetchAll(\PDO::FETCH_KEY_PAIR);
+        ");
+        $stmt->execute();
+        $roleCounts = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/users/index', [
+        $this->layout('admin');
+        $this->view('pages/users/index', [
             'title' => 'Admin Users',
             'users' => $users,
             'roleCounts' => $roleCounts,
@@ -93,8 +99,8 @@ class UserController extends Controller
 
     public function create(): void
     {
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/users/form', [
+        $this->layout('admin');
+        $this->view('pages/users/form', [
             'title' => 'Add Admin User',
             'user' => null,
         ]);
@@ -130,10 +136,12 @@ class UserController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Check email uniqueness
-        $existing = $db->query("SELECT id FROM users WHERE email = ?", [strtolower($_POST['email'])])->fetch();
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->execute([strtolower($_POST['email'])]);
+        $existing = $stmt->fetch();
         if ($existing) {
             flash('error', 'An account with this email already exists.');
             $_SESSION['form_data'] = $_POST;
@@ -149,10 +157,11 @@ class UserController extends Controller
         }
 
         // Create user
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO users (email, password, first_name, last_name, phone, role, status, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
-        ", [
+        ");
+        $stmt->execute([
             strtolower(trim($_POST['email'])),
             password_hash($_POST['password'], PASSWORD_DEFAULT),
             trim($_POST['first_name']),
@@ -167,15 +176,17 @@ class UserController extends Controller
 
     public function show(int $id): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
-        $user = $db->query("
+        $stmt = $db->prepare("
             SELECT id, email, first_name, last_name, phone, role, status,
                    avatar, mfa_enabled, email_verified_at, last_login_at, last_login_ip,
                    created_at, updated_at
             FROM users
             WHERE id = ? AND role IN ('admin', 'super_admin')
-        ", [$id])->fetch();
+        ");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
 
         if (!$user) {
             flash('error', 'User not found.');
@@ -184,33 +195,39 @@ class UserController extends Controller
         }
 
         // Get recent activity
-        $activity = $db->query("
+        $stmt = $db->prepare("
             SELECT type, description, ip_address, created_at
             FROM activity_logs
             WHERE user_id = ?
             ORDER BY created_at DESC
             LIMIT 20
-        ", [$id])->fetchAll();
+        ");
+        $stmt->execute([$id]);
+        $activity = $stmt->fetchAll();
 
         // Get login history
-        $loginHistory = $db->query("
+        $stmt = $db->prepare("
             SELECT ip_address, user_agent, success, created_at
             FROM login_attempts
             WHERE email = ?
             ORDER BY created_at DESC
             LIMIT 10
-        ", [$user['email']])->fetchAll();
+        ");
+        $stmt->execute([$user['email']]);
+        $loginHistory = $stmt->fetchAll();
 
         // Get active sessions
-        $sessions = $db->query("
+        $stmt = $db->prepare("
             SELECT id, ip_address, user_agent, last_activity, created_at
             FROM user_sessions
             WHERE user_id = ?
             ORDER BY last_activity DESC
-        ", [$id])->fetchAll();
+        ");
+        $stmt->execute([$id]);
+        $sessions = $stmt->fetchAll();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/users/show', [
+        $this->layout('admin');
+        $this->view('pages/users/show', [
             'title' => $user['first_name'] . ' ' . $user['last_name'],
             'user' => $user,
             'activity' => $activity,
@@ -221,12 +238,14 @@ class UserController extends Controller
 
     public function edit(int $id): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
-        $user = $db->query("
+        $stmt = $db->prepare("
             SELECT * FROM users
             WHERE id = ? AND role IN ('admin', 'super_admin')
-        ", [$id])->fetch();
+        ");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
 
         if (!$user) {
             flash('error', 'User not found.');
@@ -234,8 +253,8 @@ class UserController extends Controller
             return;
         }
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/users/form', [
+        $this->layout('admin');
+        $this->view('pages/users/form', [
             'title' => 'Edit Admin User',
             'user' => $user,
         ]);
@@ -247,10 +266,12 @@ class UserController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
         $currentUser = user();
 
-        $user = $db->query("SELECT * FROM users WHERE id = ? AND role IN ('admin', 'super_admin')", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND role IN ('admin', 'super_admin')");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
 
         if (!$user) {
             flash('error', 'User not found.');
@@ -279,10 +300,9 @@ class UserController extends Controller
         }
 
         // Check email uniqueness (excluding current user)
-        $existing = $db->query(
-            "SELECT id FROM users WHERE email = ? AND id != ?",
-            [strtolower($_POST['email']), $id]
-        )->fetch();
+        $stmt = $db->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+        $stmt->execute([strtolower($_POST['email']), $id]);
+        $existing = $stmt->fetch();
 
         if ($existing) {
             flash('error', 'An account with this email already exists.');
@@ -347,14 +367,16 @@ class UserController extends Controller
         $params[] = $id;
         $updateClause = implode(', ', $updates);
 
-        $db->query("UPDATE users SET {$updateClause} WHERE id = ?", $params);
+        $stmt = $db->prepare("UPDATE users SET {$updateClause} WHERE id = ?");
+        $stmt->execute($params);
 
         // Log activity
         try {
-            $db->query("
+            $stmt = $db->prepare("
                 INSERT INTO activity_logs (user_id, type, description, ip_address, created_at)
                 VALUES (?, 'admin_user_updated', ?, ?, NOW())
-            ", [$currentUser['id'], "Updated user: {$user['email']}", clientIp()]);
+            ");
+            $stmt->execute([$currentUser['id'], "Updated user: {$user['email']}", clientIp()]);
         } catch (\Exception $e) {
             // Ignore logging errors
         }
@@ -393,9 +415,11 @@ class UserController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $user = $db->query("SELECT * FROM users WHERE id = ? AND role IN ('admin', 'super_admin')", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND role IN ('admin', 'super_admin')");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
 
         if (!$user) {
             if (isAjax()) {
@@ -408,17 +432,20 @@ class UserController extends Controller
         }
 
         // Soft delete - change status to deleted
-        $db->query("UPDATE users SET status = 'deleted', updated_at = NOW() WHERE id = ?", [$id]);
+        $stmt = $db->prepare("UPDATE users SET status = 'deleted', updated_at = NOW() WHERE id = ?");
+        $stmt->execute([$id]);
 
         // Terminate all sessions
-        $db->query("DELETE FROM user_sessions WHERE user_id = ?", [$id]);
+        $stmt = $db->prepare("DELETE FROM user_sessions WHERE user_id = ?");
+        $stmt->execute([$id]);
 
         // Log activity
         try {
-            $db->query("
+            $stmt = $db->prepare("
                 INSERT INTO activity_logs (user_id, type, description, ip_address, created_at)
                 VALUES (?, 'admin_user_deleted', ?, ?, NOW())
-            ", [$currentUser['id'], "Deleted user: {$user['email']}", clientIp()]);
+            ");
+            $stmt->execute([$currentUser['id'], "Deleted user: {$user['email']}", clientIp()]);
         } catch (\Exception $e) {
             // Ignore logging errors
         }
@@ -448,9 +475,11 @@ class UserController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $user = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
 
         if (!$user) {
             $this->json(['success' => false, 'error' => 'User not found.'], 404);
@@ -459,8 +488,10 @@ class UserController extends Controller
 
         if ($user['mfa_enabled']) {
             // Disable MFA
-            $db->query("UPDATE users SET mfa_enabled = 0, mfa_secret = NULL WHERE id = ?", [$id]);
-            $db->query("DELETE FROM user_mfa_backup_codes WHERE user_id = ?", [$id]);
+            $stmt = $db->prepare("UPDATE users SET mfa_enabled = 0, mfa_secret = NULL WHERE id = ?");
+            $stmt->execute([$id]);
+            $stmt = $db->prepare("DELETE FROM user_mfa_backup_codes WHERE user_id = ?");
+            $stmt->execute([$id]);
             $message = 'MFA disabled for user.';
         } else {
             $message = 'User must enable MFA themselves through their account settings.';
@@ -485,10 +516,12 @@ class UserController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Get session files to delete
-        $sessions = $db->query("SELECT session_id FROM user_sessions WHERE user_id = ?", [$id])->fetchAll(\PDO::FETCH_COLUMN);
+        $stmt = $db->prepare("SELECT session_id FROM user_sessions WHERE user_id = ?");
+        $stmt->execute([$id]);
+        $sessions = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
         foreach ($sessions as $sessionId) {
             $sessionFile = STORAGE_PATH . '/sessions/sess_' . $sessionId;
@@ -497,7 +530,9 @@ class UserController extends Controller
             }
         }
 
-        $count = $db->query("DELETE FROM user_sessions WHERE user_id = ?", [$id])->rowCount();
+        $stmt = $db->prepare("DELETE FROM user_sessions WHERE user_id = ?");
+        $stmt->execute([$id]);
+        $count = $stmt->rowCount();
 
         $this->json(['success' => true, 'message' => "Terminated {$count} session(s)."]);
     }

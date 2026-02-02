@@ -11,12 +11,13 @@ declare(strict_types=1);
 namespace Admin\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class PageController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Get filter parameters
         $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -42,27 +43,33 @@ class PageController extends Controller
         $whereClause = implode(' AND ', $where);
 
         // Get total count
-        $total = (int) $db->query("SELECT COUNT(*) FROM pages WHERE {$whereClause}", $params)->fetchColumn();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM pages WHERE {$whereClause}");
+        $stmt->execute($params);
+        $total = (int) $stmt->fetchColumn();
         $totalPages = (int) ceil($total / $perPage);
 
         // Get pages
         $offset = ($page - 1) * $perPage;
-        $pages = $db->query("
+        $stmt = $db->prepare("
             SELECT * FROM pages
             WHERE {$whereClause}
             ORDER BY created_at DESC
             LIMIT {$perPage} OFFSET {$offset}
-        ", $params)->fetchAll();
+        ");
+        $stmt->execute($params);
+        $pages = $stmt->fetchAll();
 
         // Get status counts
-        $statusCounts = $db->query("
+        $stmt = $db->prepare("
             SELECT status, COUNT(*) as count
             FROM pages
             GROUP BY status
-        ")->fetchAll(\PDO::FETCH_KEY_PAIR);
+        ");
+        $stmt->execute();
+        $statusCounts = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/pages/index', [
+        $this->layout('admin');
+        $this->view('pages/pages/index', [
             'title' => 'Pages',
             'pages' => $pages,
             'statusCounts' => $statusCounts,
@@ -81,8 +88,8 @@ class PageController extends Controller
 
     public function create(): void
     {
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/pages/form', [
+        $this->layout('admin');
+        $this->view('pages/pages/form', [
             'title' => 'Add Page',
             'page' => null,
             'templates' => $this->getTemplates(),
@@ -108,18 +115,19 @@ class PageController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Generate slug
         $slug = $this->generateSlug($_POST['title']);
 
         // Insert page
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO pages (
                 title, slug, content, excerpt, meta_title, meta_description,
                 template, status, published_at, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        ", [
+        ");
+        $stmt->execute([
             trim($_POST['title']),
             $slug,
             $_POST['content'],
@@ -139,9 +147,11 @@ class PageController extends Controller
 
     public function edit(int $id): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
-        $page = $db->query("SELECT * FROM pages WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM pages WHERE id = ?");
+        $stmt->execute([$id]);
+        $page = $stmt->fetch();
 
         if (!$page) {
             flash('error', 'Page not found.');
@@ -149,8 +159,8 @@ class PageController extends Controller
             return;
         }
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/pages/form', [
+        $this->layout('admin');
+        $this->view('pages/pages/form', [
             'title' => 'Edit Page',
             'page' => $page,
             'templates' => $this->getTemplates(),
@@ -163,9 +173,11 @@ class PageController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $page = $db->query("SELECT * FROM pages WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM pages WHERE id = ?");
+        $stmt->execute([$id]);
+        $page = $stmt->fetch();
 
         if (!$page) {
             flash('error', 'Page not found.');
@@ -198,13 +210,14 @@ class PageController extends Controller
         }
 
         // Update page
-        $db->query("
+        $stmt = $db->prepare("
             UPDATE pages SET
                 title = ?, slug = ?, content = ?, excerpt = ?,
                 meta_title = ?, meta_description = ?, template = ?,
                 status = ?, published_at = ?, updated_at = NOW()
             WHERE id = ?
-        ", [
+        ");
+        $stmt->execute([
             trim($_POST['title']),
             $slug,
             $_POST['content'],
@@ -227,9 +240,11 @@ class PageController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $page = $db->query("SELECT * FROM pages WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM pages WHERE id = ?");
+        $stmt->execute([$id]);
+        $page = $stmt->fetch();
 
         if (!$page) {
             if (isAjax()) {
@@ -241,7 +256,8 @@ class PageController extends Controller
             return;
         }
 
-        $db->query("DELETE FROM pages WHERE id = ?", [$id]);
+        $stmt = $db->prepare("DELETE FROM pages WHERE id = ?");
+        $stmt->execute([$id]);
 
         if (isAjax()) {
             $this->json(['success' => true, 'message' => 'Page deleted successfully.']);
@@ -257,9 +273,11 @@ class PageController extends Controller
      */
     public function preview(int $id): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
-        $page = $db->query("SELECT * FROM pages WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM pages WHERE id = ?");
+        $stmt->execute([$id]);
+        $page = $stmt->fetch();
 
         if (!$page) {
             flash('error', 'Page not found.');
@@ -286,9 +304,11 @@ class PageController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $page = $db->query("SELECT * FROM pages WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM pages WHERE id = ?");
+        $stmt->execute([$id]);
+        $page = $stmt->fetch();
 
         if (!$page) {
             flash('error', 'Page not found.');
@@ -300,12 +320,13 @@ class PageController extends Controller
         $slug = $this->generateSlug($page['title'] . ' Copy');
 
         // Insert duplicate
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO pages (
                 title, slug, content, excerpt, meta_title, meta_description,
                 template, status, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', NOW(), NOW())
-        ", [
+        ");
+        $stmt->execute([
             $page['title'] . ' (Copy)',
             $slug,
             $page['content'],
@@ -323,7 +344,7 @@ class PageController extends Controller
 
     private function generateSlug(string $title, ?int $excludeId = null): string
     {
-        $db = db();
+        $db = Database::getInstance();
         $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $title), '-'));
         $baseSlug = $slug;
         $counter = 1;
@@ -337,7 +358,9 @@ class PageController extends Controller
                 $params[] = $excludeId;
             }
 
-            $existing = $db->query($sql, $params)->fetch();
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $existing = $stmt->fetch();
 
             if (!$existing) {
                 break;

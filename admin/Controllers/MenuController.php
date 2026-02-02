@@ -11,43 +11,53 @@ declare(strict_types=1);
 namespace Admin\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class MenuController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Get all menus with item counts
-        $menus = $db->query("
+        $stmt = $db->prepare("
             SELECT m.*, COUNT(mi.id) as item_count
             FROM menus m
             LEFT JOIN menu_items mi ON m.id = mi.menu_id
             GROUP BY m.id
             ORDER BY m.name
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $menus = $stmt->fetchAll();
 
         // Get menu items for each menu
         $menuItems = [];
         foreach ($menus as $menu) {
-            $items = $db->query("
+            $stmt = $db->prepare("
                 SELECT mi.*, p.title as page_title, c.name as category_name
                 FROM menu_items mi
                 LEFT JOIN pages p ON mi.type = 'page' AND mi.reference_id = p.id
                 LEFT JOIN categories c ON mi.type = 'category' AND mi.reference_id = c.id
                 WHERE mi.menu_id = ?
                 ORDER BY mi.sort_order
-            ", [$menu['id']])->fetchAll();
+            ");
+            $stmt->execute([$menu['id']]);
+            $items = $stmt->fetchAll();
 
             $menuItems[$menu['id']] = $this->buildTree($items);
         }
 
         // Get pages and categories for item creation
-        $pages = $db->query("SELECT id, title FROM pages WHERE status = 'published' ORDER BY title")->fetchAll();
-        $categories = $db->query("SELECT id, name FROM categories WHERE is_active = 1 ORDER BY name")->fetchAll();
+        $stmt = $db->prepare("SELECT id, title FROM pages WHERE status = 'published' ORDER BY title");
+        $stmt->execute();
+        $pages = $stmt->fetchAll();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/menus/index', [
+        $stmt = $db->prepare("SELECT id, name FROM categories WHERE is_active = 1 ORDER BY name");
+        $stmt->execute();
+        $categories = $stmt->fetchAll();
+
+        $this->layout('admin');
+        $this->view('pages/menus/index', [
             'title' => 'Menus',
             'menus' => $menus,
             'menuItems' => $menuItems,
@@ -77,10 +87,12 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Check location uniqueness
-        $existing = $db->query("SELECT id FROM menus WHERE location = ?", [$_POST['location']])->fetch();
+        $stmt = $db->prepare("SELECT id FROM menus WHERE location = ?");
+        $stmt->execute([$_POST['location']]);
+        $existing = $stmt->fetch();
         if ($existing) {
             if (isAjax()) {
                 $this->json(['success' => false, 'error' => 'A menu with this location already exists.'], 400);
@@ -91,10 +103,11 @@ class MenuController extends Controller
             return;
         }
 
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO menus (name, location, created_at, updated_at)
             VALUES (?, ?, NOW(), NOW())
-        ", [trim($_POST['name']), trim($_POST['location'])]);
+        ");
+        $stmt->execute([trim($_POST['name']), trim($_POST['location'])]);
 
         $menuId = $db->lastInsertId();
 
@@ -113,9 +126,11 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $menu = $db->query("SELECT * FROM menus WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM menus WHERE id = ?");
+        $stmt->execute([$id]);
+        $menu = $stmt->fetch();
 
         if (!$menu) {
             if (isAjax()) {
@@ -148,7 +163,8 @@ class MenuController extends Controller
             return;
         }
 
-        $db->query("UPDATE menus SET name = ?, updated_at = NOW() WHERE id = ?", [trim($_POST['name']), $id]);
+        $stmt = $db->prepare("UPDATE menus SET name = ?, updated_at = NOW() WHERE id = ?");
+        $stmt->execute([trim($_POST['name']), $id]);
 
         if (isAjax()) {
             $this->json(['success' => true, 'message' => 'Menu updated successfully.']);
@@ -165,9 +181,11 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $menu = $db->query("SELECT * FROM menus WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM menus WHERE id = ?");
+        $stmt->execute([$id]);
+        $menu = $stmt->fetch();
 
         if (!$menu) {
             if (isAjax()) {
@@ -180,7 +198,8 @@ class MenuController extends Controller
         }
 
         // Delete menu (items will cascade)
-        $db->query("DELETE FROM menus WHERE id = ?", [$id]);
+        $stmt = $db->prepare("DELETE FROM menus WHERE id = ?");
+        $stmt->execute([$id]);
 
         if (isAjax()) {
             $this->json(['success' => true, 'message' => 'Menu deleted successfully.']);
@@ -209,21 +228,21 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Get max sort order
-        $maxSort = (int) $db->query(
-            "SELECT MAX(sort_order) FROM menu_items WHERE menu_id = ? AND parent_id IS NULL",
-            [$menuId]
-        )->fetchColumn();
+        $stmt = $db->prepare("SELECT MAX(sort_order) FROM menu_items WHERE menu_id = ? AND parent_id IS NULL");
+        $stmt->execute([$menuId]);
+        $maxSort = (int) $stmt->fetchColumn();
 
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO menu_items (
                 menu_id, parent_id, type, reference_id, title, url, icon,
                 badge_text, badge_color, is_mega, mega_columns, open_in_new_tab,
                 sort_order, is_active, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())
-        ", [
+        ");
+        $stmt->execute([
             $menuId,
             !empty($_POST['parent_id']) ? (int) $_POST['parent_id'] : null,
             $type,
@@ -255,22 +274,25 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $item = $db->query("SELECT * FROM menu_items WHERE id = ?", [$id])->fetch();
+        $stmt = $db->prepare("SELECT * FROM menu_items WHERE id = ?");
+        $stmt->execute([$id]);
+        $item = $stmt->fetch();
 
         if (!$item) {
             $this->json(['success' => false, 'error' => 'Menu item not found.'], 404);
             return;
         }
 
-        $db->query("
+        $stmt = $db->prepare("
             UPDATE menu_items SET
                 type = ?, reference_id = ?, title = ?, url = ?, icon = ?,
                 badge_text = ?, badge_color = ?, is_mega = ?, mega_columns = ?,
                 open_in_new_tab = ?, is_active = ?, updated_at = NOW()
             WHERE id = ?
-        ", [
+        ");
+        $stmt->execute([
             $_POST['type'] ?? $item['type'],
             !empty($_POST['reference_id']) ? (int) $_POST['reference_id'] : null,
             trim($_POST['title'] ?? $item['title']),
@@ -297,10 +319,11 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Delete item and children (recursive via FK cascade)
-        $db->query("DELETE FROM menu_items WHERE id = ?", [$id]);
+        $stmt = $db->prepare("DELETE FROM menu_items WHERE id = ?");
+        $stmt->execute([$id]);
 
         $this->json(['success' => true, 'message' => 'Menu item deleted successfully.']);
     }
@@ -321,14 +344,15 @@ class MenuController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         foreach ($items as $index => $item) {
-            $db->query("
+            $stmt = $db->prepare("
                 UPDATE menu_items SET
                     parent_id = ?, sort_order = ?, updated_at = NOW()
                 WHERE id = ?
-            ", [
+            ");
+            $stmt->execute([
                 !empty($item['parent_id']) ? (int) $item['parent_id'] : null,
                 (int) $index,
                 (int) $item['id'],
@@ -357,14 +381,15 @@ class MenuController extends Controller
 
     private function updateMenuItems(int $menuId, array $items, ?int $parentId = null, int &$order = 0): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         foreach ($items as $item) {
-            $db->query("
+            $stmt = $db->prepare("
                 UPDATE menu_items SET
                     parent_id = ?, sort_order = ?, updated_at = NOW()
                 WHERE id = ? AND menu_id = ?
-            ", [$parentId, $order++, $item['id'], $menuId]);
+            ");
+            $stmt->execute([$parentId, $order++, $item['id'], $menuId]);
 
             if (!empty($item['children'])) {
                 $this->updateMenuItems($menuId, $item['children'], $item['id'], $order);

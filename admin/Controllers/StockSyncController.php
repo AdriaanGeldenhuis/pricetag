@@ -11,56 +11,81 @@ declare(strict_types=1);
 namespace Admin\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class StockSyncController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Get vendors with sync info
-        $vendors = $db->query("
+        $stmt = $db->prepare("
             SELECT v.*,
                    (SELECT COUNT(*) FROM products WHERE vendor_id = v.id) as product_count,
                    (SELECT MAX(completed_at) FROM stock_sync_logs WHERE vendor_id = v.id AND status = 'completed') as last_success
             FROM vendors v
             WHERE v.sync_enabled = 1
             ORDER BY v.name
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $vendors = $stmt->fetchAll();
 
         // Get recent sync logs
-        $recentLogs = $db->query("
+        $stmt = $db->prepare("
             SELECT sl.*, v.name as vendor_name
             FROM stock_sync_logs sl
             LEFT JOIN vendors v ON sl.vendor_id = v.id
             ORDER BY sl.created_at DESC
             LIMIT 20
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $recentLogs = $stmt->fetchAll();
 
         // Get sync statistics
+        $stmt = $db->prepare("SELECT COUNT(*) FROM stock_sync_logs");
+        $stmt->execute();
+        $totalSyncs = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM stock_sync_logs WHERE status = 'completed'");
+        $stmt->execute();
+        $successful = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM stock_sync_logs WHERE status = 'failed'");
+        $stmt->execute();
+        $failed = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT SUM(updated_products) FROM stock_sync_logs");
+        $stmt->execute();
+        $productsUpdated = (int) $stmt->fetchColumn();
+
         $stats = [
-            'total_syncs' => (int) $db->query("SELECT COUNT(*) FROM stock_sync_logs")->fetchColumn(),
-            'successful' => (int) $db->query("SELECT COUNT(*) FROM stock_sync_logs WHERE status = 'completed'")->fetchColumn(),
-            'failed' => (int) $db->query("SELECT COUNT(*) FROM stock_sync_logs WHERE status = 'failed'")->fetchColumn(),
-            'products_updated' => (int) $db->query("SELECT SUM(updated_products) FROM stock_sync_logs")->fetchColumn(),
+            'total_syncs' => $totalSyncs,
+            'successful' => $successful,
+            'failed' => $failed,
+            'products_updated' => $productsUpdated,
         ];
 
         // Products needing attention
-        $lowStock = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(*) FROM products
             WHERE manage_stock = 1
             AND stock_quantity <= low_stock_threshold
             AND stock_quantity > 0
-        ")->fetchColumn();
+        ");
+        $stmt->execute();
+        $lowStock = $stmt->fetchColumn();
 
-        $outOfStock = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(*) FROM products
             WHERE manage_stock = 1
             AND stock_quantity = 0
-        ")->fetchColumn();
+        ");
+        $stmt->execute();
+        $outOfStock = $stmt->fetchColumn();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/stock-sync/index', [
+        $this->layout('admin');
+        $this->view('pages/stock-sync/index', [
             'title' => 'Stock Synchronization',
             'vendors' => $vendors,
             'recentLogs' => $recentLogs,
@@ -99,13 +124,14 @@ class StockSyncController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
         // Create sync log
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO stock_sync_logs (type, status, started_at, created_at)
             VALUES ('manual', 'running', NOW(), NOW())
         ");
+        $stmt->execute();
         $logId = $db->lastInsertId();
 
         try {
@@ -133,7 +159,7 @@ class StockSyncController extends Controller
 
             $updated = 0;
             $created = 0;
-            $failed = 0;
+            $failedCount = 0;
             $errors = [];
             $row = 1;
 
@@ -142,7 +168,7 @@ class StockSyncController extends Controller
 
                 if (count($data) < count($header)) {
                     $errors[] = "Row {$row}: Invalid number of columns";
-                    $failed++;
+                    $failedCount++;
                     continue;
                 }
 
@@ -150,12 +176,14 @@ class StockSyncController extends Controller
 
                 if (empty($sku)) {
                     $errors[] = "Row {$row}: SKU is empty";
-                    $failed++;
+                    $failedCount++;
                     continue;
                 }
 
                 // Find product
-                $product = $db->query("SELECT id, stock_quantity FROM products WHERE sku = ?", [$sku])->fetch();
+                $stmt = $db->prepare("SELECT id, stock_quantity FROM products WHERE sku = ?");
+                $stmt->execute([$sku]);
+                $product = $stmt->fetch();
 
                 if (!$product) {
                     // Create new product if name is provided
@@ -166,19 +194,20 @@ class StockSyncController extends Controller
                             $stock = $stockIndex !== false ? (int) $data[$stockIndex] : 0;
                             $price = $priceIndex !== false ? (float) $data[$priceIndex] : 0;
 
-                            $db->query("
+                            $stmt = $db->prepare("
                                 INSERT INTO products (sku, name, slug, price, stock_quantity, status, created_at, updated_at)
                                 VALUES (?, ?, ?, ?, ?, 'draft', NOW(), NOW())
-                            ", [$sku, $data[$nameIndex], $slug, $price, $stock]);
+                            ");
+                            $stmt->execute([$sku, $data[$nameIndex], $slug, $price, $stock]);
 
                             $created++;
                         } catch (\Exception $e) {
                             $errors[] = "Row {$row}: Failed to create product - " . $e->getMessage();
-                            $failed++;
+                            $failedCount++;
                         }
                     } else {
                         $errors[] = "Row {$row}: Product with SKU '{$sku}' not found";
-                        $failed++;
+                        $failedCount++;
                     }
                     continue;
                 }
@@ -202,7 +231,8 @@ class StockSyncController extends Controller
                     $updates[] = 'updated_at = NOW()';
                     $params[] = $product['id'];
 
-                    $db->query("UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?", $params);
+                    $stmt = $db->prepare("UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?");
+                    $stmt->execute($params);
                     $updated++;
                 }
             }
@@ -210,7 +240,7 @@ class StockSyncController extends Controller
             fclose($handle);
 
             // Update sync log
-            $db->query("
+            $stmt = $db->prepare("
                 UPDATE stock_sync_logs SET
                     status = 'completed',
                     total_products = ?,
@@ -220,26 +250,28 @@ class StockSyncController extends Controller
                     errors = ?,
                     completed_at = NOW()
                 WHERE id = ?
-            ", [
-                $updated + $created + $failed,
+            ");
+            $stmt->execute([
+                $updated + $created + $failedCount,
                 $updated,
                 $created,
-                $failed,
+                $failedCount,
                 !empty($errors) ? json_encode(array_slice($errors, 0, 100)) : null,
                 $logId,
             ]);
 
-            flash('success', "Import completed. Updated: {$updated}, Created: {$created}, Failed: {$failed}");
+            flash('success', "Import completed. Updated: {$updated}, Created: {$created}, Failed: {$failedCount}");
 
         } catch (\Exception $e) {
             // Update sync log with error
-            $db->query("
+            $stmt = $db->prepare("
                 UPDATE stock_sync_logs SET
                     status = 'failed',
                     errors = ?,
                     completed_at = NOW()
                 WHERE id = ?
-            ", [json_encode([$e->getMessage()]), $logId]);
+            ");
+            $stmt->execute([json_encode([$e->getMessage()]), $logId]);
 
             flash('error', 'Import failed: ' . $e->getMessage());
         }
@@ -264,9 +296,11 @@ class StockSyncController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
 
-        $vendor = $db->query("SELECT * FROM vendors WHERE id = ? AND sync_enabled = 1", [$vendorId])->fetch();
+        $stmt = $db->prepare("SELECT * FROM vendors WHERE id = ? AND sync_enabled = 1");
+        $stmt->execute([$vendorId]);
+        $vendor = $stmt->fetch();
 
         if (!$vendor) {
             flash('error', 'Vendor not found or sync not enabled.');
@@ -275,10 +309,11 @@ class StockSyncController extends Controller
         }
 
         // Create sync log
-        $db->query("
+        $stmt = $db->prepare("
             INSERT INTO stock_sync_logs (vendor_id, type, status, started_at, created_at)
             VALUES (?, 'api', 'running', NOW(), NOW())
-        ", [$vendorId]);
+        ");
+        $stmt->execute([$vendorId]);
         $logId = $db->lastInsertId();
 
         try {
@@ -300,19 +335,19 @@ class StockSyncController extends Controller
                     continue;
                 }
 
-                $product = $db->query(
-                    "SELECT id FROM products WHERE sku = ? OR vendor_sku = ?",
-                    [$sku, $sku]
-                )->fetch();
+                $stmt = $db->prepare("SELECT id FROM products WHERE sku = ? OR vendor_sku = ?");
+                $stmt->execute([$sku, $sku]);
+                $product = $stmt->fetch();
 
                 if ($product) {
-                    $db->query("
+                    $stmt = $db->prepare("
                         UPDATE products SET
                             stock_quantity = ?,
                             price = COALESCE(?, price),
                             updated_at = NOW()
                         WHERE id = ?
-                    ", [
+                    ");
+                    $stmt->execute([
                         (int) ($item['stock'] ?? $item['quantity'] ?? 0),
                         isset($item['price']) ? (float) $item['price'] : null,
                         $product['id'],
@@ -322,28 +357,31 @@ class StockSyncController extends Controller
             }
 
             // Update sync log
-            $db->query("
+            $stmt = $db->prepare("
                 UPDATE stock_sync_logs SET
                     status = 'completed',
                     total_products = ?,
                     updated_products = ?,
                     completed_at = NOW()
                 WHERE id = ?
-            ", [count($products), $updated, $logId]);
+            ");
+            $stmt->execute([count($products), $updated, $logId]);
 
             // Update vendor last sync
-            $db->query("UPDATE vendors SET last_sync_at = NOW() WHERE id = ?", [$vendorId]);
+            $stmt = $db->prepare("UPDATE vendors SET last_sync_at = NOW() WHERE id = ?");
+            $stmt->execute([$vendorId]);
 
             flash('success', "Sync completed. Updated {$updated} products.");
 
         } catch (\Exception $e) {
-            $db->query("
+            $stmt = $db->prepare("
                 UPDATE stock_sync_logs SET
                     status = 'failed',
                     errors = ?,
                     completed_at = NOW()
                 WHERE id = ?
-            ", [json_encode([$e->getMessage()]), $logId]);
+            ");
+            $stmt->execute([json_encode([$e->getMessage()]), $logId]);
 
             flash('error', 'Sync failed: ' . $e->getMessage());
         }
@@ -380,14 +418,16 @@ class StockSyncController extends Controller
      */
     public function log(int $id): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
-        $log = $db->query("
+        $stmt = $db->prepare("
             SELECT sl.*, v.name as vendor_name
             FROM stock_sync_logs sl
             LEFT JOIN vendors v ON sl.vendor_id = v.id
             WHERE sl.id = ?
-        ", [$id])->fetch();
+        ");
+        $stmt->execute([$id]);
+        $log = $stmt->fetch();
 
         if (!$log) {
             flash('error', 'Log not found.');
@@ -397,8 +437,8 @@ class StockSyncController extends Controller
 
         $log['errors'] = $log['errors'] ? json_decode($log['errors'], true) : [];
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/stock-sync/log', [
+        $this->layout('admin');
+        $this->view('pages/stock-sync/log', [
             'title' => 'Sync Log Details',
             'log' => $log,
         ]);
@@ -425,14 +465,12 @@ class StockSyncController extends Controller
             return;
         }
 
-        $db = db();
+        $db = Database::getInstance();
         $updated = 0;
 
         foreach ($products as $productId => $stock) {
-            $db->query(
-                "UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?",
-                [(int) $stock, (int) $productId]
-            );
+            $stmt = $db->prepare("UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([(int) $stock, (int) $productId]);
             $updated++;
         }
 
@@ -447,12 +485,17 @@ class StockSyncController extends Controller
 
     private function generateSlug(string $name): string
     {
-        $db = db();
+        $db = Database::getInstance();
         $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $name), '-'));
         $baseSlug = $slug;
         $counter = 1;
 
-        while ($db->query("SELECT id FROM products WHERE slug = ?", [$slug])->fetch()) {
+        while (true) {
+            $stmt = $db->prepare("SELECT id FROM products WHERE slug = ?");
+            $stmt->execute([$slug]);
+            if (!$stmt->fetch()) {
+                break;
+            }
             $slug = $baseSlug . '-' . $counter;
             $counter++;
         }

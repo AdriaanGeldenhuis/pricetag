@@ -11,12 +11,13 @@ declare(strict_types=1);
 namespace Admin\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class ReportController extends Controller
 {
     public function index(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Date range
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
@@ -29,12 +30,14 @@ class ReportController extends Controller
         $revenueChart = $this->getRevenueChart($db, $startDate, $endDate);
 
         // Order status breakdown
-        $ordersByStatus = $db->query("
+        $stmt = $db->prepare("
             SELECT status, COUNT(*) as count, SUM(total) as total
             FROM orders
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY status
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $ordersByStatus = $stmt->fetchAll();
 
         // Top products
         $topProducts = $this->getTopProducts($db, $startDate, $endDate, 10);
@@ -43,15 +46,17 @@ class ReportController extends Controller
         $topCategories = $this->getTopCategories($db, $startDate, $endDate, 10);
 
         // Recent orders
-        $recentOrders = $db->query("
+        $stmt = $db->prepare("
             SELECT o.*, CONCAT(o.billing_first_name, ' ', o.billing_last_name) as customer_name
             FROM orders o
             ORDER BY o.created_at DESC
             LIMIT 10
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $recentOrders = $stmt->fetchAll();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/reports/index', [
+        $this->layout('admin');
+        $this->view('pages/reports/index', [
             'title' => 'Reports & Analytics',
             'stats' => $stats,
             'revenueChart' => $revenueChart,
@@ -68,7 +73,7 @@ class ReportController extends Controller
 
     public function sales(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Date range
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
@@ -79,17 +84,19 @@ class ReportController extends Controller
         $salesData = $this->getSalesData($db, $startDate, $endDate, $groupBy);
 
         // Payment method breakdown
-        $paymentMethods = $db->query("
+        $stmt = $db->prepare("
             SELECT p.method, COUNT(*) as count, SUM(p.amount) as total
             FROM payments p
             JOIN orders o ON p.order_id = o.id
             WHERE p.status = 'completed'
             AND DATE(o.created_at) BETWEEN ? AND ?
             GROUP BY p.method
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $paymentMethods = $stmt->fetchAll();
 
         // Coupon usage
-        $couponUsage = $db->query("
+        $stmt = $db->prepare("
             SELECT c.code, COUNT(cu.id) as usage_count, SUM(cu.discount_amount) as total_discount
             FROM coupon_usage cu
             JOIN coupons c ON cu.coupon_id = c.id
@@ -98,22 +105,26 @@ class ReportController extends Controller
             GROUP BY c.id
             ORDER BY usage_count DESC
             LIMIT 10
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $couponUsage = $stmt->fetchAll();
 
         // Average order value over time
         $aovData = $this->getAOVData($db, $startDate, $endDate, $groupBy);
 
         // Shipping methods
-        $shippingMethods = $db->query("
+        $stmt = $db->prepare("
             SELECT shipping_method, COUNT(*) as count, SUM(shipping_amount) as total
             FROM orders
             WHERE DATE(created_at) BETWEEN ? AND ?
             AND shipping_method IS NOT NULL
             GROUP BY shipping_method
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $shippingMethods = $stmt->fetchAll();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/reports/sales', [
+        $this->layout('admin');
+        $this->view('pages/reports/sales', [
             'title' => 'Sales Report',
             'salesData' => $salesData,
             'paymentMethods' => $paymentMethods,
@@ -130,7 +141,7 @@ class ReportController extends Controller
 
     public function products(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Date range
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
@@ -140,7 +151,7 @@ class ReportController extends Controller
         $topSelling = $this->getTopProducts($db, $startDate, $endDate, 20);
 
         // Low stock products
-        $lowStock = $db->query("
+        $stmt = $db->prepare("
             SELECT p.*, c.name as category_name,
                    (SELECT path FROM product_images WHERE product_id = p.id AND is_primary = 1 LIMIT 1) as image
             FROM products p
@@ -150,30 +161,36 @@ class ReportController extends Controller
             AND p.stock_quantity > 0
             ORDER BY p.stock_quantity ASC
             LIMIT 20
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $lowStock = $stmt->fetchAll();
 
         // Out of stock products
-        $outOfStock = $db->query("
+        $stmt = $db->prepare("
             SELECT p.*, c.name as category_name
             FROM products p
             LEFT JOIN categories c ON p.id = c.id
             WHERE p.manage_stock = 1 AND p.stock_quantity = 0
             ORDER BY p.sold_count DESC
             LIMIT 20
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $outOfStock = $stmt->fetchAll();
 
         // Products by view count
-        $mostViewed = $db->query("
+        $stmt = $db->prepare("
             SELECT p.id, p.name, p.sku, p.view_count, p.sold_count,
                    CASE WHEN p.view_count > 0 THEN (p.sold_count / p.view_count * 100) ELSE 0 END as conversion_rate
             FROM products p
             WHERE p.status = 'active'
             ORDER BY p.view_count DESC
             LIMIT 20
-        ")->fetchAll();
+        ");
+        $stmt->execute();
+        $mostViewed = $stmt->fetchAll();
 
         // Product performance (views vs sales)
-        $productPerformance = $db->query("
+        $stmt = $db->prepare("
             SELECT
                 p.id, p.name, p.sku, p.price, p.view_count, p.sold_count,
                 COALESCE(SUM(oi.total), 0) as revenue
@@ -184,10 +201,12 @@ class ReportController extends Controller
             GROUP BY p.id
             ORDER BY revenue DESC
             LIMIT 50
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $productPerformance = $stmt->fetchAll();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/reports/products', [
+        $this->layout('admin');
+        $this->view('pages/reports/products', [
             'title' => 'Product Report',
             'topSelling' => $topSelling,
             'lowStock' => $lowStock,
@@ -203,29 +222,33 @@ class ReportController extends Controller
 
     public function customers(): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
         // Date range
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
         $endDate = $_GET['end_date'] ?? date('Y-m-d');
 
         // New customers
-        $newCustomers = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(*) as count
             FROM users
             WHERE role = 'customer'
             AND DATE(created_at) BETWEEN ? AND ?
-        ", [$startDate, $endDate])->fetchColumn();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $newCustomers = $stmt->fetchColumn();
 
         // Active customers (placed order in period)
-        $activeCustomers = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(DISTINCT user_id) as count
             FROM orders
             WHERE DATE(created_at) BETWEEN ? AND ?
-        ", [$startDate, $endDate])->fetchColumn();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $activeCustomers = $stmt->fetchColumn();
 
         // Top customers
-        $topCustomers = $db->query("
+        $stmt = $db->prepare("
             SELECT
                 u.id, u.email, u.first_name, u.last_name,
                 COUNT(o.id) as order_count,
@@ -237,20 +260,24 @@ class ReportController extends Controller
             GROUP BY u.id
             ORDER BY total_spent DESC
             LIMIT 20
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $topCustomers = $stmt->fetchAll();
 
         // Customer acquisition over time
-        $customerGrowth = $db->query("
+        $stmt = $db->prepare("
             SELECT DATE(created_at) as date, COUNT(*) as count
             FROM users
             WHERE role = 'customer'
             AND DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at)
             ORDER BY date
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $customerGrowth = $stmt->fetchAll();
 
         // Repeat vs new customers
-        $customerTypes = $db->query("
+        $stmt = $db->prepare("
             SELECT
                 CASE WHEN order_count > 1 THEN 'Repeat' ELSE 'New' END as type,
                 COUNT(*) as count
@@ -261,10 +288,12 @@ class ReportController extends Controller
                 GROUP BY user_id
             ) as customer_orders
             GROUP BY type
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $customerTypes = $stmt->fetchAll();
 
-        $this->layout('admin/layouts/main');
-        $this->view('admin/pages/reports/customers', [
+        $this->layout('admin');
+        $this->view('pages/reports/customers', [
             'title' => 'Customer Report',
             'newCustomers' => $newCustomers,
             'activeCustomers' => $activeCustomers,
@@ -287,11 +316,11 @@ class ReportController extends Controller
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
         $endDate = $_GET['end_date'] ?? date('Y-m-d');
 
-        $db = db();
+        $db = Database::getInstance();
 
         switch ($type) {
             case 'orders':
-                $data = $db->query("
+                $stmt = $db->prepare("
                     SELECT
                         order_number, status, payment_status, total, discount_amount,
                         shipping_amount, tax_amount, customer_email, shipping_method,
@@ -299,12 +328,14 @@ class ReportController extends Controller
                     FROM orders
                     WHERE DATE(created_at) BETWEEN ? AND ?
                     ORDER BY created_at DESC
-                ", [$startDate, $endDate])->fetchAll();
+                ");
+                $stmt->execute([$startDate, $endDate]);
+                $data = $stmt->fetchAll();
                 $filename = "orders_{$startDate}_to_{$endDate}.csv";
                 break;
 
             case 'products':
-                $data = $db->query("
+                $stmt = $db->prepare("
                     SELECT
                         p.sku, p.name, p.price, p.stock_quantity, p.sold_count, p.view_count,
                         c.name as category
@@ -312,12 +343,14 @@ class ReportController extends Controller
                     LEFT JOIN product_categories pc ON p.id = pc.product_id AND pc.is_primary = 1
                     LEFT JOIN categories c ON pc.category_id = c.id
                     ORDER BY p.sold_count DESC
-                ")->fetchAll();
+                ");
+                $stmt->execute();
+                $data = $stmt->fetchAll();
                 $filename = "products_{$startDate}_to_{$endDate}.csv";
                 break;
 
             case 'customers':
-                $data = $db->query("
+                $stmt = $db->prepare("
                     SELECT
                         u.email, u.first_name, u.last_name, u.phone,
                         COUNT(o.id) as order_count,
@@ -328,7 +361,9 @@ class ReportController extends Controller
                     WHERE u.role = 'customer'
                     GROUP BY u.id
                     ORDER BY total_spent DESC
-                ")->fetchAll();
+                ");
+                $stmt->execute();
+                $data = $stmt->fetchAll();
                 $filename = "customers_{$startDate}_to_{$endDate}.csv";
                 break;
 
@@ -361,49 +396,59 @@ class ReportController extends Controller
     private function getOverviewStats(\PDO $db, string $startDate, string $endDate): array
     {
         // Total revenue
-        $revenue = $db->query("
+        $stmt = $db->prepare("
             SELECT COALESCE(SUM(total), 0)
             FROM orders
             WHERE payment_status = 'paid'
             AND DATE(created_at) BETWEEN ? AND ?
-        ", [$startDate, $endDate])->fetchColumn();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $revenue = $stmt->fetchColumn();
 
         // Total orders
-        $orders = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(*)
             FROM orders
             WHERE DATE(created_at) BETWEEN ? AND ?
-        ", [$startDate, $endDate])->fetchColumn();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $orders = $stmt->fetchColumn();
 
         // Average order value
         $aov = $orders > 0 ? $revenue / $orders : 0;
 
         // Total customers
-        $customers = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(DISTINCT user_id)
             FROM orders
             WHERE DATE(created_at) BETWEEN ? AND ?
-        ", [$startDate, $endDate])->fetchColumn();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $customers = $stmt->fetchColumn();
 
         // Items sold
-        $itemsSold = $db->query("
+        $stmt = $db->prepare("
             SELECT COALESCE(SUM(oi.quantity), 0)
             FROM order_items oi
             JOIN orders o ON oi.order_id = o.id
             WHERE DATE(o.created_at) BETWEEN ? AND ?
-        ", [$startDate, $endDate])->fetchColumn();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        $itemsSold = $stmt->fetchColumn();
 
         // Compare to previous period
         $daysDiff = (strtotime($endDate) - strtotime($startDate)) / 86400;
         $prevStartDate = date('Y-m-d', strtotime($startDate) - $daysDiff * 86400);
         $prevEndDate = date('Y-m-d', strtotime($startDate) - 86400);
 
-        $prevRevenue = $db->query("
+        $stmt = $db->prepare("
             SELECT COALESCE(SUM(total), 0)
             FROM orders
             WHERE payment_status = 'paid'
             AND DATE(created_at) BETWEEN ? AND ?
-        ", [$prevStartDate, $prevEndDate])->fetchColumn();
+        ");
+        $stmt->execute([$prevStartDate, $prevEndDate]);
+        $prevRevenue = $stmt->fetchColumn();
 
         $revenueGrowth = $prevRevenue > 0 ? (($revenue - $prevRevenue) / $prevRevenue) * 100 : 0;
 
@@ -419,7 +464,7 @@ class ReportController extends Controller
 
     private function getRevenueChart(\PDO $db, string $startDate, string $endDate): array
     {
-        return $db->query("
+        $stmt = $db->prepare("
             SELECT
                 DATE(created_at) as date,
                 COUNT(*) as orders,
@@ -429,12 +474,14 @@ class ReportController extends Controller
             AND DATE(created_at) BETWEEN ? AND ?
             GROUP BY DATE(created_at)
             ORDER BY date
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        return $stmt->fetchAll();
     }
 
     private function getTopProducts(\PDO $db, string $startDate, string $endDate, int $limit): array
     {
-        return $db->query("
+        $stmt = $db->prepare("
             SELECT
                 p.id, p.name, p.sku, p.price,
                 SUM(oi.quantity) as quantity_sold,
@@ -447,12 +494,14 @@ class ReportController extends Controller
             GROUP BY p.id
             ORDER BY revenue DESC
             LIMIT {$limit}
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        return $stmt->fetchAll();
     }
 
     private function getTopCategories(\PDO $db, string $startDate, string $endDate, int $limit): array
     {
-        return $db->query("
+        $stmt = $db->prepare("
             SELECT
                 c.id, c.name,
                 SUM(oi.quantity) as quantity_sold,
@@ -467,7 +516,9 @@ class ReportController extends Controller
             GROUP BY c.id
             ORDER BY revenue DESC
             LIMIT {$limit}
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        return $stmt->fetchAll();
     }
 
     private function getSalesData(\PDO $db, string $startDate, string $endDate, string $groupBy): array
@@ -478,7 +529,7 @@ class ReportController extends Controller
             default => 'DATE(created_at)',
         };
 
-        return $db->query("
+        $stmt = $db->prepare("
             SELECT
                 {$dateFormat} as period,
                 COUNT(*) as orders,
@@ -491,7 +542,9 @@ class ReportController extends Controller
             AND DATE(created_at) BETWEEN ? AND ?
             GROUP BY period
             ORDER BY period
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        return $stmt->fetchAll();
     }
 
     private function getAOVData(\PDO $db, string $startDate, string $endDate, string $groupBy): array
@@ -502,7 +555,7 @@ class ReportController extends Controller
             default => 'DATE(created_at)',
         };
 
-        return $db->query("
+        $stmt = $db->prepare("
             SELECT
                 {$dateFormat} as period,
                 AVG(total) as aov
@@ -511,6 +564,8 @@ class ReportController extends Controller
             AND DATE(created_at) BETWEEN ? AND ?
             GROUP BY period
             ORDER BY period
-        ", [$startDate, $endDate])->fetchAll();
+        ");
+        $stmt->execute([$startDate, $endDate]);
+        return $stmt->fetchAll();
     }
 }

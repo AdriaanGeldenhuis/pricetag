@@ -31,6 +31,20 @@ $router->get('/debug-admin', function() {
         echo "\n4. isAdmin(): " . (isAdmin() ? 'YES' : 'NO') . "\n";
         echo "5. Role check: '" . ($user['role'] ?? 'NULL') . "' in ['admin','super_admin'] = ";
         echo (in_array($user['role'] ?? '', ['admin', 'super_admin'], true) ? 'YES' : 'NO') . "\n";
+
+        // Test middleware directly
+        echo "\n6. Testing AdminMiddleware:\n";
+        $middleware = new \App\Middleware\AdminMiddleware();
+        ob_start();
+        $result = $middleware->handle();
+        $output = ob_get_clean();
+        echo "   - handle() returned: " . ($result ? 'TRUE (pass)' : 'FALSE (block)') . "\n";
+        if ($output) echo "   - Output: " . $output . "\n";
+
+        // Check IP whitelist config
+        $whitelist = config('app.security.admin_ip_whitelist', '');
+        echo "\n7. IP Whitelist: '" . $whitelist . "'\n";
+        echo "8. Client IP: " . clientIp() . "\n";
     }
     exit;
 });

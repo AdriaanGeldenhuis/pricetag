@@ -15,6 +15,9 @@ $router = new Router();
 // Home
 $router->get('/', 'App\Controllers\HomeController@index', 'home');
 
+// Offline page (for PWA)
+$router->get('/offline', 'App\Controllers\PageController@offline', 'offline');
+
 // Products
 $router->get('/products', 'App\Controllers\ProductController@index', 'products.index');
 $router->get('/products/{slug}', 'App\Controllers\ProductController@show', 'products.show');

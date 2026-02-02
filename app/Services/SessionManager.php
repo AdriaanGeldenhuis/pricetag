@@ -27,38 +27,43 @@ class SessionManager
      */
     public function trackSession(int $userId): void
     {
-        $sessionId = session_id();
-        $fingerprint = $this->generateFingerprint();
-        $ip = clientIp();
-        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        try {
+            $sessionId = session_id();
+            $fingerprint = $this->generateFingerprint();
+            $ip = clientIp();
+            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
-        // Check if session exists
-        $stmt = $this->db->prepare("
-            SELECT id FROM user_sessions
-            WHERE user_id = ? AND session_id = ?
-        ");
-        $stmt->execute([$userId, $sessionId]);
-        $existing = $stmt->fetch();
+            // Check if session exists
+            $stmt = $this->db->prepare("
+                SELECT id FROM user_sessions
+                WHERE user_id = ? AND session_id = ?
+            ");
+            $stmt->execute([$userId, $sessionId]);
+            $existing = $stmt->fetch();
 
-        if ($existing) {
-            // Update existing session
-            $stmt = $this->db->prepare("
-                UPDATE user_sessions
-                SET last_activity = NOW(), ip_address = ?, device_fingerprint = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$ip, $fingerprint, $existing['id']]);
-        } else {
-            // Create new session record
-            $stmt = $this->db->prepare("
-                INSERT INTO user_sessions (user_id, session_id, ip_address, user_agent, device_fingerprint, last_activity)
-                VALUES (?, ?, ?, ?, ?, NOW())
-            ");
-            $stmt->execute([$userId, $sessionId, $ip, $userAgent, $fingerprint]);
+            if ($existing) {
+                // Update existing session
+                $stmt = $this->db->prepare("
+                    UPDATE user_sessions
+                    SET last_activity = NOW(), ip_address = ?, device_fingerprint = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([$ip, $fingerprint, $existing['id']]);
+            } else {
+                // Create new session record
+                $stmt = $this->db->prepare("
+                    INSERT INTO user_sessions (user_id, session_id, ip_address, user_agent, device_fingerprint, last_activity)
+                    VALUES (?, ?, ?, ?, ?, NOW())
+                ");
+                $stmt->execute([$userId, $sessionId, $ip, $userAgent, $fingerprint]);
+            }
+
+            // Store fingerprint in session for validation
+            $_SESSION['device_fingerprint'] = $fingerprint;
+        } catch (\PDOException $e) {
+            // Table might not exist yet, log and continue
+            logMessage('warning', 'Session tracking failed: ' . $e->getMessage());
         }
-
-        // Store fingerprint in session for validation
-        $_SESSION['device_fingerprint'] = $fingerprint;
     }
 
     /**
@@ -93,28 +98,32 @@ class SessionManager
      */
     public function getUserSessions(int $userId): array
     {
-        $stmt = $this->db->prepare("
-            SELECT
-                id,
-                session_id,
-                ip_address,
-                user_agent,
-                last_activity,
-                created_at,
-                CASE WHEN session_id = ? THEN 1 ELSE 0 END as is_current
-            FROM user_sessions
-            WHERE user_id = ?
-            ORDER BY last_activity DESC
-        ");
-        $stmt->execute([session_id(), $userId]);
-        $sessions = $stmt->fetchAll();
+        try {
+            $stmt = $this->db->prepare("
+                SELECT
+                    id,
+                    session_id,
+                    ip_address,
+                    user_agent,
+                    last_activity,
+                    created_at,
+                    CASE WHEN session_id = ? THEN 1 ELSE 0 END as is_current
+                FROM user_sessions
+                WHERE user_id = ?
+                ORDER BY last_activity DESC
+            ");
+            $stmt->execute([session_id(), $userId]);
+            $sessions = $stmt->fetchAll();
 
-        // Parse user agent for device info
-        foreach ($sessions as &$session) {
-            $session['device'] = $this->parseUserAgent($session['user_agent']);
+            // Parse user agent for device info
+            foreach ($sessions as &$session) {
+                $session['device'] = $this->parseUserAgent($session['user_agent']);
+            }
+
+            return $sessions;
+        } catch (\PDOException $e) {
+            return [];
         }
-
-        return $sessions;
     }
 
     /**
@@ -202,35 +211,39 @@ class SessionManager
      */
     public function getLoginHistory(int $userId, int $limit = 20): array
     {
-        // Get user email first
-        $stmt = $this->db->prepare("SELECT email FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        $user = $stmt->fetch();
+        try {
+            // Get user email first
+            $stmt = $this->db->prepare("SELECT email FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            $user = $stmt->fetch();
 
-        if (!$user) {
+            if (!$user) {
+                return [];
+            }
+
+            $stmt = $this->db->prepare("
+                SELECT
+                    ip_address,
+                    user_agent,
+                    success,
+                    created_at
+                FROM login_attempts
+                WHERE email = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            ");
+            $stmt->execute([$user['email'], $limit]);
+            $history = $stmt->fetchAll();
+
+            // Parse user agent for device info
+            foreach ($history as &$record) {
+                $record['device'] = $this->parseUserAgent($record['user_agent']);
+            }
+
+            return $history;
+        } catch (\PDOException $e) {
             return [];
         }
-
-        $stmt = $this->db->prepare("
-            SELECT
-                ip_address,
-                user_agent,
-                success,
-                created_at
-            FROM login_attempts
-            WHERE email = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-        ");
-        $stmt->execute([$user['email'], $limit]);
-        $history = $stmt->fetchAll();
-
-        // Parse user agent for device info
-        foreach ($history as &$record) {
-            $record['device'] = $this->parseUserAgent($record['user_agent']);
-        }
-
-        return $history;
     }
 
     /**
@@ -238,15 +251,19 @@ class SessionManager
      */
     public function getActivityLogs(int $userId, int $limit = 50): array
     {
-        $stmt = $this->db->prepare("
-            SELECT type, description, ip_address, user_agent, created_at
-            FROM activity_logs
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-        ");
-        $stmt->execute([$userId, $limit]);
-        return $stmt->fetchAll();
+        try {
+            $stmt = $this->db->prepare("
+                SELECT type, description, ip_address, user_agent, created_at
+                FROM activity_logs
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            ");
+            $stmt->execute([$userId, $limit]);
+            return $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            return [];
+        }
     }
 
     /**
@@ -303,17 +320,21 @@ class SessionManager
      */
     public function logActivity(int $userId, string $type, string $description): void
     {
-        $stmt = $this->db->prepare("
-            INSERT INTO activity_logs (user_id, type, description, ip_address, user_agent, created_at)
-            VALUES (?, ?, ?, ?, ?, NOW())
-        ");
-        $stmt->execute([
-            $userId,
-            $type,
-            $description,
-            clientIp(),
-            $_SERVER['HTTP_USER_AGENT'] ?? ''
-        ]);
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO activity_logs (user_id, type, description, ip_address, user_agent, created_at)
+                VALUES (?, ?, ?, ?, ?, NOW())
+            ");
+            $stmt->execute([
+                $userId,
+                $type,
+                $description,
+                clientIp(),
+                $_SERVER['HTTP_USER_AGENT'] ?? ''
+            ]);
+        } catch (\PDOException $e) {
+            // Table might not exist, continue silently
+        }
     }
 
     /**
@@ -323,38 +344,42 @@ class SessionManager
     {
         $warnings = [];
 
-        // Check for multiple IPs in short time
-        $stmt = $this->db->prepare("
-            SELECT COUNT(DISTINCT ip_address) as ip_count
-            FROM login_attempts
-            WHERE email = (SELECT email FROM users WHERE id = ?)
-            AND success = 1
-            AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
-        ");
-        $stmt->execute([$userId]);
-        $result = $stmt->fetch();
+        try {
+            // Check for multiple IPs in short time
+            $stmt = $this->db->prepare("
+                SELECT COUNT(DISTINCT ip_address) as ip_count
+                FROM login_attempts
+                WHERE email = (SELECT email FROM users WHERE id = ?)
+                AND success = 1
+                AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+            ");
+            $stmt->execute([$userId]);
+            $result = $stmt->fetch();
 
-        if ($result['ip_count'] > 3) {
-            $warnings[] = [
-                'type' => 'multiple_ips',
-                'message' => 'Login detected from ' . $result['ip_count'] . ' different IP addresses in the last hour',
-            ];
-        }
+            if ($result && $result['ip_count'] > 3) {
+                $warnings[] = [
+                    'type' => 'multiple_ips',
+                    'message' => 'Login detected from ' . $result['ip_count'] . ' different IP addresses in the last hour',
+                ];
+            }
 
-        // Check for new device login
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*) as count FROM user_sessions
-            WHERE user_id = ?
-            AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
-        ");
-        $stmt->execute([$userId]);
-        $result = $stmt->fetch();
+            // Check for new device login
+            $stmt = $this->db->prepare("
+                SELECT COUNT(*) as count FROM user_sessions
+                WHERE user_id = ?
+                AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+            ");
+            $stmt->execute([$userId]);
+            $result = $stmt->fetch();
 
-        if ($result['count'] > 3) {
-            $warnings[] = [
-                'type' => 'multiple_devices',
-                'message' => 'Multiple new device logins detected',
-            ];
+            if ($result && $result['count'] > 3) {
+                $warnings[] = [
+                    'type' => 'multiple_devices',
+                    'message' => 'Multiple new device logins detected',
+                ];
+            }
+        } catch (\PDOException $e) {
+            // Tables might not exist, return empty warnings
         }
 
         return $warnings;

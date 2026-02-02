@@ -26,6 +26,7 @@ $router->get('/categories/{slug}', 'App\Controllers\CategoryController@show', 'c
 // Search
 $router->get('/search', 'App\Controllers\SearchController@index', 'search');
 $router->get('/search/suggest', 'App\Controllers\SearchController@suggest', 'search.suggest');
+$router->post('/search/filter', 'App\Controllers\SearchController@filter', 'search.filter');
 
 // Cart
 $router->get('/cart', 'App\Controllers\CartController@index', 'cart.index');

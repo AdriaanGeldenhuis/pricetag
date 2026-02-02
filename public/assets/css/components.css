@@ -153,6 +153,198 @@
   color: var(--color-text-muted);
 }
 
+/* Enhanced Search Suggestions */
+.search-suggestion-section {
+  padding: var(--space-2) 0;
+}
+
+.search-suggestion-section:not(:last-child) {
+  border-bottom: var(--border-1) solid var(--color-border-light);
+}
+
+.search-suggestion-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.search-suggestion-term {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: var(--transition-colors);
+}
+
+.search-suggestion-term:hover,
+.search-suggestion-term.is-selected {
+  background-color: var(--color-background-alt);
+}
+
+.search-suggestion-term svg {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.search-suggestion-term mark {
+  background-color: var(--color-primary-100);
+  color: var(--color-primary);
+  font-weight: var(--font-semibold);
+}
+
+.search-suggestion-category-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: var(--transition-colors);
+}
+
+.search-suggestion-category-item:hover,
+.search-suggestion-category-item.is-selected {
+  background-color: var(--color-background-alt);
+}
+
+.search-suggestion-cat-image {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.search-suggestion-cat-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-background-alt);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+}
+
+.search-suggestion-cat-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.search-suggestion-cat-name mark {
+  background-color: var(--color-primary-100);
+  color: var(--color-primary);
+}
+
+.search-suggestion-item.is-selected {
+  background-color: var(--color-background-alt);
+}
+
+.search-suggestion-placeholder {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-background-alt);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+}
+
+.search-suggestion-title mark {
+  background-color: var(--color-primary-100);
+  color: var(--color-primary);
+}
+
+.search-suggestion-price {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.search-suggestion-price-current {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+}
+
+.search-suggestion-price-original {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.search-suggestion-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.search-spinner {
+  animation: spin 1s linear infinite;
+  color: var(--color-primary);
+}
+
+.search-no-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.search-no-suggestions svg {
+  margin-bottom: var(--space-3);
+  opacity: 0.5;
+}
+
+.search-no-suggestions p {
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-1);
+}
+
+.search-no-suggestions span {
+  font-size: var(--text-xs);
+}
+
+.search-view-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-primary);
+  background-color: var(--color-primary-50);
+  border-top: var(--border-1) solid var(--color-border-light);
+  transition: var(--transition-colors);
+}
+
+.search-view-all:hover {
+  background-color: var(--color-primary-100);
+}
+
+.search-view-all svg {
+  transition: transform var(--duration-200);
+}
+
+.search-view-all:hover svg {
+  transform: translateX(4px);
+}
+
 /* Header actions */
 .header-actions {
   display: flex;

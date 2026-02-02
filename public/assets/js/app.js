@@ -445,22 +445,35 @@
   const Search = {
     input: null,
     suggestions: null,
-    debounceTimer: null,
+    form: null,
+    selectedIndex: -1,
+    results: [],
 
     init() {
       this.input = $('#header-search-input');
       this.suggestions = $('#search-suggestions');
+      this.form = this.input?.closest('form');
       if (!this.input || !this.suggestions) return;
 
+      // Input events
       this.input.addEventListener('input', debounce(() => this.search(), 300));
       this.input.addEventListener('focus', () => {
         if (this.input.value.length >= 2) this.showSuggestions();
       });
 
+      // Keyboard navigation
+      this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
+
+      // Close on outside click
       document.addEventListener('click', (e) => {
         if (!this.input.contains(e.target) && !this.suggestions.contains(e.target)) {
           this.hideSuggestions();
         }
+      });
+
+      // Close on escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') this.hideSuggestions();
       });
     },
 
@@ -471,30 +484,209 @@
         return;
       }
 
+      // Add loading state
+      this.suggestions.innerHTML = `
+        <div class="search-suggestion-loading">
+          <svg class="search-spinner" width="20" height="20" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="60" stroke-dashoffset="20"/>
+          </svg>
+          Searching...
+        </div>
+      `;
+      this.showSuggestions();
+
       try {
         const data = await fetchJSON(`${window.Pricetag.baseUrl}/search/suggest?q=${encodeURIComponent(query)}`);
-        this.renderSuggestions(data.results || []);
+        this.renderSuggestions(data, query);
       } catch (err) {
         console.error('Search failed', err);
+        this.suggestions.innerHTML = '<div class="search-suggestion-item"><p class="text-muted">Search failed. Please try again.</p></div>';
       }
     },
 
-    renderSuggestions(results) {
-      if (results.length === 0) {
-        this.suggestions.innerHTML = '<div class="search-suggestion-item"><p class="text-muted">No results found</p></div>';
-      } else {
-        this.suggestions.innerHTML = results.map(item => `
-          <a href="${window.Pricetag.baseUrl}/products/${item.slug}" class="search-suggestion-item">
-            ${item.image ? `<img src="${window.Pricetag.baseUrl}/storage/uploads/${item.image}" class="search-suggestion-image" alt="">` : ''}
-            <div class="search-suggestion-text">
-              <span class="search-suggestion-title">${item.name}</span>
-              <span class="search-suggestion-category">${item.category || ''}</span>
+    renderSuggestions(data, query) {
+      const { results = [], categories = [], suggestions = [] } = data;
+      this.results = results;
+      this.selectedIndex = -1;
+
+      let html = '';
+
+      // Search suggestions (popular terms)
+      if (suggestions.length > 0) {
+        html += `
+          <div class="search-suggestion-section">
+            <div class="search-suggestion-section-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Popular Searches
             </div>
-            <span class="font-semibold">${formatPrice(item.price)}</span>
-          </a>
-        `).join('');
+            ${suggestions.map(term => `
+              <a href="${window.Pricetag.baseUrl}/search?q=${encodeURIComponent(term)}" class="search-suggestion-term" data-suggestion>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="M21 21l-4.35-4.35"></path>
+                </svg>
+                ${this.highlightMatch(term, query)}
+              </a>
+            `).join('')}
+          </div>
+        `;
       }
+
+      // Categories
+      if (categories.length > 0) {
+        html += `
+          <div class="search-suggestion-section">
+            <div class="search-suggestion-section-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              Categories
+            </div>
+            ${categories.map(cat => `
+              <a href="${window.Pricetag.baseUrl}/categories/${cat.slug}" class="search-suggestion-category-item" data-suggestion>
+                ${cat.image ? `<img src="${window.Pricetag.baseUrl}/storage/uploads/${cat.image}" class="search-suggestion-cat-image" alt="">` : `
+                  <span class="search-suggestion-cat-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="7" height="7"></rect>
+                      <rect x="14" y="3" width="7" height="7"></rect>
+                      <rect x="14" y="14" width="7" height="7"></rect>
+                      <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                  </span>
+                `}
+                <span class="search-suggestion-cat-name">${this.highlightMatch(cat.name, query)}</span>
+              </a>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      // Products
+      if (results.length > 0) {
+        html += `
+          <div class="search-suggestion-section">
+            <div class="search-suggestion-section-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <path d="M16 10a4 4 0 0 1-8 0"></path>
+              </svg>
+              Products
+            </div>
+            ${results.map((item, index) => `
+              <a href="${window.Pricetag.baseUrl}/products/${item.slug}" class="search-suggestion-item" data-suggestion data-index="${index}">
+                ${item.image ? `<img src="${window.Pricetag.baseUrl}/storage/uploads/${item.image}" class="search-suggestion-image" alt="">` : `
+                  <span class="search-suggestion-placeholder">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                      <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                  </span>
+                `}
+                <div class="search-suggestion-text">
+                  <span class="search-suggestion-title">${this.highlightMatch(item.name, query)}</span>
+                  <span class="search-suggestion-category">${item.category || ''}</span>
+                </div>
+                <div class="search-suggestion-price">
+                  <span class="search-suggestion-price-current">${formatPrice(item.price)}</span>
+                  ${item.compare_price && item.compare_price > item.price ? `
+                    <span class="search-suggestion-price-original">${formatPrice(item.compare_price)}</span>
+                  ` : ''}
+                </div>
+              </a>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      // No results
+      if (results.length === 0 && categories.length === 0 && suggestions.length === 0) {
+        html = `
+          <div class="search-no-suggestions">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="M21 21l-4.35-4.35"></path>
+            </svg>
+            <p>No results found for "<strong>${this.escapeHtml(query)}</strong>"</p>
+            <span>Try different keywords or browse categories</span>
+          </div>
+        `;
+      }
+
+      // View all results link
+      if (results.length > 0 || categories.length > 0) {
+        html += `
+          <a href="${window.Pricetag.baseUrl}/search?q=${encodeURIComponent(query)}" class="search-view-all">
+            View all results for "${this.escapeHtml(query)}"
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </a>
+        `;
+      }
+
+      this.suggestions.innerHTML = html;
       this.showSuggestions();
+    },
+
+    highlightMatch(text, query) {
+      if (!query) return this.escapeHtml(text);
+      const regex = new RegExp(`(${this.escapeRegex(query)})`, 'gi');
+      return this.escapeHtml(text).replace(regex, '<mark>$1</mark>');
+    },
+
+    escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    },
+
+    escapeRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    },
+
+    handleKeydown(e) {
+      const items = $$('[data-suggestion]', this.suggestions);
+      if (!items.length) return;
+
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
+          this.updateSelection(items);
+          break;
+
+        case 'ArrowUp':
+          e.preventDefault();
+          this.selectedIndex = Math.max(this.selectedIndex - 1, -1);
+          this.updateSelection(items);
+          break;
+
+        case 'Enter':
+          if (this.selectedIndex >= 0 && items[this.selectedIndex]) {
+            e.preventDefault();
+            items[this.selectedIndex].click();
+          }
+          break;
+      }
+    },
+
+    updateSelection(items) {
+      items.forEach((item, index) => {
+        item.classList.toggle('is-selected', index === this.selectedIndex);
+      });
+
+      // Scroll into view
+      if (this.selectedIndex >= 0 && items[this.selectedIndex]) {
+        items[this.selectedIndex].scrollIntoView({ block: 'nearest' });
+      }
     },
 
     showSuggestions() {
@@ -503,6 +695,7 @@
 
     hideSuggestions() {
       this.suggestions.classList.remove('is-active');
+      this.selectedIndex = -1;
     },
   };
 

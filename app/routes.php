@@ -45,6 +45,8 @@ $router->post('/wishlist/move-to-cart', 'App\Controllers\WishlistController@move
 // Checkout
 $router->get('/checkout', 'App\Controllers\CheckoutController@index', 'checkout.index');
 $router->post('/checkout/process', 'App\Controllers\CheckoutController@process', 'checkout.process');
+$router->post('/checkout/process-payment', 'App\Controllers\CheckoutController@processPayment', 'checkout.payment');
+$router->post('/checkout/process-eft', 'App\Controllers\CheckoutController@processEft', 'checkout.eft');
 $router->get('/checkout/success/{order}', 'App\Controllers\CheckoutController@success', 'checkout.success');
 $router->post('/checkout/webhook', 'App\Controllers\CheckoutController@webhook', 'checkout.webhook');
 

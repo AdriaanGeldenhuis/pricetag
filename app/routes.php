@@ -34,10 +34,13 @@ $router->post('/cart/add', 'App\Controllers\CartController@add', 'cart.add');
 $router->post('/cart/update', 'App\Controllers\CartController@update', 'cart.update');
 $router->post('/cart/remove', 'App\Controllers\CartController@remove', 'cart.remove');
 $router->get('/cart/data', 'App\Controllers\CartController@data', 'cart.data');
+$router->post('/cart/apply-coupon', 'App\Controllers\CartController@applyCoupon', 'cart.coupon');
 
 // Wishlist
 $router->get('/wishlist', 'App\Controllers\WishlistController@index', 'wishlist.index');
 $router->post('/wishlist/toggle', 'App\Controllers\WishlistController@toggle', 'wishlist.toggle');
+$router->post('/wishlist/remove', 'App\Controllers\WishlistController@remove', 'wishlist.remove');
+$router->post('/wishlist/move-to-cart', 'App\Controllers\WishlistController@moveToCart', 'wishlist.move');
 
 // Checkout
 $router->get('/checkout', 'App\Controllers\CheckoutController@index', 'checkout.index');

@@ -255,13 +255,13 @@ function auth(): bool
 /**
  * Get current user
  */
-function user(): ?array
+function user(bool $fresh = false): ?array
 {
     if (!auth()) {
         return null;
     }
 
-    if (!isset($_SESSION['_user_cache'])) {
+    if ($fresh || !isset($_SESSION['_user_cache'])) {
         $db = \App\Core\Database::getInstance();
         $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'");
         $stmt->execute([$_SESSION['user_id']]);
@@ -269,6 +269,14 @@ function user(): ?array
     }
 
     return $_SESSION['_user_cache'];
+}
+
+/**
+ * Clear user cache (call after updating user data)
+ */
+function clearUserCache(): void
+{
+    unset($_SESSION['_user_cache']);
 }
 
 /**
@@ -281,12 +289,12 @@ function hasRole(string $role): bool
 }
 
 /**
- * Check if user is admin
+ * Check if user is admin (always fetches fresh data)
  */
 function isAdmin(): bool
 {
-    $user = user();
-    return $user && in_array($user['role'], ['admin', 'super_admin'], true);
+    $user = user(true); // Always get fresh data for admin check
+    return $user && in_array($user['role'] ?? '', ['admin', 'super_admin'], true);
 }
 
 /**
@@ -426,4 +434,72 @@ function cacheForget(string $key): bool
 function cacheFlush(): bool
 {
     return cache()->flush();
+}
+
+/**
+ * Check if current path matches given path
+ */
+function isCurrentPath(string $path, bool $exact = false): bool
+{
+    $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    $currentPath = rtrim($currentPath, '/') ?: '/';
+    $path = rtrim($path, '/') ?: '/';
+
+    if ($exact) {
+        return $currentPath === $path;
+    }
+
+    // Check if current path starts with given path (for nested routes)
+    if ($path === '/') {
+        return $currentPath === '/';
+    }
+
+    return $currentPath === $path || str_starts_with($currentPath, $path . '/');
+}
+
+/**
+ * Get relative time (e.g., "2 hours ago")
+ */
+function timeAgo(string $datetime): string
+{
+    $time = strtotime($datetime);
+    $diff = time() - $time;
+
+    if ($diff < 60) {
+        return 'Just now';
+    } elseif ($diff < 3600) {
+        $mins = floor($diff / 60);
+        return $mins . ' minute' . ($mins > 1 ? 's' : '') . ' ago';
+    } elseif ($diff < 86400) {
+        $hours = floor($diff / 3600);
+        return $hours . ' hour' . ($hours > 1 ? 's' : '') . ' ago';
+    } elseif ($diff < 604800) {
+        $days = floor($diff / 86400);
+        return $days . ' day' . ($days > 1 ? 's' : '') . ' ago';
+    } elseif ($diff < 2592000) {
+        $weeks = floor($diff / 604800);
+        return $weeks . ' week' . ($weeks > 1 ? 's' : '') . ' ago';
+    } elseif ($diff < 31536000) {
+        $months = floor($diff / 2592000);
+        return $months . ' month' . ($months > 1 ? 's' : '') . ' ago';
+    } else {
+        $years = floor($diff / 31536000);
+        return $years . ' year' . ($years > 1 ? 's' : '') . ' ago';
+    }
+}
+
+/**
+ * Format date for display
+ */
+function formatDate(string $datetime, string $format = 'd M Y'): string
+{
+    return date($format, strtotime($datetime));
+}
+
+/**
+ * Format datetime for display
+ */
+function formatDateTime(string $datetime, string $format = 'd M Y, H:i'): string
+{
+    return date($format, strtotime($datetime));
 }

@@ -134,7 +134,22 @@ $router->get('/robots.txt', 'App\Controllers\SeoController@robots');
 // ADMIN ROUTES
 // ============================================================================
 
+// TEMP TEST - Remove after debugging
+$router->get('/admin-test', function() {
+    header('Content-Type: text/plain');
+    echo "Admin test route works!\n";
+    echo "isAdmin(): " . (isAdmin() ? 'YES' : 'NO') . "\n";
+    exit;
+});
+
 $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddleware']], function ($router) {
+    // TEMP TEST inside middleware group
+    $router->get('/test', function() {
+        header('Content-Type: text/plain');
+        echo "Inside admin group - middleware passed!\n";
+        exit;
+    });
+
     // Dashboard
     $router->get('/', 'Admin\Controllers\DashboardController@index', 'admin.dashboard');
 

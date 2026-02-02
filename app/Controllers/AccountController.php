@@ -23,18 +23,44 @@ class AccountController extends Controller
     public function dashboard(): void
     {
         $user = User::find($_SESSION['user_id']);
-        $recentOrders = $user->getOrders(5);
+
+        if (!$user) {
+            // User not found in database, force re-login
+            unset($_SESSION['user_id']);
+            flash('error', 'Please login again');
+            $this->redirect('/login');
+            return;
+        }
 
         $db = Database::getInstance();
 
-        // Get stats
-        $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
-        $stmt->execute([$user->id]);
-        $totalOrders = $stmt->fetchColumn();
+        // Get recent orders (with graceful fallback)
+        $recentOrders = [];
+        try {
+            $recentOrders = $user->getOrders(5);
+        } catch (\PDOException $e) {
+            // orders table might not exist
+        }
 
-        $stmt = $db->prepare("SELECT COUNT(*) FROM wishlists WHERE user_id = ?");
-        $stmt->execute([$user->id]);
-        $wishlistCount = $stmt->fetchColumn();
+        // Get stats with graceful fallback
+        $totalOrders = 0;
+        $wishlistCount = 0;
+
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ?");
+            $stmt->execute([$user->id]);
+            $totalOrders = $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            // orders table might not exist
+        }
+
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM wishlists WHERE user_id = ?");
+            $stmt->execute([$user->id]);
+            $wishlistCount = $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            // wishlists table might not exist
+        }
 
         $this->layout('main');
         $this->view('pages/account/dashboard', [

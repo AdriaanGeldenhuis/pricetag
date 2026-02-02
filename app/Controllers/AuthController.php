@@ -160,30 +160,18 @@ class AuthController extends Controller
             'password' => $password,
         ]);
 
-        // Generate verification token
-        $token = $user->generateVerificationToken();
+        // Auto-verify user (email verification not configured yet)
+        $user->email_verified_at = date('Y-m-d H:i:s');
+        $user->status = 'active';
+        $user->save();
 
-        // TODO: Send verification email
-        // $this->sendVerificationEmail($user, $token);
+        $_SESSION['user_id'] = $user->id;
 
-        // For now, auto-verify in development
-        if (env('APP_DEBUG', false)) {
-            $user->email_verified_at = date('Y-m-d H:i:s');
-            $user->status = 'active';
-            $user->save();
+        $cart = new Cart();
+        $cart->mergeWithUser($user->id);
 
-            $_SESSION['user_id'] = $user->id;
-
-            $cart = new Cart();
-            $cart->mergeWithUser($user->id);
-
-            flash('success', 'Account created successfully!');
-            $this->redirect('/account');
-            return;
-        }
-
-        flash('success', 'Account created! Please check your email to verify your account.');
-        $this->redirect('/login');
+        flash('success', 'Account created successfully!');
+        $this->redirect('/account');
     }
 
     public function logout(): void

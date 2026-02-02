@@ -34,7 +34,7 @@ class User extends Model
      */
     public static function register(array $data): self
     {
-        $data['password'] = password_hash($data['password'], PASSWORD_ARGON2ID);
+        $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
         $data['status'] = 'pending';
         $data['role'] = 'customer';
 
@@ -54,7 +54,7 @@ class User extends Model
      */
     public function updatePassword(string $password): bool
     {
-        $this->password = password_hash($password, PASSWORD_ARGON2ID);
+        $this->password = password_hash($password, PASSWORD_DEFAULT);
         $this->password_changed_at = date('Y-m-d H:i:s');
         return $this->save();
     }

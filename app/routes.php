@@ -159,6 +159,9 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->post('/attributes', 'Admin\Controllers\AttributeController@store', 'admin.attributes.store');
     $router->put('/attributes/{id}', 'Admin\Controllers\AttributeController@update', 'admin.attributes.update');
     $router->delete('/attributes/{id}', 'Admin\Controllers\AttributeController@destroy', 'admin.attributes.destroy');
+    $router->post('/attributes/{id}/values', 'Admin\Controllers\AttributeController@storeValue', 'admin.attributes.values.store');
+    $router->put('/attributes/values/{id}', 'Admin\Controllers\AttributeController@updateValue', 'admin.attributes.values.update');
+    $router->delete('/attributes/values/{id}', 'Admin\Controllers\AttributeController@destroyValue', 'admin.attributes.values.destroy');
 
     // Orders
     $router->get('/orders', 'Admin\Controllers\OrderController@index', 'admin.orders.index');
@@ -174,8 +177,12 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
 
     // Users (Admin)
     $router->get('/users', 'Admin\Controllers\UserController@index', 'admin.users.index');
+    $router->get('/users/create', 'Admin\Controllers\UserController@create', 'admin.users.create');
+    $router->post('/users', 'Admin\Controllers\UserController@store', 'admin.users.store');
     $router->get('/users/{id}', 'Admin\Controllers\UserController@show', 'admin.users.show');
+    $router->get('/users/{id}/edit', 'Admin\Controllers\UserController@edit', 'admin.users.edit');
     $router->put('/users/{id}', 'Admin\Controllers\UserController@update', 'admin.users.update');
+    $router->delete('/users/{id}', 'Admin\Controllers\UserController@destroy', 'admin.users.destroy');
 
     // Settings
     $router->get('/settings', 'Admin\Controllers\SettingsController@index', 'admin.settings.index');
@@ -186,6 +193,9 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->post('/menus', 'Admin\Controllers\MenuController@store', 'admin.menus.store');
     $router->put('/menus/{id}', 'Admin\Controllers\MenuController@update', 'admin.menus.update');
     $router->delete('/menus/{id}', 'Admin\Controllers\MenuController@destroy', 'admin.menus.destroy');
+    $router->post('/menus/{id}/items', 'Admin\Controllers\MenuController@storeItem', 'admin.menus.items.store');
+    $router->post('/menus/{id}/reorder', 'Admin\Controllers\MenuController@reorder', 'admin.menus.reorder');
+    $router->delete('/menus/items/{id}', 'Admin\Controllers\MenuController@destroyItem', 'admin.menus.items.destroy');
 
     // Pages (CMS)
     $router->get('/pages', 'Admin\Controllers\PageController@index', 'admin.pages.index');
@@ -204,11 +214,16 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->get('/stock-sync', 'Admin\Controllers\StockSyncController@index', 'admin.stock.index');
     $router->post('/stock-sync/import', 'Admin\Controllers\StockSyncController@import', 'admin.stock.import');
     $router->post('/stock-sync/run', 'Admin\Controllers\StockSyncController@run', 'admin.stock.run');
+    $router->get('/stock-sync/template', 'Admin\Controllers\StockSyncController@template', 'admin.stock.template');
+    $router->get('/stock-sync/log/{id}', 'Admin\Controllers\StockSyncController@log', 'admin.stock.log');
+    $router->post('/stock-sync/bulk-update', 'Admin\Controllers\StockSyncController@bulkUpdate', 'admin.stock.bulk');
 
     // Reports
     $router->get('/reports', 'Admin\Controllers\ReportController@index', 'admin.reports.index');
     $router->get('/reports/sales', 'Admin\Controllers\ReportController@sales', 'admin.reports.sales');
     $router->get('/reports/products', 'Admin\Controllers\ReportController@products', 'admin.reports.products');
+    $router->get('/reports/customers', 'Admin\Controllers\ReportController@customers', 'admin.reports.customers');
+    $router->get('/reports/export', 'Admin\Controllers\ReportController@export', 'admin.reports.export');
 });
 
 return $router;

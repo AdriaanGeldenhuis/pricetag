@@ -255,13 +255,13 @@ function auth(): bool
 /**
  * Get current user
  */
-function user(): ?array
+function user(bool $fresh = false): ?array
 {
     if (!auth()) {
         return null;
     }
 
-    if (!isset($_SESSION['_user_cache'])) {
+    if ($fresh || !isset($_SESSION['_user_cache'])) {
         $db = \App\Core\Database::getInstance();
         $stmt = $db->prepare("SELECT * FROM users WHERE id = ? AND status = 'active'");
         $stmt->execute([$_SESSION['user_id']]);
@@ -269,6 +269,14 @@ function user(): ?array
     }
 
     return $_SESSION['_user_cache'];
+}
+
+/**
+ * Clear user cache (call after updating user data)
+ */
+function clearUserCache(): void
+{
+    unset($_SESSION['_user_cache']);
 }
 
 /**
@@ -281,12 +289,12 @@ function hasRole(string $role): bool
 }
 
 /**
- * Check if user is admin
+ * Check if user is admin (always fetches fresh data)
  */
 function isAdmin(): bool
 {
-    $user = user();
-    return $user && in_array($user['role'], ['admin', 'super_admin'], true);
+    $user = user(true); // Always get fresh data for admin check
+    return $user && in_array($user['role'] ?? '', ['admin', 'super_admin'], true);
 }
 
 /**

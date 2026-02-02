@@ -1,0 +1,39 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    name: Deploy to pricetag.co.za
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: dedi321.cpt1.host-h.net
+          username: priceeetrj
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            cd ~/public_html
+            git fetch origin main
+            git reset --hard origin/main
+
+      - name: Alternative - Deploy via rsync
+        if: false  # Set to true if you prefer rsync over git pull
+        uses: burnett01/rsync-deployments@6.0.0
+        with:
+          switches: -avzr --delete --exclude='.git' --exclude='.github' --exclude='.env'
+          path: ./
+          remote_path: /home/priceeetrj/public_html/
+          remote_host: dedi321.cpt1.host-h.net
+          remote_user: priceeetrj
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}

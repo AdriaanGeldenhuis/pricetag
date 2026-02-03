@@ -35,7 +35,12 @@
     <meta name="twitter:description" content="<?= e($meta_description ?? config('seo.defaults.description')) ?>">
 
     <!-- Favicon -->
+    <?php $branding = getBranding(); ?>
+    <?php if (!empty($branding['favicon'])): ?>
+    <link rel="icon" href="<?= url($branding['favicon']) ?>">
+    <?php else: ?>
     <link rel="icon" type="image/x-icon" href="<?= asset('images/favicon.ico') ?>">
+    <?php endif; ?>
     <link rel="apple-touch-icon" sizes="180x180" href="<?= asset('images/apple-touch-icon.png') ?>">
 
     <!-- Preconnect for performance -->
@@ -46,6 +51,22 @@
     <link rel="stylesheet" href="<?= asset('css/design-system.css') ?>">
     <link rel="stylesheet" href="<?= asset('css/app.css') ?>">
     <link rel="stylesheet" href="<?= asset('css/components.css') ?>">
+
+    <!-- Dynamic Brand Styles -->
+    <style>
+        :root {
+            --color-primary: <?= e($branding['primary_color']) ?>;
+            --color-primary-dark: <?= e($branding['primary_color']) ?>;
+            --color-secondary: <?= e($branding['secondary_color']) ?>;
+            --color-accent: <?= e($branding['accent_color']) ?>;
+            <?php if (!empty($branding['font_family']) && $branding['font_family'] !== 'Inter'): ?>
+            --font-sans: '<?= e($branding['font_family']) ?>', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            <?php endif; ?>
+        }
+        <?php if (!empty($branding['font_family']) && $branding['font_family'] !== 'Inter'): ?>
+        @import url('https://fonts.googleapis.com/css2?family=<?= e(str_replace(' ', '+', $branding['font_family'])) ?>:wght@400;500;600;700&display=swap');
+        <?php endif; ?>
+    </style>
 
     <?php if (isset($styles)): echo $styles; endif; ?>
 

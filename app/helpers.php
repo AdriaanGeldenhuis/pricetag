@@ -519,3 +519,75 @@ function formatDateTime(string $datetime, string $format = 'd M Y, H:i'): string
 {
     return date($format, strtotime($datetime));
 }
+
+// ============================================================================
+// BRANDING HELPERS
+// ============================================================================
+
+/**
+ * Get a setting from the database
+ */
+function getSetting(string $key, string $group = 'general', mixed $default = null): mixed
+{
+    static $cache = [];
+    $cacheKey = "{$group}.{$key}";
+
+    if (isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
+    }
+
+    try {
+        $db = \App\Core\Database::getInstance();
+        $stmt = $db->prepare("SELECT `value`, `type` FROM settings WHERE `group` = ? AND `key` = ? LIMIT 1");
+        $stmt->execute([$group, $key]);
+        $result = $stmt->fetch();
+
+        if (!$result) {
+            return $default;
+        }
+
+        $value = $result['value'];
+
+        // Cast based on type
+        switch ($result['type']) {
+            case 'integer':
+                $value = (int) $value;
+                break;
+            case 'boolean':
+                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                break;
+            case 'json':
+                $value = json_decode($value, true) ?? $default;
+                break;
+        }
+
+        $cache[$cacheKey] = $value;
+        return $value;
+    } catch (\Exception $e) {
+        return $default;
+    }
+}
+
+/**
+ * Get all branding settings with defaults
+ */
+function getBranding(): array
+{
+    static $branding = null;
+
+    if ($branding !== null) {
+        return $branding;
+    }
+
+    $branding = [
+        'logo' => getSetting('logo', 'branding'),
+        'favicon' => getSetting('favicon', 'branding'),
+        'header_bg' => getSetting('header_bg', 'branding'),
+        'primary_color' => getSetting('primary_color', 'branding', '#2563eb'),
+        'secondary_color' => getSetting('secondary_color', 'branding', '#1e40af'),
+        'accent_color' => getSetting('accent_color', 'branding', '#f59e0b'),
+        'font_family' => getSetting('font_family', 'branding', 'Inter'),
+    ];
+
+    return $branding;
+}

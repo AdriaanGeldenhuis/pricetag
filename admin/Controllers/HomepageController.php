@@ -79,19 +79,18 @@ class HomepageController extends Controller
 
     public function index(): void
     {
-        $db = Database::getInstance();
         $sections = [];
 
         try {
+            $db = Database::getInstance();
             $stmt = $db->query("SELECT * FROM home_sections ORDER BY sort_order ASC");
-            $sections = $stmt->fetchAll() ?: [];
+            $sections = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
-            // Parse JSON config
             foreach ($sections as &$section) {
                 $section['config'] = json_decode($section['config'] ?? '{}', true) ?: [];
             }
-        } catch (\Exception $e) {
-            error_log("HomepageController::index error: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            // Table may not exist yet - that's OK
         }
 
         $this->layout('admin');

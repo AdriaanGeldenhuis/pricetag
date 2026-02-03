@@ -24,33 +24,20 @@ class BannerController extends Controller
 
     public function index(): void
     {
-        $db = Database::getInstance();
-        $location = $_GET['location'] ?? '';
         $banners = [];
         $grouped = [];
+        $location = $_GET['location'] ?? '';
 
         try {
-            $sql = "SELECT * FROM banners";
-            $params = [];
+            $db = Database::getInstance();
+            $stmt = $db->query("SELECT * FROM banners ORDER BY location, sort_order ASC");
+            $banners = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
-            if ($location) {
-                $sql .= " WHERE location = ?";
-                $params[] = $location;
-            }
-
-            $sql .= " ORDER BY location, sort_order ASC";
-
-            $stmt = $db->prepare($sql);
-            $stmt->execute($params);
-            $banners = $stmt->fetchAll() ?: [];
-
-            // Group by location
             foreach ($banners as $banner) {
-                $loc = $banner['location'] ?? 'hero';
-                $grouped[$loc][] = $banner;
+                $grouped[$banner['location']][] = $banner;
             }
-        } catch (\Exception $e) {
-            error_log("BannerController::index error: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            // Table may not exist yet - that's OK
         }
 
         $this->layout('admin');

@@ -330,6 +330,26 @@ class BannerController extends Controller
         $this->json(['success' => true, 'is_active' => (bool)$banner['is_active']]);
     }
 
+    /**
+     * Check if a banner is currently within its scheduled time window
+     */
+    public function isBannerScheduled(array $banner): bool
+    {
+        $now = time();
+
+        // Check if before start date
+        if (!empty($banner['starts_at']) && strtotime($banner['starts_at']) > $now) {
+            return false;
+        }
+
+        // Check if after expiry date
+        if (!empty($banner['expires_at']) && strtotime($banner['expires_at']) < $now) {
+            return false;
+        }
+
+        return true;
+    }
+
     private function uploadImage(array $file, string $uploadDir, string $prefix): ?string
     {
         $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];

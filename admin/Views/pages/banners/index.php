@@ -1,15 +1,17 @@
 <!-- Admin Banners & Sliders -->
 <?php
 // Helper function to check if banner is currently scheduled
-function isBannerScheduled(array $banner): bool {
-    $now = time();
-    if (!empty($banner['starts_at']) && strtotime($banner['starts_at']) > $now) {
-        return false;
+if (!function_exists('isBannerScheduled')) {
+    function isBannerScheduled(array $banner): bool {
+        $now = time();
+        if (!empty($banner['starts_at']) && strtotime($banner['starts_at']) > $now) {
+            return false;
+        }
+        if (!empty($banner['expires_at']) && strtotime($banner['expires_at']) < $now) {
+            return false;
+        }
+        return true;
     }
-    if (!empty($banner['expires_at']) && strtotime($banner['expires_at']) < $now) {
-        return false;
-    }
-    return true;
 }
 ?>
 
@@ -317,7 +319,7 @@ function isBannerScheduled(array $banner): bool {
         <div class="admin-modal-footer">
             <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
             <form id="deleteForm" method="POST" style="display: inline;">
-                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                <?= csrf_field() ?>
                 <input type="hidden" name="_method" value="DELETE">
                 <button type="submit" class="btn btn-danger">Delete Banner</button>
             </form>

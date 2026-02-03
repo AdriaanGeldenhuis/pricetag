@@ -384,7 +384,7 @@ $sectionInfo = $sectionTypes[$section['type']] ?? ['name' => ucfirst($section['t
         <div class="admin-modal-footer">
             <button class="admin-btn admin-btn-secondary" onclick="closeDeleteModal()">Cancel</button>
             <form action="<?= url('/admin/homepage/' . $section['id']) ?>" method="POST" style="display: inline;">
-                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                <?= csrf_field() ?>
                 <input type="hidden" name="_method" value="DELETE">
                 <button type="submit" class="admin-btn admin-btn-danger">Delete Section</button>
             </form>

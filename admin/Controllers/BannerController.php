@@ -11,7 +11,7 @@ use App\Core\Database;
 
 class BannerController extends Controller
 {
-    private array $locations = [
+    private $locations = [
         'hero' => 'Homepage Hero Slider',
         'homepage_top' => 'Homepage Top Banner',
         'homepage_middle' => 'Homepage Middle Banner',

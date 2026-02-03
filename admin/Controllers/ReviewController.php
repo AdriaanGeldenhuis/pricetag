@@ -154,14 +154,25 @@ class ReviewController extends Controller
     {
         $this->data = array_merge($this->data, $data);
         extract($this->data);
+
         $viewPath = ADMIN_PATH . '/Views/' . str_replace('.', '/', $view) . '.php';
+
+        if (!file_exists($viewPath)) {
+            throw new \RuntimeException("View '$view' not found at '$viewPath'");
+        }
+
         ob_start();
         include $viewPath;
         $content = ob_get_clean();
+
         if (isset($this->data['_layout'])) {
-            include ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
-            return;
+            $layoutPath = ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
+            if (file_exists($layoutPath)) {
+                include $layoutPath;
+                return;
+            }
         }
+
         echo $content;
     }
 

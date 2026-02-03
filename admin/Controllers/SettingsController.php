@@ -23,6 +23,155 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function branding(): void
+    {
+        $settings = $this->getSettings();
+
+        $this->layout('admin');
+        $this->view('pages/settings/branding', [
+            'page_title' => 'Logo & Branding',
+            'active_page' => 'branding',
+            'settings' => $settings,
+        ]);
+    }
+
+    public function updateBranding(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        // Use document root for correct server path (works on shared hosting)
+        $docRoot = rtrim($_SERVER['DOCUMENT_ROOT'], '/');
+        $uploadDir = $docRoot . '/uploads/branding/';
+
+        // Ensure upload directory exists
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $settingsToUpdate = [
+            'primary_color' => $_POST['primary_color'] ?? '#2563eb',
+            'secondary_color' => $_POST['secondary_color'] ?? '#1e40af',
+            'accent_color' => $_POST['accent_color'] ?? '#f59e0b',
+            'font_family' => $_POST['font_family'] ?? 'Inter',
+        ];
+
+        $uploadFailed = false;
+
+        // Handle logo upload
+        if (!empty($_FILES['logo']['name'])) {
+            $logoPath = $this->uploadImage($_FILES['logo'], $uploadDir, 'logo');
+            if ($logoPath) {
+                $settingsToUpdate['logo'] = $logoPath;
+            } else {
+                $uploadFailed = true;
+            }
+        } elseif (!empty($_POST['remove_logo'])) {
+            $settingsToUpdate['logo'] = '';
+        }
+
+        // Handle favicon upload
+        if (!empty($_FILES['favicon']['name'])) {
+            $faviconPath = $this->uploadImage($_FILES['favicon'], $uploadDir, 'favicon');
+            if ($faviconPath) {
+                $settingsToUpdate['favicon'] = $faviconPath;
+            } else {
+                $uploadFailed = true;
+            }
+        } elseif (!empty($_POST['remove_favicon'])) {
+            $settingsToUpdate['favicon'] = '';
+        }
+
+        // Handle header background image
+        if (!empty($_FILES['header_bg']['name'])) {
+            $headerBgPath = $this->uploadImage($_FILES['header_bg'], $uploadDir, 'header_bg');
+            if ($headerBgPath) {
+                $settingsToUpdate['header_bg'] = $headerBgPath;
+            } else {
+                $uploadFailed = true;
+            }
+        } elseif (!empty($_POST['remove_header_bg'])) {
+            $settingsToUpdate['header_bg'] = '';
+        }
+
+        // Only save settings that didn't fail
+        foreach ($settingsToUpdate as $key => $value) {
+            $stmt = $db->prepare("
+                INSERT INTO settings (`group`, `key`, `value`) VALUES ('branding', ?, ?)
+                ON DUPLICATE KEY UPDATE `value` = ?
+            ");
+            $stmt->execute([$key, $value, $value]);
+        }
+
+        if (!$uploadFailed) {
+            flash('success', 'Branding settings updated successfully');
+        }
+        $this->redirect('/admin/branding');
+    }
+
+    private function uploadImage(array $file, string $uploadDir, string $prefix): ?string
+    {
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon'];
+        $maxSize = 5 * 1024 * 1024; // 5MB
+
+        // Check for upload errors
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $errors = [
+                UPLOAD_ERR_INI_SIZE => 'File exceeds upload_max_filesize',
+                UPLOAD_ERR_FORM_SIZE => 'File exceeds MAX_FILE_SIZE',
+                UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+                UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+                UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+            ];
+            flash('error', $errors[$file['error']] ?? 'Unknown upload error');
+            return null;
+        }
+
+        if (!in_array($file['type'], $allowedTypes)) {
+            flash('error', 'Invalid file type. Allowed: JPG, PNG, GIF, WebP, SVG, ICO');
+            return null;
+        }
+
+        if ($file['size'] > $maxSize) {
+            flash('error', 'File too large. Maximum size: 5MB');
+            return null;
+        }
+
+        // Ensure directory exists and is writable
+        if (!is_dir($uploadDir)) {
+            if (!@mkdir($uploadDir, 0755, true)) {
+                flash('error', 'Failed to create upload directory');
+                return null;
+            }
+        }
+
+        if (!is_writable($uploadDir)) {
+            flash('error', 'Upload directory is not writable');
+            return null;
+        }
+
+        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $filename = $prefix . '_' . time() . '.' . $extension;
+        $destination = $uploadDir . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destination)) {
+            flash('error', 'Failed to move uploaded file');
+            return null;
+        }
+
+        // Verify file exists after upload
+        if (!file_exists($destination)) {
+            flash('error', 'File upload verification failed');
+            return null;
+        }
+
+        return '/uploads/branding/' . $filename;
+    }
+
     public function update(): void
     {
         if (!$this->validateCsrf()) {
@@ -105,10 +254,10 @@ class SettingsController extends Controller
 
         foreach ($settingsToUpdate as $key => $value) {
             $stmt = $db->prepare("
-                INSERT INTO settings (`key`, `value`) VALUES (?, ?)
+                INSERT INTO settings (`group`, `key`, `value`) VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE `value` = ?
             ");
-            $stmt->execute([$key, $value, $value]);
+            $stmt->execute([$section, $key, $value, $value]);
         }
 
         flash('success', 'Settings updated successfully');

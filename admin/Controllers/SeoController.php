@@ -18,7 +18,7 @@ class SeoController extends Controller
         $db = Database::getInstance();
 
         // Get SEO settings
-        $stmt = $db->prepare("SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE 'seo_%'");
+        $stmt = $db->prepare("SELECT `key`, `value` FROM settings WHERE `key` LIKE 'seo_%'");
         $stmt->execute();
         $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
 
@@ -116,15 +116,15 @@ class SeoController extends Controller
 
             $value = trim((string) $value);
 
-            $stmt = $db->prepare("SELECT id FROM settings WHERE setting_key = ?");
+            $stmt = $db->prepare("SELECT id FROM settings WHERE `key` = ?");
             $stmt->execute([$settingKey]);
             $existing = $stmt->fetch();
 
             if ($existing) {
-                $stmt = $db->prepare("UPDATE settings SET setting_value = ?, updated_at = NOW() WHERE setting_key = ?");
+                $stmt = $db->prepare("UPDATE settings SET `value` = ?, updated_at = NOW() WHERE `key` = ?");
                 $stmt->execute([$value, $settingKey]);
             } else {
-                $stmt = $db->prepare("INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES (?, ?, NOW(), NOW())");
+                $stmt = $db->prepare("INSERT INTO settings (`group`, `key`, `value`, created_at, updated_at) VALUES ('seo', ?, ?, NOW(), NOW())");
                 $stmt->execute([$settingKey, $value]);
             }
         }
@@ -213,5 +213,32 @@ class SeoController extends Controller
             curl_exec($ch);
             curl_close($ch);
         }
+    }
+
+    protected function view(string $view, array $data = []): void
+    {
+        $this->data = array_merge($this->data, $data);
+        extract($this->data);
+        $viewPath = ADMIN_PATH . '/Views/' . str_replace('.', '/', $view) . '.php';
+        if (!file_exists($viewPath)) {
+            throw new \RuntimeException("View '$view' not found at '$viewPath'");
+        }
+        ob_start();
+        include $viewPath;
+        $content = ob_get_clean();
+        if (isset($this->data['_layout'])) {
+            $layoutPath = ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
+            if (file_exists($layoutPath)) {
+                include $layoutPath;
+                return;
+            }
+        }
+        echo $content;
+    }
+
+    protected function layout(string $layout): self
+    {
+        $this->data['_layout'] = $layout;
+        return $this;
     }
 }

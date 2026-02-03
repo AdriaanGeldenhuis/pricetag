@@ -249,6 +249,13 @@
                         </svg>
                         <span>Attributes</span>
                     </a>
+                    <a href="<?= url('/admin/vendors') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'vendors' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path>
+                            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                        </svg>
+                        <span>Vendors</span>
+                    </a>
                 </div>
 
                 <div class="admin-nav-section">
@@ -260,6 +267,13 @@
                             <path d="M16 10a4 4 0 01-8 0"/>
                         </svg>
                         <span>Orders</span>
+                    </a>
+                    <a href="<?= url('/admin/coupons') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'coupons' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"></path>
+                            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                        </svg>
+                        <span>Coupons</span>
                     </a>
                 </div>
 
@@ -273,6 +287,25 @@
                             <path d="M16 3.13a4 4 0 010 7.75"/>
                         </svg>
                         <span>Customers</span>
+                    </a>
+                    <a href="<?= url('/admin/newsletter') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'newsletter' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                        <span>Newsletter</span>
+                    </a>
+                    <a href="<?= url('/admin/reviews') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'reviews' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                        <span>Reviews</span>
+                    </a>
+                    <a href="<?= url('/admin/contact') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'contact' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"></path>
+                        </svg>
+                        <span>Contact Messages</span>
                     </a>
                 </div>
 
@@ -298,6 +331,35 @@
                 </div>
 
                 <div class="admin-nav-section">
+                    <span class="admin-nav-section-title">Appearance</span>
+                    <a href="<?= url('/admin/branding') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'branding' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="13.5" cy="6.5" r="2.5"/>
+                            <circle cx="6.5" cy="12.5" r="2.5"/>
+                            <circle cx="17.5" cy="17.5" r="2.5"/>
+                            <path d="M13.5 9v12"/>
+                            <path d="M6.5 15v4"/>
+                        </svg>
+                        <span>Logo & Branding</span>
+                    </a>
+                    <a href="<?= url('/admin/banners') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'banners' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        <span>Banners & Sliders</span>
+                    </a>
+                    <a href="<?= url('/admin/homepage') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'homepage' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path>
+                            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                        </svg>
+                        <span>Homepage Builder</span>
+                    </a>
+                </div>
+
+                <div class="admin-nav-section">
                     <span class="admin-nav-section-title">Settings</span>
                     <a href="<?= url('/admin/settings') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'settings' ? 'is-active' : '' ?>">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -312,6 +374,20 @@
                             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
                         <span>SEO</span>
+                    </a>
+                    <a href="<?= url('/admin/redirects') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'redirects' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span>URL Redirects</span>
+                    </a>
+                    <a href="<?= url('/admin/search-analytics') ?>" class="admin-nav-link <?= ($active_page ?? '') === 'search-analytics' ? 'is-active' : '' ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="20" x2="18" y2="10"></line>
+                            <line x1="12" y1="20" x2="12" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="14"></line>
+                        </svg>
+                        <span>Search Analytics</span>
                     </a>
                 </div>
             </nav>

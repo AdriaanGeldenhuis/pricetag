@@ -133,11 +133,27 @@ function csrfToken(): string
 }
 
 /**
+ * Alias for csrfToken (snake_case version used in views)
+ */
+function csrf_token(): string
+{
+    return csrfToken();
+}
+
+/**
  * Generate CSRF field
  */
 function csrfField(): string
 {
     return '<input type="hidden" name="_token" value="' . csrfToken() . '">';
+}
+
+/**
+ * Alias for csrfField (snake_case version used in views)
+ */
+function csrf_field(): string
+{
+    return csrfField();
 }
 
 /**

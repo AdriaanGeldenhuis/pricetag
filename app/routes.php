@@ -169,6 +169,15 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->post('/orders/{id}/status', 'Admin\Controllers\OrderController@updateStatus', 'admin.orders.status');
     $router->post('/orders/{id}/note', 'Admin\Controllers\OrderController@addNote', 'admin.orders.note');
 
+    // Coupons
+    $router->get('/coupons', 'Admin\Controllers\CouponController@index', 'admin.coupons.index');
+    $router->get('/coupons/create', 'Admin\Controllers\CouponController@create', 'admin.coupons.create');
+    $router->post('/coupons', 'Admin\Controllers\CouponController@store', 'admin.coupons.store');
+    $router->get('/coupons/{id}/edit', 'Admin\Controllers\CouponController@edit', 'admin.coupons.edit');
+    $router->put('/coupons/{id}', 'Admin\Controllers\CouponController@update', 'admin.coupons.update');
+    $router->delete('/coupons/{id}', 'Admin\Controllers\CouponController@destroy', 'admin.coupons.destroy');
+    $router->post('/coupons/{id}/toggle', 'Admin\Controllers\CouponController@toggle', 'admin.coupons.toggle');
+
     // Customers
     $router->get('/customers', 'Admin\Controllers\CustomerController@index', 'admin.customers.index');
     $router->get('/customers/{id}', 'Admin\Controllers\CustomerController@show', 'admin.customers.show');
@@ -187,6 +196,29 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     // Settings
     $router->get('/settings', 'Admin\Controllers\SettingsController@index', 'admin.settings.index');
     $router->post('/settings', 'Admin\Controllers\SettingsController@update', 'admin.settings.update');
+
+    // Branding
+    $router->get('/branding', 'Admin\Controllers\SettingsController@branding', 'admin.branding.index');
+    $router->post('/branding', 'Admin\Controllers\SettingsController@updateBranding', 'admin.branding.update');
+
+    // Banners
+    $router->get('/banners', 'Admin\Controllers\BannerController@index', 'admin.banners.index');
+    $router->get('/banners/create', 'Admin\Controllers\BannerController@create', 'admin.banners.create');
+    $router->post('/banners', 'Admin\Controllers\BannerController@store', 'admin.banners.store');
+    $router->get('/banners/{id}/edit', 'Admin\Controllers\BannerController@edit', 'admin.banners.edit');
+    $router->put('/banners/{id}', 'Admin\Controllers\BannerController@update', 'admin.banners.update');
+    $router->delete('/banners/{id}', 'Admin\Controllers\BannerController@destroy', 'admin.banners.destroy');
+    $router->post('/banners/reorder', 'Admin\Controllers\BannerController@reorder', 'admin.banners.reorder');
+    $router->post('/banners/{id}/toggle', 'Admin\Controllers\BannerController@toggle', 'admin.banners.toggle');
+
+    // Homepage Builder
+    $router->get('/homepage', 'Admin\Controllers\HomepageController@index', 'admin.homepage.index');
+    $router->post('/homepage', 'Admin\Controllers\HomepageController@store', 'admin.homepage.store');
+    $router->get('/homepage/{id}/edit', 'Admin\Controllers\HomepageController@edit', 'admin.homepage.edit');
+    $router->put('/homepage/{id}', 'Admin\Controllers\HomepageController@update', 'admin.homepage.update');
+    $router->delete('/homepage/{id}', 'Admin\Controllers\HomepageController@destroy', 'admin.homepage.destroy');
+    $router->post('/homepage/reorder', 'Admin\Controllers\HomepageController@reorder', 'admin.homepage.reorder');
+    $router->post('/homepage/{id}/toggle', 'Admin\Controllers\HomepageController@toggle', 'admin.homepage.toggle');
 
     // Menu Builder
     $router->get('/menus', 'Admin\Controllers\MenuController@index', 'admin.menus.index');
@@ -224,6 +256,46 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->get('/reports/products', 'Admin\Controllers\ReportController@products', 'admin.reports.products');
     $router->get('/reports/customers', 'Admin\Controllers\ReportController@customers', 'admin.reports.customers');
     $router->get('/reports/export', 'Admin\Controllers\ReportController@export', 'admin.reports.export');
+
+    // Newsletter Subscribers
+    $router->get('/newsletter', 'Admin\Controllers\NewsletterController@index', 'admin.newsletter.index');
+    $router->delete('/newsletter/{id}', 'Admin\Controllers\NewsletterController@destroy', 'admin.newsletter.destroy');
+    $router->get('/newsletter/export', 'Admin\Controllers\NewsletterController@export', 'admin.newsletter.export');
+
+    // Reviews
+    $router->get('/reviews', 'Admin\Controllers\ReviewController@index', 'admin.reviews.index');
+    $router->post('/reviews/{id}/approve', 'Admin\Controllers\ReviewController@approve', 'admin.reviews.approve');
+    $router->post('/reviews/{id}/reject', 'Admin\Controllers\ReviewController@reject', 'admin.reviews.reject');
+    $router->delete('/reviews/{id}', 'Admin\Controllers\ReviewController@destroy', 'admin.reviews.destroy');
+
+    // Contact Messages
+    $router->get('/contact', 'Admin\Controllers\ContactController@index', 'admin.contact.index');
+    $router->get('/contact/{id}', 'Admin\Controllers\ContactController@show', 'admin.contact.show');
+    $router->post('/contact/{id}/status', 'Admin\Controllers\ContactController@updateStatus', 'admin.contact.status');
+    $router->delete('/contact/{id}', 'Admin\Controllers\ContactController@destroy', 'admin.contact.destroy');
+
+    // URL Redirects
+    $router->get('/redirects', 'Admin\Controllers\RedirectController@index', 'admin.redirects.index');
+    $router->get('/redirects/create', 'Admin\Controllers\RedirectController@create', 'admin.redirects.create');
+    $router->post('/redirects', 'Admin\Controllers\RedirectController@store', 'admin.redirects.store');
+    $router->get('/redirects/{id}/edit', 'Admin\Controllers\RedirectController@edit', 'admin.redirects.edit');
+    $router->put('/redirects/{id}', 'Admin\Controllers\RedirectController@update', 'admin.redirects.update');
+    $router->delete('/redirects/{id}', 'Admin\Controllers\RedirectController@destroy', 'admin.redirects.destroy');
+    $router->post('/redirects/{id}/toggle', 'Admin\Controllers\RedirectController@toggle', 'admin.redirects.toggle');
+
+    // Search Analytics
+    $router->get('/search-analytics', 'Admin\Controllers\SearchAnalyticsController@index', 'admin.search.index');
+    $router->post('/search/synonyms', 'Admin\Controllers\SearchAnalyticsController@storeSynonym', 'admin.search.synonyms.store');
+    $router->delete('/search/synonyms/{id}', 'Admin\Controllers\SearchAnalyticsController@destroySynonym', 'admin.search.synonyms.destroy');
+
+    // Vendors
+    $router->get('/vendors', 'Admin\Controllers\VendorController@index', 'admin.vendors.index');
+    $router->get('/vendors/create', 'Admin\Controllers\VendorController@create', 'admin.vendors.create');
+    $router->post('/vendors', 'Admin\Controllers\VendorController@store', 'admin.vendors.store');
+    $router->get('/vendors/{id}/edit', 'Admin\Controllers\VendorController@edit', 'admin.vendors.edit');
+    $router->put('/vendors/{id}', 'Admin\Controllers\VendorController@update', 'admin.vendors.update');
+    $router->delete('/vendors/{id}', 'Admin\Controllers\VendorController@destroy', 'admin.vendors.destroy');
+    $router->post('/vendors/{id}/sync', 'Admin\Controllers\VendorController@sync', 'admin.vendors.sync');
 });
 
 return $router;

@@ -23,6 +23,108 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function branding(): void
+    {
+        $settings = $this->getSettings();
+
+        $this->layout('admin');
+        $this->view('pages/settings/branding', [
+            'page_title' => 'Logo & Branding',
+            'active_page' => 'branding',
+            'settings' => $settings,
+        ]);
+    }
+
+    public function updateBranding(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $db = Database::getInstance();
+        $uploadDir = PUBLIC_PATH . '/uploads/branding/';
+
+        // Ensure upload directory exists
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $settingsToUpdate = [
+            'primary_color' => $_POST['primary_color'] ?? '#2563eb',
+            'secondary_color' => $_POST['secondary_color'] ?? '#1e40af',
+            'accent_color' => $_POST['accent_color'] ?? '#f59e0b',
+            'font_family' => $_POST['font_family'] ?? 'Inter',
+        ];
+
+        // Handle logo upload
+        if (!empty($_FILES['logo']['name']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
+            $logoPath = $this->uploadImage($_FILES['logo'], $uploadDir, 'logo');
+            if ($logoPath) {
+                $settingsToUpdate['logo'] = $logoPath;
+            }
+        } elseif (!empty($_POST['remove_logo'])) {
+            $settingsToUpdate['logo'] = '';
+        }
+
+        // Handle favicon upload
+        if (!empty($_FILES['favicon']['name']) && $_FILES['favicon']['error'] === UPLOAD_ERR_OK) {
+            $faviconPath = $this->uploadImage($_FILES['favicon'], $uploadDir, 'favicon');
+            if ($faviconPath) {
+                $settingsToUpdate['favicon'] = $faviconPath;
+            }
+        } elseif (!empty($_POST['remove_favicon'])) {
+            $settingsToUpdate['favicon'] = '';
+        }
+
+        // Handle header background image
+        if (!empty($_FILES['header_bg']['name']) && $_FILES['header_bg']['error'] === UPLOAD_ERR_OK) {
+            $headerBgPath = $this->uploadImage($_FILES['header_bg'], $uploadDir, 'header_bg');
+            if ($headerBgPath) {
+                $settingsToUpdate['header_bg'] = $headerBgPath;
+            }
+        } elseif (!empty($_POST['remove_header_bg'])) {
+            $settingsToUpdate['header_bg'] = '';
+        }
+
+        foreach ($settingsToUpdate as $key => $value) {
+            $stmt = $db->prepare("
+                INSERT INTO settings (`key`, `value`) VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE `value` = ?
+            ");
+            $stmt->execute([$key, $value, $value]);
+        }
+
+        flash('success', 'Branding settings updated successfully');
+        $this->redirect('/admin/branding');
+    }
+
+    private function uploadImage(array $file, string $uploadDir, string $prefix): ?string
+    {
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon'];
+        $maxSize = 5 * 1024 * 1024; // 5MB
+
+        if (!in_array($file['type'], $allowedTypes)) {
+            flash('error', 'Invalid file type. Allowed: JPG, PNG, GIF, WebP, SVG, ICO');
+            return null;
+        }
+
+        if ($file['size'] > $maxSize) {
+            flash('error', 'File too large. Maximum size: 5MB');
+            return null;
+        }
+
+        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $filename = $prefix . '_' . time() . '.' . $extension;
+        $destination = $uploadDir . $filename;
+
+        if (move_uploaded_file($file['tmp_name'], $destination)) {
+            return '/uploads/branding/' . $filename;
+        }
+
+        flash('error', 'Failed to upload file');
+        return null;
+    }
+
     public function update(): void
     {
         if (!$this->validateCsrf()) {

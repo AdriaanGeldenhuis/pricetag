@@ -1,4 +1,9 @@
 <?php
+/**
+ * Admin Homepage Controller
+ * Pricetag.co.za - Enterprise E-commerce Platform
+ */
+
 namespace Admin\Controllers;
 
 use App\Core\Controller;
@@ -6,7 +11,7 @@ use App\Core\Database;
 
 class HomepageController extends Controller
 {
-    public function index()
+    public function index(): void
     {
         $sections = [];
 
@@ -17,8 +22,8 @@ class HomepageController extends Controller
             if ($result) {
                 $sections = $result;
             }
-        } catch (\Exception $e) {
-            // Table may not exist
+        } catch (\Throwable $e) {
+            // Table may not exist or query failed
         }
 
         $this->layout('admin');
@@ -29,7 +34,7 @@ class HomepageController extends Controller
         ]);
     }
 
-    public function store()
+    public function store(): void
     {
         $db = Database::getInstance();
 
@@ -44,7 +49,7 @@ class HomepageController extends Controller
         $this->redirect('/admin/homepage');
     }
 
-    public function edit($id)
+    public function edit($id): void
     {
         $db = Database::getInstance();
         $stmt = $db->prepare("SELECT * FROM home_sections WHERE id = ?");
@@ -59,7 +64,7 @@ class HomepageController extends Controller
         ]);
     }
 
-    public function update($id)
+    public function update($id): void
     {
         $db = Database::getInstance();
 
@@ -74,7 +79,7 @@ class HomepageController extends Controller
         $this->redirect('/admin/homepage');
     }
 
-    public function destroy($id)
+    public function destroy($id): void
     {
         $db = Database::getInstance();
         $stmt = $db->prepare("DELETE FROM home_sections WHERE id = ?");
@@ -84,23 +89,33 @@ class HomepageController extends Controller
         $this->redirect('/admin/homepage');
     }
 
-    protected function view($view, $data = [])
+    protected function view(string $view, array $data = []): void
     {
         $this->data = array_merge($this->data, $data);
         extract($this->data);
-        $viewPath = ADMIN_PATH . '/Views/' . $view . '.php';
+
+        $viewPath = ADMIN_PATH . '/Views/' . str_replace('.', '/', $view) . '.php';
+
+        if (!file_exists($viewPath)) {
+            throw new \RuntimeException("View '$view' not found at '$viewPath'");
+        }
+
         ob_start();
         include $viewPath;
         $content = ob_get_clean();
+
         if (isset($this->data['_layout'])) {
             $layoutPath = ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
-            include $layoutPath;
-            return;
+            if (file_exists($layoutPath)) {
+                include $layoutPath;
+                return;
+            }
         }
+
         echo $content;
     }
 
-    protected function layout($layout)
+    protected function layout(string $layout): self
     {
         $this->data['_layout'] = $layout;
         return $this;

@@ -1,4 +1,9 @@
 <?php
+/**
+ * Admin Banner Controller
+ * Pricetag.co.za - Enterprise E-commerce Platform
+ */
+
 namespace Admin\Controllers;
 
 use App\Core\Controller;
@@ -6,7 +11,7 @@ use App\Core\Database;
 
 class BannerController extends Controller
 {
-    public function index()
+    public function index(): void
     {
         $banners = [];
 
@@ -17,8 +22,8 @@ class BannerController extends Controller
             if ($result) {
                 $banners = $result;
             }
-        } catch (\Exception $e) {
-            // Table may not exist
+        } catch (\Throwable $e) {
+            // Table may not exist or query failed
         }
 
         $this->layout('admin');
@@ -29,7 +34,7 @@ class BannerController extends Controller
         ]);
     }
 
-    public function create()
+    public function create(): void
     {
         $this->layout('admin');
         $this->view('pages/banners/form', [
@@ -39,7 +44,7 @@ class BannerController extends Controller
         ]);
     }
 
-    public function store()
+    public function store(): void
     {
         $db = Database::getInstance();
 
@@ -56,7 +61,7 @@ class BannerController extends Controller
         $this->redirect('/admin/banners');
     }
 
-    public function edit($id)
+    public function edit($id): void
     {
         $db = Database::getInstance();
         $stmt = $db->prepare("SELECT * FROM banners WHERE id = ?");
@@ -71,7 +76,7 @@ class BannerController extends Controller
         ]);
     }
 
-    public function update($id)
+    public function update($id): void
     {
         $db = Database::getInstance();
 
@@ -89,7 +94,7 @@ class BannerController extends Controller
         $this->redirect('/admin/banners');
     }
 
-    public function destroy($id)
+    public function destroy($id): void
     {
         $db = Database::getInstance();
         $stmt = $db->prepare("DELETE FROM banners WHERE id = ?");
@@ -99,23 +104,33 @@ class BannerController extends Controller
         $this->redirect('/admin/banners');
     }
 
-    protected function view($view, $data = [])
+    protected function view(string $view, array $data = []): void
     {
         $this->data = array_merge($this->data, $data);
         extract($this->data);
-        $viewPath = ADMIN_PATH . '/Views/' . $view . '.php';
+
+        $viewPath = ADMIN_PATH . '/Views/' . str_replace('.', '/', $view) . '.php';
+
+        if (!file_exists($viewPath)) {
+            throw new \RuntimeException("View '$view' not found at '$viewPath'");
+        }
+
         ob_start();
         include $viewPath;
         $content = ob_get_clean();
+
         if (isset($this->data['_layout'])) {
             $layoutPath = ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
-            include $layoutPath;
-            return;
+            if (file_exists($layoutPath)) {
+                include $layoutPath;
+                return;
+            }
         }
+
         echo $content;
     }
 
-    protected function layout($layout)
+    protected function layout(string $layout): self
     {
         $this->data['_layout'] = $layout;
         return $this;

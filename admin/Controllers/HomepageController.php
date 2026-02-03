@@ -56,11 +56,17 @@ class HomepageController extends Controller
         $stmt->execute([$id]);
         $section = $stmt->fetch();
 
+        // Decode JSON config if stored as string
+        if ($section && isset($section['config']) && is_string($section['config'])) {
+            $section['config'] = json_decode($section['config'], true) ?: [];
+        }
+
         $this->layout('admin');
         $this->view('pages/homepage/edit', [
             'page_title' => 'Edit Section',
             'active_page' => 'homepage',
             'section' => $section,
+            'sectionTypes' => $this->getSectionTypes(),
         ]);
     }
 
@@ -87,6 +93,44 @@ class HomepageController extends Controller
 
         flash('success', 'Section deleted');
         $this->redirect('/admin/homepage');
+    }
+
+    private function getSectionTypes(): array
+    {
+        return [
+            'hero_slider' => [
+                'name' => 'Hero Slider',
+                'description' => 'Main hero banner slider at the top of the homepage',
+            ],
+            'categories' => [
+                'name' => 'Categories Grid',
+                'description' => 'Display category cards in a grid layout',
+            ],
+            'featured_products' => [
+                'name' => 'Featured Products',
+                'description' => 'Showcase featured products',
+            ],
+            'new_arrivals' => [
+                'name' => 'New Arrivals',
+                'description' => 'Display newest products',
+            ],
+            'best_sellers' => [
+                'name' => 'Best Sellers',
+                'description' => 'Show top selling products',
+            ],
+            'trust_badges' => [
+                'name' => 'Trust Badges',
+                'description' => 'Display trust indicators like free shipping, secure payment',
+            ],
+            'newsletter' => [
+                'name' => 'Newsletter Signup',
+                'description' => 'Email newsletter subscription form',
+            ],
+            'custom' => [
+                'name' => 'Custom Section',
+                'description' => 'Custom HTML content section',
+            ],
+        ];
     }
 
     protected function view(string $view, array $data = []): void

@@ -41,6 +41,7 @@ class BannerController extends Controller
             'page_title' => 'Add Banner',
             'active_page' => 'banners',
             'banner' => null,
+            'locations' => $this->getBannerLocations(),
         ]);
     }
 
@@ -73,6 +74,7 @@ class BannerController extends Controller
             'page_title' => 'Edit Banner',
             'active_page' => 'banners',
             'banner' => $banner,
+            'locations' => $this->getBannerLocations(),
         ]);
     }
 
@@ -102,6 +104,19 @@ class BannerController extends Controller
 
         flash('success', 'Banner deleted');
         $this->redirect('/admin/banners');
+    }
+
+    private function getBannerLocations(): array
+    {
+        return [
+            'hero' => 'Hero Slider',
+            'sidebar' => 'Sidebar',
+            'homepage_top' => 'Homepage - Top',
+            'homepage_middle' => 'Homepage - Middle',
+            'homepage_bottom' => 'Homepage - Bottom',
+            'category_top' => 'Category Page - Top',
+            'product_sidebar' => 'Product Page - Sidebar',
+        ];
     }
 
     protected function view(string $view, array $data = []): void

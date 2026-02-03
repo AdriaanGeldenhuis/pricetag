@@ -42,7 +42,10 @@ class SettingsController extends Controller
         }
 
         $db = Database::getInstance();
-        $uploadDir = PUBLIC_PATH . '/uploads/branding/';
+
+        // Use document root for correct server path (works on shared hosting)
+        $docRoot = rtrim($_SERVER['DOCUMENT_ROOT'], '/');
+        $uploadDir = $docRoot . '/uploads/branding/';
 
         // Ensure upload directory exists
         if (!is_dir($uploadDir)) {

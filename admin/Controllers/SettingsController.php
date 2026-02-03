@@ -88,7 +88,7 @@ class SettingsController extends Controller
 
         foreach ($settingsToUpdate as $key => $value) {
             $stmt = $db->prepare("
-                INSERT INTO settings (`key`, `value`) VALUES (?, ?)
+                INSERT INTO settings (`group`, `key`, `value`) VALUES ('branding', ?, ?)
                 ON DUPLICATE KEY UPDATE `value` = ?
             ");
             $stmt->execute([$key, $value, $value]);
@@ -207,10 +207,10 @@ class SettingsController extends Controller
 
         foreach ($settingsToUpdate as $key => $value) {
             $stmt = $db->prepare("
-                INSERT INTO settings (`key`, `value`) VALUES (?, ?)
+                INSERT INTO settings (`group`, `key`, `value`) VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE `value` = ?
             ");
-            $stmt->execute([$key, $value, $value]);
+            $stmt->execute([$section, $key, $value, $value]);
         }
 
         flash('success', 'Settings updated successfully');

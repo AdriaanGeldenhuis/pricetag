@@ -133,6 +133,14 @@ function csrfToken(): string
 }
 
 /**
+ * Alias for csrfToken (snake_case version used in views)
+ */
+function csrf_token(): string
+{
+    return csrfToken();
+}
+
+/**
  * Generate CSRF field
  */
 function csrfField(): string

@@ -41,7 +41,10 @@ if (!function_exists('isBannerScheduled')) {
                class="filter-btn <?= $currentLocation === $key ? 'active' : '' ?>">
                 <?= e($label) ?>
                 <?php
-                $count = count(array_filter($banners, fn($b) => $b['location'] === $key));
+                $count = 0;
+                foreach ($banners as $b) {
+                    if (($b['location'] ?? '') === $key) $count++;
+                }
                 if ($count > 0): ?>
                 <span class="filter-count"><?= $count ?></span>
                 <?php endif; ?>

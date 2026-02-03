@@ -56,9 +56,15 @@
     <style>
         :root {
             --color-primary: <?= e($branding['primary_color']) ?>;
-            --color-primary-dark: <?= e($branding['primary_color']) ?>;
+            --color-primary-500: <?= e($branding['primary_color']) ?>;
+            --color-primary-600: <?= e($branding['primary_color']) ?>;
+            --color-primary-700: <?= e($branding['secondary_color']) ?>;
+            --color-primary-800: <?= e($branding['secondary_color']) ?>;
+            --color-primary-dark: <?= e($branding['secondary_color']) ?>;
             --color-secondary: <?= e($branding['secondary_color']) ?>;
+            --color-secondary-500: <?= e($branding['secondary_color']) ?>;
             --color-accent: <?= e($branding['accent_color']) ?>;
+            --color-accent-500: <?= e($branding['accent_color']) ?>;
             <?php if (!empty($branding['font_family']) && $branding['font_family'] !== 'Inter'): ?>
             --font-sans: '<?= e($branding['font_family']) ?>', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             <?php endif; ?>

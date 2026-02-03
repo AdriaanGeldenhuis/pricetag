@@ -27,31 +27,9 @@ class BannerController extends Controller
         $db = Database::getInstance();
         $location = $_GET['location'] ?? '';
         $banners = [];
+        $grouped = [];
 
         try {
-            // Ensure table exists
-            $db->exec("
-                CREATE TABLE IF NOT EXISTS `banners` (
-                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                    `location` VARCHAR(50) NOT NULL,
-                    `title` VARCHAR(255) DEFAULT NULL,
-                    `subtitle` TEXT DEFAULT NULL,
-                    `image` VARCHAR(255) NOT NULL DEFAULT '',
-                    `mobile_image` VARCHAR(255) DEFAULT NULL,
-                    `url` VARCHAR(255) DEFAULT NULL,
-                    `button_text` VARCHAR(100) DEFAULT NULL,
-                    `text_color` VARCHAR(7) DEFAULT '#ffffff',
-                    `overlay_opacity` TINYINT UNSIGNED NOT NULL DEFAULT 0,
-                    `sort_order` INT NOT NULL DEFAULT 0,
-                    `starts_at` TIMESTAMP NULL DEFAULT NULL,
-                    `expires_at` TIMESTAMP NULL DEFAULT NULL,
-                    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
-                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            ");
-
             $sql = "SELECT * FROM banners";
             $params = [];
 
@@ -65,16 +43,14 @@ class BannerController extends Controller
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
             $banners = $stmt->fetchAll() ?: [];
-        } catch (\PDOException $e) {
-            // Log error but continue with empty banners
-            error_log("BannerController::index error: " . $e->getMessage());
-            $banners = [];
-        }
 
-        // Group by location
-        $grouped = [];
-        foreach ($banners as $banner) {
-            $grouped[$banner['location']][] = $banner;
+            // Group by location
+            foreach ($banners as $banner) {
+                $loc = $banner['location'] ?? 'hero';
+                $grouped[$loc][] = $banner;
+            }
+        } catch (\Exception $e) {
+            error_log("BannerController::index error: " . $e->getMessage());
         }
 
         $this->layout('admin');

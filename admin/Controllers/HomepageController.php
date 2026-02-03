@@ -83,33 +83,15 @@ class HomepageController extends Controller
         $sections = [];
 
         try {
-            // Ensure table exists
-            $db->exec("
-                CREATE TABLE IF NOT EXISTS `home_sections` (
-                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                    `type` VARCHAR(50) NOT NULL,
-                    `title` VARCHAR(255) DEFAULT NULL,
-                    `subtitle` TEXT DEFAULT NULL,
-                    `config` JSON DEFAULT NULL,
-                    `sort_order` INT NOT NULL DEFAULT 0,
-                    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
-                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-            ");
-
             $stmt = $db->query("SELECT * FROM home_sections ORDER BY sort_order ASC");
             $sections = $stmt->fetchAll() ?: [];
-        } catch (\PDOException $e) {
-            // Log error but continue with empty sections
-            error_log("HomepageController::index error: " . $e->getMessage());
-            $sections = [];
-        }
 
-        // Parse JSON config
-        foreach ($sections as &$section) {
-            $section['config'] = json_decode($section['config'] ?? '{}', true) ?: [];
+            // Parse JSON config
+            foreach ($sections as &$section) {
+                $section['config'] = json_decode($section['config'] ?? '{}', true) ?: [];
+            }
+        } catch (\Exception $e) {
+            error_log("HomepageController::index error: " . $e->getMessage());
         }
 
         $this->layout('admin');

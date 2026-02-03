@@ -21,7 +21,7 @@
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Active</div>
-        <div class="admin-stat-value text-success"><?= count(array_filter($redirects ?? [], fn($r) => $r['is_active'])) ?></div>
+        <div class="admin-stat-value text-success"><?php $activeCount = 0; foreach ($redirects ?? [] as $r) { if (!empty($r['is_active'])) $activeCount++; } echo $activeCount; ?></div>
     </div>
 </div>
 

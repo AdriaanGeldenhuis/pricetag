@@ -35,6 +35,74 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function appearance(): void
+    {
+        $settings = $this->getSettings();
+
+        $this->layout('admin');
+        $this->view('pages/settings/appearance', [
+            'page_title' => 'Appearance Settings',
+            'active_page' => 'appearance',
+            'settings' => $settings,
+        ]);
+    }
+
+    public function updateAppearance(): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        $settingsToUpdate = [
+            // Announcement Bar
+            'announcement_enabled' => !empty($_POST['announcement_enabled']) ? '1' : '0',
+            'announcement_text' => $_POST['announcement_text'] ?? '',
+            'announcement_link' => $_POST['announcement_link'] ?? '',
+            'announcement_bg_color' => $_POST['announcement_bg_color'] ?? '#1e40af',
+            'announcement_text_color' => $_POST['announcement_text_color'] ?? '#ffffff',
+            // WhatsApp Widget
+            'whatsapp_enabled' => !empty($_POST['whatsapp_enabled']) ? '1' : '0',
+            'whatsapp_number' => $_POST['whatsapp_number'] ?? '',
+            'whatsapp_message' => $_POST['whatsapp_message'] ?? '',
+            'whatsapp_position' => $_POST['whatsapp_position'] ?? 'bottom-right',
+            // Trust Badges
+            'trust_badges_enabled' => !empty($_POST['trust_badges_enabled']) ? '1' : '0',
+            'trust_badge_1_title' => $_POST['trust_badge_1_title'] ?? 'Free Delivery',
+            'trust_badge_1_subtitle' => $_POST['trust_badge_1_subtitle'] ?? 'Orders over R500',
+            'trust_badge_2_title' => $_POST['trust_badge_2_title'] ?? 'Secure Payment',
+            'trust_badge_2_subtitle' => $_POST['trust_badge_2_subtitle'] ?? '100% Protected',
+            'trust_badge_3_title' => $_POST['trust_badge_3_title'] ?? 'Quality Products',
+            'trust_badge_3_subtitle' => $_POST['trust_badge_3_subtitle'] ?? 'Best brands only',
+            'trust_badge_4_title' => $_POST['trust_badge_4_title'] ?? '24/7 Support',
+            'trust_badge_4_subtitle' => $_POST['trust_badge_4_subtitle'] ?? 'Always here to help',
+            // Footer
+            'footer_description' => $_POST['footer_description'] ?? '',
+            'footer_email' => $_POST['footer_email'] ?? '',
+            'footer_phone' => $_POST['footer_phone'] ?? '',
+            'footer_hours' => $_POST['footer_hours'] ?? '',
+            'footer_copyright' => $_POST['footer_copyright'] ?? '',
+            // Cookie Consent
+            'cookie_consent_enabled' => !empty($_POST['cookie_consent_enabled']) ? '1' : '0',
+            'cookie_consent_text' => $_POST['cookie_consent_text'] ?? '',
+            'cookie_policy_link' => $_POST['cookie_policy_link'] ?? '/page/privacy',
+            // Back to Top
+            'back_to_top_enabled' => !empty($_POST['back_to_top_enabled']) ? '1' : '0',
+        ];
+
+        foreach ($settingsToUpdate as $key => $value) {
+            $stmt = $db->prepare("
+                INSERT INTO settings (`group`, `key`, `value`) VALUES ('appearance', ?, ?)
+                ON DUPLICATE KEY UPDATE `value` = ?
+            ");
+            $stmt->execute([$key, $value, $value]);
+        }
+
+        flash('success', 'Appearance settings updated successfully');
+        $this->redirect('/admin/appearance');
+    }
+
     public function updateBranding(): void
     {
         if (!$this->validateCsrf()) {
@@ -57,6 +125,7 @@ class SettingsController extends Controller
             'secondary_color' => $_POST['secondary_color'] ?? '#1e40af',
             'accent_color' => $_POST['accent_color'] ?? '#f59e0b',
             'font_family' => $_POST['font_family'] ?? 'Inter',
+            'logo_height' => $_POST['logo_height'] ?? '50',
         ];
 
         $uploadFailed = false;

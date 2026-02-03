@@ -519,3 +519,126 @@ function formatDateTime(string $datetime, string $format = 'd M Y, H:i'): string
 {
     return date($format, strtotime($datetime));
 }
+
+// ============================================================================
+// BRANDING HELPERS
+// ============================================================================
+
+/**
+ * Get a setting from the database
+ */
+function getSetting(string $key, string $group = 'general', mixed $default = null): mixed
+{
+    static $cache = [];
+    $cacheKey = "{$group}.{$key}";
+
+    if (isset($cache[$cacheKey])) {
+        return $cache[$cacheKey];
+    }
+
+    try {
+        $db = \App\Core\Database::getInstance();
+        $stmt = $db->prepare("SELECT `value`, `type` FROM settings WHERE `group` = ? AND `key` = ? LIMIT 1");
+        $stmt->execute([$group, $key]);
+        $result = $stmt->fetch();
+
+        if (!$result) {
+            return $default;
+        }
+
+        $value = $result['value'];
+
+        // Cast based on type
+        switch ($result['type']) {
+            case 'integer':
+                $value = (int) $value;
+                break;
+            case 'boolean':
+                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                break;
+            case 'json':
+                $value = json_decode($value, true) ?? $default;
+                break;
+        }
+
+        $cache[$cacheKey] = $value;
+        return $value;
+    } catch (\Exception $e) {
+        return $default;
+    }
+}
+
+/**
+ * Get all branding settings with defaults
+ */
+function getBranding(): array
+{
+    static $branding = null;
+
+    if ($branding !== null) {
+        return $branding;
+    }
+
+    $branding = [
+        'logo' => getSetting('logo', 'branding'),
+        'logo_height' => getSetting('logo_height', 'branding', '50'),
+        'favicon' => getSetting('favicon', 'branding'),
+        'header_bg' => getSetting('header_bg', 'branding'),
+        'primary_color' => getSetting('primary_color', 'branding', '#2563eb'),
+        'secondary_color' => getSetting('secondary_color', 'branding', '#1e40af'),
+        'accent_color' => getSetting('accent_color', 'branding', '#f59e0b'),
+        'font_family' => getSetting('font_family', 'branding', 'Inter'),
+    ];
+
+    return $branding;
+}
+
+/**
+ * Get all appearance settings with defaults
+ */
+function getAppearance(): array
+{
+    static $appearance = null;
+
+    if ($appearance !== null) {
+        return $appearance;
+    }
+
+    $appearance = [
+        // Announcement Bar
+        'announcement_enabled' => getSetting('announcement_enabled', 'appearance', '0'),
+        'announcement_text' => getSetting('announcement_text', 'appearance', ''),
+        'announcement_link' => getSetting('announcement_link', 'appearance', ''),
+        'announcement_bg_color' => getSetting('announcement_bg_color', 'appearance', '#1e40af'),
+        'announcement_text_color' => getSetting('announcement_text_color', 'appearance', '#ffffff'),
+        // WhatsApp Widget
+        'whatsapp_enabled' => getSetting('whatsapp_enabled', 'appearance', '0'),
+        'whatsapp_number' => getSetting('whatsapp_number', 'appearance', ''),
+        'whatsapp_message' => getSetting('whatsapp_message', 'appearance', 'Hi! I have a question about your products.'),
+        'whatsapp_position' => getSetting('whatsapp_position', 'appearance', 'bottom-right'),
+        // Trust Badges
+        'trust_badges_enabled' => getSetting('trust_badges_enabled', 'appearance', '1'),
+        'trust_badge_1_title' => getSetting('trust_badge_1_title', 'appearance', 'Free Delivery'),
+        'trust_badge_1_subtitle' => getSetting('trust_badge_1_subtitle', 'appearance', 'Orders over R500'),
+        'trust_badge_2_title' => getSetting('trust_badge_2_title', 'appearance', 'Secure Payment'),
+        'trust_badge_2_subtitle' => getSetting('trust_badge_2_subtitle', 'appearance', '100% Protected'),
+        'trust_badge_3_title' => getSetting('trust_badge_3_title', 'appearance', 'Quality Products'),
+        'trust_badge_3_subtitle' => getSetting('trust_badge_3_subtitle', 'appearance', 'Best brands only'),
+        'trust_badge_4_title' => getSetting('trust_badge_4_title', 'appearance', '24/7 Support'),
+        'trust_badge_4_subtitle' => getSetting('trust_badge_4_subtitle', 'appearance', 'Always here to help'),
+        // Footer
+        'footer_description' => getSetting('footer_description', 'appearance', 'Your trusted destination for premium products at competitive prices. Fast delivery across South Africa.'),
+        'footer_email' => getSetting('footer_email', 'appearance', 'info@pricetag.co.za'),
+        'footer_phone' => getSetting('footer_phone', 'appearance', '+27 (0) 10 000 0000'),
+        'footer_hours' => getSetting('footer_hours', 'appearance', 'Mon - Fri: 8am - 5pm'),
+        'footer_copyright' => getSetting('footer_copyright', 'appearance', ''),
+        // Cookie Consent
+        'cookie_consent_enabled' => getSetting('cookie_consent_enabled', 'appearance', '0'),
+        'cookie_consent_text' => getSetting('cookie_consent_text', 'appearance', 'We use cookies to enhance your browsing experience.'),
+        'cookie_policy_link' => getSetting('cookie_policy_link', 'appearance', '/page/privacy'),
+        // Back to Top
+        'back_to_top_enabled' => getSetting('back_to_top_enabled', 'appearance', '1'),
+    ];
+
+    return $appearance;
+}

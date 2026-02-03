@@ -18,44 +18,84 @@ class SeoController extends Controller
         $db = Database::getInstance();
 
         // Get SEO settings
-        $stmt = $db->prepare("SELECT `key`, `value` FROM settings WHERE `key` LIKE 'seo_%'");
-        $stmt->execute();
-        $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+        try {
+            $stmt = $db->prepare("SELECT `key`, `value` FROM settings WHERE `key` LIKE 'seo_%'");
+            $stmt->execute();
+            $settings = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+        } catch (\PDOException $e) {
+            $settings = [];
+        }
 
         // Get products without SEO descriptions
-        $stmt = $db->prepare("
-            SELECT id, name, slug, short_description
-            FROM products
-            WHERE (short_description IS NULL OR short_description = '')
-            AND status = 1
-            LIMIT 10
-        ");
-        $stmt->execute();
-        $productsWithoutSeo = $stmt->fetchAll();
+        try {
+            $stmt = $db->prepare("
+                SELECT id, name, slug, short_description
+                FROM products
+                WHERE (short_description IS NULL OR short_description = '')
+                AND status = 'active'
+                LIMIT 10
+            ");
+            $stmt->execute();
+            $productsWithoutSeo = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            $productsWithoutSeo = [];
+        }
 
         // Get pages without meta descriptions
-        $stmt = $db->prepare("
-            SELECT id, title, slug
-            FROM pages
-            WHERE (meta_description IS NULL OR meta_description = '')
-            AND status = 'published'
-            LIMIT 10
-        ");
-        $stmt->execute();
-        $pagesWithoutMeta = $stmt->fetchAll();
+        try {
+            $stmt = $db->prepare("
+                SELECT id, title, slug
+                FROM pages
+                WHERE (meta_description IS NULL OR meta_description = '')
+                AND status = 'published'
+                LIMIT 10
+            ");
+            $stmt->execute();
+            $pagesWithoutMeta = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            // Create pages table if not exists
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS `pages` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `title` VARCHAR(255) NOT NULL,
+                    `slug` VARCHAR(255) NOT NULL,
+                    `content` LONGTEXT DEFAULT NULL,
+                    `meta_description` VARCHAR(255) DEFAULT NULL,
+                    `meta_keywords` VARCHAR(255) DEFAULT NULL,
+                    `status` ENUM('draft', 'published') NOT NULL DEFAULT 'draft',
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `slug` (`slug`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+            $pagesWithoutMeta = [];
+        }
 
         // Get sitemap statistics
-        $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE status = 1");
-        $stmt->execute();
-        $productCount = (int) $stmt->fetchColumn();
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE status = 'active'");
+            $stmt->execute();
+            $productCount = (int) $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            $productCount = 0;
+        }
 
-        $stmt = $db->prepare("SELECT COUNT(*) FROM categories WHERE is_active = 1");
-        $stmt->execute();
-        $categoryCount = (int) $stmt->fetchColumn();
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM categories WHERE is_active = 1");
+            $stmt->execute();
+            $categoryCount = (int) $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            $categoryCount = 0;
+        }
 
-        $stmt = $db->prepare("SELECT COUNT(*) FROM pages WHERE status = 'published'");
-        $stmt->execute();
-        $pageCount = (int) $stmt->fetchColumn();
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM pages WHERE status = 'published'");
+            $stmt->execute();
+            $pageCount = (int) $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            $pageCount = 0;
+        }
 
         $sitemapStats = [
             'products' => $productCount,
@@ -166,7 +206,7 @@ class SeoController extends Controller
         }
 
         // Products
-        $stmt = $db->prepare("SELECT slug, updated_at FROM products WHERE status = 1");
+        $stmt = $db->prepare("SELECT slug, updated_at FROM products WHERE status = 'active'");
         $stmt->execute();
         $products = $stmt->fetchAll();
         foreach ($products as $product) {

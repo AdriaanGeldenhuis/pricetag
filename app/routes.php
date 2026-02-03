@@ -201,6 +201,10 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->get('/branding', 'Admin\Controllers\SettingsController@branding', 'admin.branding.index');
     $router->post('/branding', 'Admin\Controllers\SettingsController@updateBranding', 'admin.branding.update');
 
+    // Appearance
+    $router->get('/appearance', 'Admin\Controllers\SettingsController@appearance', 'admin.appearance.index');
+    $router->post('/appearance', 'Admin\Controllers\SettingsController@updateAppearance', 'admin.appearance.update');
+
     // Banners
     $router->get('/banners', 'Admin\Controllers\BannerController@index', 'admin.banners.index');
     $router->get('/banners/create', 'Admin\Controllers\BannerController@create', 'admin.banners.create');

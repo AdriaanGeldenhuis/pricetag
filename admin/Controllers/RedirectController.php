@@ -15,8 +15,27 @@ class RedirectController extends Controller
     {
         $db = Database::getInstance();
 
-        $stmt = $db->query("SELECT * FROM redirects ORDER BY created_at DESC");
-        $redirects = $stmt->fetchAll();
+        try {
+            $stmt = $db->query("SELECT * FROM redirects ORDER BY created_at DESC");
+            $redirects = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            // Table might not exist - create it
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS `redirects` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `from_url` VARCHAR(500) NOT NULL,
+                    `to_url` VARCHAR(500) NOT NULL,
+                    `status_code` SMALLINT NOT NULL DEFAULT 301,
+                    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                    `hit_count` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `from_url` (`from_url`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+            $redirects = [];
+        }
 
         $this->layout('admin');
         $this->view('pages/redirects/index', [
@@ -170,14 +189,25 @@ class RedirectController extends Controller
     {
         $this->data = array_merge($this->data, $data);
         extract($this->data);
+
         $viewPath = ADMIN_PATH . '/Views/' . str_replace('.', '/', $view) . '.php';
+
+        if (!file_exists($viewPath)) {
+            throw new \RuntimeException("View '$view' not found at '$viewPath'");
+        }
+
         ob_start();
         include $viewPath;
         $content = ob_get_clean();
+
         if (isset($this->data['_layout'])) {
-            include ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
-            return;
+            $layoutPath = ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
+            if (file_exists($layoutPath)) {
+                include $layoutPath;
+                return;
+            }
         }
+
         echo $content;
     }
 

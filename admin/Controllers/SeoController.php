@@ -27,7 +27,7 @@ class SeoController extends Controller
             SELECT id, name, slug, short_description
             FROM products
             WHERE (short_description IS NULL OR short_description = '')
-            AND status = 1
+            AND status = 'active'
             LIMIT 10
         ");
         $stmt->execute();
@@ -45,7 +45,7 @@ class SeoController extends Controller
         $pagesWithoutMeta = $stmt->fetchAll();
 
         // Get sitemap statistics
-        $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE status = 1");
+        $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE status = 'active'");
         $stmt->execute();
         $productCount = (int) $stmt->fetchColumn();
 
@@ -166,7 +166,7 @@ class SeoController extends Controller
         }
 
         // Products
-        $stmt = $db->prepare("SELECT slug, updated_at FROM products WHERE status = 1");
+        $stmt = $db->prepare("SELECT slug, updated_at FROM products WHERE status = 'active'");
         $stmt->execute();
         $products = $stmt->fetchAll();
         foreach ($products as $product) {

@@ -21,7 +21,7 @@
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Active</div>
-        <div class="admin-stat-value text-success"><?= count(array_filter($vendors ?? [], fn($v) => $v['status'] === 'active')) ?></div>
+        <div class="admin-stat-value text-success"><?php $activeCount = 0; foreach ($vendors ?? [] as $v) { if (($v['status'] ?? '') === 'active') $activeCount++; } echo $activeCount; ?></div>
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Total Products</div>

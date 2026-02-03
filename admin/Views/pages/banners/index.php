@@ -1,52 +1,66 @@
 <!-- Admin Banners & Sliders -->
-<div class="admin-page-header">
+<?php
+// Helper function to check if banner is currently scheduled
+function isBannerScheduled(array $banner): bool {
+    $now = time();
+    if (!empty($banner['starts_at']) && strtotime($banner['starts_at']) > $now) {
+        return false;
+    }
+    if (!empty($banner['expires_at']) && strtotime($banner['expires_at']) < $now) {
+        return false;
+    }
+    return true;
+}
+?>
+
+<div class="flex justify-between items-center mb-6">
     <div>
-        <h1 class="admin-page-title"><?= e($title ?? 'Banners & Sliders') ?></h1>
-        <p class="admin-page-subtitle"><?= count($banners) ?> banners total</p>
+        <h1 class="admin-page-title mb-0">Banners & Sliders</h1>
+        <p class="text-muted mt-1"><?= count($banners) ?> banners total</p>
     </div>
-    <div class="admin-page-actions">
-        <a href="<?= url('/admin/banners/create') ?>" class="admin-btn admin-btn-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Add Banner
-        </a>
-    </div>
+    <a href="<?= url('/admin/banners/create') ?>" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" class="mr-2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Add Banner
+    </a>
 </div>
 
 <!-- Location Filter -->
-<div class="admin-card mb-6">
-    <div class="admin-filters">
-        <a href="<?= url('/admin/banners') ?>" class="admin-filter-btn <?= empty($currentLocation) ? 'active' : '' ?>">
-            All Locations
-        </a>
-        <?php foreach ($locations as $key => $label): ?>
-        <a href="<?= url('/admin/banners?location=' . $key) ?>"
-           class="admin-filter-btn <?= $currentLocation === $key ? 'active' : '' ?>">
-            <?= e($label) ?>
-            <?php
-            $count = count(array_filter($banners, fn($b) => $b['location'] === $key));
-            if ($count > 0): ?>
-            <span class="admin-filter-count"><?= $count ?></span>
-            <?php endif; ?>
-        </a>
-        <?php endforeach; ?>
+<div class="card mb-6">
+    <div class="card-body">
+        <div class="flex flex-wrap gap-2">
+            <a href="<?= url('/admin/banners') ?>" class="filter-btn <?= empty($currentLocation) ? 'active' : '' ?>">
+                All Locations
+            </a>
+            <?php foreach ($locations as $key => $label): ?>
+            <a href="<?= url('/admin/banners?location=' . $key) ?>"
+               class="filter-btn <?= $currentLocation === $key ? 'active' : '' ?>">
+                <?= e($label) ?>
+                <?php
+                $count = count(array_filter($banners, fn($b) => $b['location'] === $key));
+                if ($count > 0): ?>
+                <span class="filter-count"><?= $count ?></span>
+                <?php endif; ?>
+            </a>
+            <?php endforeach; ?>
+        </div>
     </div>
 </div>
 
 <?php if (empty($banners)): ?>
 <!-- Empty State -->
-<div class="admin-card">
-    <div class="admin-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="admin-empty-icon">
+<div class="card">
+    <div class="card-body text-center py-12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48" class="mx-auto mb-4 text-muted">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
             <line x1="8" y1="21" x2="16" y2="21"></line>
             <line x1="12" y1="17" x2="12" y2="21"></line>
         </svg>
-        <h3 class="admin-empty-title">No banners yet</h3>
-        <p class="admin-empty-text">Create promotional banners and hero sliders for your store.</p>
-        <a href="<?= url('/admin/banners/create') ?>" class="admin-btn admin-btn-primary">Add Your First Banner</a>
+        <h3 class="text-lg font-semibold mb-2">No banners yet</h3>
+        <p class="text-muted mb-4">Create promotional banners and hero sliders for your store.</p>
+        <a href="<?= url('/admin/banners/create') ?>" class="btn btn-primary">Add Your First Banner</a>
     </div>
 </div>
 
@@ -56,15 +70,114 @@
 <!-- Grouped by Location -->
 <?php foreach ($locations as $locationKey => $locationLabel): ?>
 <?php if (!empty($grouped[$locationKey])): ?>
-<div class="admin-card mb-6">
-    <div class="admin-card-header">
+<div class="card mb-6">
+    <div class="card-header flex justify-between items-center">
         <h2 class="font-semibold"><?= e($locationLabel) ?></h2>
         <span class="admin-badge neutral"><?= count($grouped[$locationKey]) ?> banner(s)</span>
     </div>
-    <div class="banner-grid" data-location="<?= $locationKey ?>">
-        <?php foreach ($grouped[$locationKey] as $banner): ?>
-        <?php include __DIR__ . '/_banner_card.php'; ?>
-        <?php endforeach; ?>
+    <div class="card-body">
+        <div class="banner-grid">
+            <?php foreach ($grouped[$locationKey] as $banner): ?>
+            <!-- Banner Card -->
+            <div class="banner-card" data-id="<?= $banner['id'] ?>">
+                <div class="banner-image">
+                    <img src="<?= e($banner['image']) ?>" alt="<?= e($banner['title'] ?: 'Banner') ?>">
+                    <?php if ($banner['title'] || $banner['subtitle']): ?>
+                    <div class="banner-overlay-text">
+                        <?php if ($banner['title']): ?>
+                        <div class="banner-title"><?= e($banner['title']) ?></div>
+                        <?php endif; ?>
+                        <?php if ($banner['subtitle']): ?>
+                        <div class="banner-subtitle"><?= e(substr($banner['subtitle'], 0, 60)) ?><?= strlen($banner['subtitle']) > 60 ? '...' : '' ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                    <div class="banner-status">
+                        <?php if ($banner['is_active']): ?>
+                        <span class="admin-badge active">Active</span>
+                        <?php else: ?>
+                        <span class="admin-badge inactive">Inactive</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="banner-body">
+                    <div class="banner-meta">
+                        <?php if ($banner['url']): ?>
+                        <span class="admin-badge neutral" title="<?= e($banner['url']) ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                            Link
+                        </span>
+                        <?php endif; ?>
+
+                        <?php if ($banner['button_text']): ?>
+                        <span class="admin-badge neutral"><?= e($banner['button_text']) ?></span>
+                        <?php endif; ?>
+
+                        <?php if ($banner['starts_at'] || $banner['expires_at']): ?>
+                        <span class="admin-badge <?= isBannerScheduled($banner) ? 'warning' : 'neutral' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            Scheduled
+                        </span>
+                        <?php endif; ?>
+
+                        <?php if ($banner['mobile_image']): ?>
+                        <span class="admin-badge neutral" title="Mobile image set">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                            </svg>
+                            Mobile
+                        </span>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($banner['starts_at'] || $banner['expires_at']): ?>
+                    <div class="text-xs text-muted mb-2">
+                        <?php if ($banner['starts_at']): ?>
+                        <span>Starts: <?= date('M j, Y', strtotime($banner['starts_at'])) ?></span>
+                        <?php endif; ?>
+                        <?php if ($banner['expires_at']): ?>
+                        <span class="ml-2">Expires: <?= date('M j, Y', strtotime($banner['expires_at'])) ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="banner-actions">
+                    <button type="button" onclick="toggleBanner(<?= $banner['id'] ?>, this)"
+                            class="btn btn-ghost btn-sm btn-icon" title="Toggle Active">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
+
+                    <a href="<?= url('/admin/banners/' . $banner['id'] . '/edit') ?>"
+                       class="btn btn-ghost btn-sm btn-icon" title="Edit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </a>
+
+                    <button type="button" onclick="deleteBanner(<?= $banner['id'] ?>)"
+                            class="btn btn-ghost btn-sm btn-icon text-danger" title="Delete">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 </div>
 <?php endif; ?>
@@ -72,15 +185,114 @@
 
 <?php else: ?>
 <!-- Single Location View with Drag & Drop -->
-<div class="admin-card">
-    <div class="admin-card-header">
+<div class="card">
+    <div class="card-header flex justify-between items-center">
         <h2 class="font-semibold"><?= e($locations[$currentLocation] ?? $currentLocation) ?></h2>
         <p class="text-muted text-sm">Drag to reorder banners</p>
     </div>
-    <div class="banner-grid sortable" data-location="<?= e($currentLocation) ?>">
-        <?php foreach ($banners as $banner): ?>
-        <?php include __DIR__ . '/_banner_card.php'; ?>
-        <?php endforeach; ?>
+    <div class="card-body">
+        <div class="banner-grid sortable" data-location="<?= e($currentLocation) ?>">
+            <?php foreach ($banners as $banner): ?>
+            <!-- Banner Card -->
+            <div class="banner-card" data-id="<?= $banner['id'] ?>">
+                <div class="banner-image">
+                    <img src="<?= e($banner['image']) ?>" alt="<?= e($banner['title'] ?: 'Banner') ?>">
+                    <?php if ($banner['title'] || $banner['subtitle']): ?>
+                    <div class="banner-overlay-text">
+                        <?php if ($banner['title']): ?>
+                        <div class="banner-title"><?= e($banner['title']) ?></div>
+                        <?php endif; ?>
+                        <?php if ($banner['subtitle']): ?>
+                        <div class="banner-subtitle"><?= e(substr($banner['subtitle'], 0, 60)) ?><?= strlen($banner['subtitle']) > 60 ? '...' : '' ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                    <div class="banner-status">
+                        <?php if ($banner['is_active']): ?>
+                        <span class="admin-badge active">Active</span>
+                        <?php else: ?>
+                        <span class="admin-badge inactive">Inactive</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="banner-body">
+                    <div class="banner-meta">
+                        <?php if ($banner['url']): ?>
+                        <span class="admin-badge neutral" title="<?= e($banner['url']) ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                            Link
+                        </span>
+                        <?php endif; ?>
+
+                        <?php if ($banner['button_text']): ?>
+                        <span class="admin-badge neutral"><?= e($banner['button_text']) ?></span>
+                        <?php endif; ?>
+
+                        <?php if ($banner['starts_at'] || $banner['expires_at']): ?>
+                        <span class="admin-badge <?= isBannerScheduled($banner) ? 'warning' : 'neutral' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            Scheduled
+                        </span>
+                        <?php endif; ?>
+
+                        <?php if ($banner['mobile_image']): ?>
+                        <span class="admin-badge neutral" title="Mobile image set">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                            </svg>
+                            Mobile
+                        </span>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($banner['starts_at'] || $banner['expires_at']): ?>
+                    <div class="text-xs text-muted mb-2">
+                        <?php if ($banner['starts_at']): ?>
+                        <span>Starts: <?= date('M j, Y', strtotime($banner['starts_at'])) ?></span>
+                        <?php endif; ?>
+                        <?php if ($banner['expires_at']): ?>
+                        <span class="ml-2">Expires: <?= date('M j, Y', strtotime($banner['expires_at'])) ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="banner-actions">
+                    <button type="button" onclick="toggleBanner(<?= $banner['id'] ?>, this)"
+                            class="btn btn-ghost btn-sm btn-icon" title="Toggle Active">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                    </button>
+
+                    <a href="<?= url('/admin/banners/' . $banner['id'] . '/edit') ?>"
+                       class="btn btn-ghost btn-sm btn-icon" title="Edit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </a>
+
+                    <button type="button" onclick="deleteBanner(<?= $banner['id'] ?>)"
+                            class="btn btn-ghost btn-sm btn-icon text-danger" title="Delete">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
     </div>
 </div>
 <?php endif; ?>
@@ -103,25 +315,18 @@
             <p>Are you sure you want to delete this banner? This action cannot be undone.</p>
         </div>
         <div class="admin-modal-footer">
-            <button class="admin-btn admin-btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+            <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
             <form id="deleteForm" method="POST" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
                 <input type="hidden" name="_method" value="DELETE">
-                <button type="submit" class="admin-btn admin-btn-danger">Delete Banner</button>
+                <button type="submit" class="btn btn-danger">Delete Banner</button>
             </form>
         </div>
     </div>
 </div>
 
 <style>
-.admin-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    padding: var(--space-3);
-}
-
-.admin-filter-btn {
+.filter-btn {
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
     font-size: var(--text-sm);
@@ -130,19 +335,20 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    text-decoration: none;
 }
 
-.admin-filter-btn:hover {
+.filter-btn:hover {
     background: var(--color-background-alt);
     color: var(--color-text);
 }
 
-.admin-filter-btn.active {
+.filter-btn.active {
     background: var(--color-primary);
     color: white;
 }
 
-.admin-filter-count {
+.filter-count {
     background: rgba(255,255,255,0.2);
     padding: 2px 6px;
     border-radius: var(--radius-full);
@@ -153,7 +359,6 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: var(--space-4);
-    padding: var(--space-4);
 }
 
 .banner-card {
@@ -185,7 +390,7 @@
     object-fit: cover;
 }
 
-.banner-overlay {
+.banner-overlay-text {
     position: absolute;
     inset: 0;
     background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.7));
@@ -221,7 +426,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    margin-bottom: var(--space-3);
+    margin-bottom: var(--space-2);
 }
 
 .banner-actions {
@@ -230,14 +435,6 @@
     justify-content: flex-end;
     border-top: 1px solid var(--color-border-light);
     padding: var(--space-3);
-}
-
-.admin-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--color-border-light);
 }
 
 .sortable .banner-card {

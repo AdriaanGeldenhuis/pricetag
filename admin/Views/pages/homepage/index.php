@@ -1,20 +1,20 @@
 <!-- Admin Homepage Builder -->
-<div class="admin-page-header">
+<div class="flex justify-between items-center mb-6">
     <div>
-        <h1 class="admin-page-title">Homepage Builder</h1>
-        <p class="admin-page-subtitle">Drag and drop sections to customize your homepage layout</p>
+        <h1 class="admin-page-title mb-0">Homepage Builder</h1>
+        <p class="text-muted mt-1">Drag and drop sections to customize your homepage layout</p>
     </div>
-    <div class="admin-page-actions">
-        <a href="<?= url('/') ?>" target="_blank" class="admin-btn admin-btn-secondary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+    <div class="flex gap-2">
+        <a href="<?= url('/') ?>" target="_blank" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" class="mr-2">
                 <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
                 <polyline points="15 3 21 3 21 9"></polyline>
                 <line x1="10" y1="14" x2="21" y2="3"></line>
             </svg>
             Preview Site
         </a>
-        <button type="button" onclick="showAddSectionModal()" class="admin-btn admin-btn-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+        <button type="button" onclick="showAddSectionModal()" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" class="mr-2">
                 <line x1="12" y1="5" x2="12" y2="19"></line>
                 <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
@@ -26,16 +26,16 @@
 <!-- Sections List -->
 <div class="homepage-builder">
     <?php if (empty($sections)): ?>
-    <div class="admin-card">
-        <div class="admin-empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="admin-empty-icon">
+    <div class="card">
+        <div class="card-body text-center py-12">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48" class="mx-auto mb-4 text-muted">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                 <line x1="3" y1="9" x2="21" y2="9"></line>
                 <line x1="9" y1="21" x2="9" y2="9"></line>
             </svg>
-            <h3 class="admin-empty-title">No sections configured</h3>
-            <p class="admin-empty-text">Start building your homepage by adding sections.</p>
-            <button type="button" onclick="showAddSectionModal()" class="admin-btn admin-btn-primary">Add Your First Section</button>
+            <h3 class="text-lg font-semibold mb-2">No sections configured</h3>
+            <p class="text-muted mb-4">Start building your homepage by adding sections.</p>
+            <button type="button" onclick="showAddSectionModal()" class="btn btn-primary">Add Your First Section</button>
         </div>
     </div>
     <?php else: ?>
@@ -52,7 +52,7 @@
             </div>
 
             <div class="section-icon">
-                <?= $this->getSectionIcon($section['type']) ?>
+                <?= $sectionIcons[$section['type']] ?? $sectionIcons['custom_html'] ?>
             </div>
 
             <div class="section-info">
@@ -77,7 +77,7 @@
 
             <div class="section-actions">
                 <button type="button" onclick="toggleSection(<?= $section['id'] ?>, this)"
-                        class="admin-btn admin-btn-ghost admin-btn-sm admin-btn-icon"
+                        class="btn btn-ghost btn-sm btn-icon"
                         title="<?= $section['is_active'] ? 'Disable' : 'Enable' ?>">
                     <?php if ($section['is_active']): ?>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
@@ -93,7 +93,7 @@
                 </button>
 
                 <a href="<?= url('/admin/homepage/' . $section['id'] . '/edit') ?>"
-                   class="admin-btn admin-btn-ghost admin-btn-sm admin-btn-icon" title="Edit">
+                   class="btn btn-ghost btn-sm btn-icon" title="Edit">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                         <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path>
                         <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path>
@@ -101,7 +101,7 @@
                 </a>
 
                 <button type="button" onclick="deleteSection(<?= $section['id'] ?>)"
-                        class="admin-btn admin-btn-ghost admin-btn-sm admin-btn-icon text-danger" title="Delete">
+                        class="btn btn-ghost btn-sm btn-icon text-danger" title="Delete">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
                         <polyline points="3 6 5 6 21 6"></polyline>
                         <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
@@ -135,13 +135,13 @@
                     <?= csrf_field() ?>
                     <input type="hidden" name="type" value="<?= $type ?>">
                     <div class="section-type-icon">
-                        <?= $this->getSectionIcon($type) ?>
+                        <?= $sectionIcons[$type] ?? $sectionIcons['custom_html'] ?>
                     </div>
                     <div class="section-type-info">
                         <h4><?= e($info['name']) ?></h4>
                         <p><?= e($info['description']) ?></p>
                     </div>
-                    <button type="submit" class="admin-btn admin-btn-ghost admin-btn-sm">Add</button>
+                    <button type="submit" class="btn btn-ghost btn-sm">Add</button>
                 </form>
                 <?php endforeach; ?>
             </div>
@@ -165,11 +165,11 @@
             <p>Are you sure you want to delete this section? This action cannot be undone.</p>
         </div>
         <div class="admin-modal-footer">
-            <button class="admin-btn admin-btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+            <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
             <form id="deleteForm" method="POST" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
                 <input type="hidden" name="_method" value="DELETE">
-                <button type="submit" class="admin-btn admin-btn-danger">Delete Section</button>
+                <button type="submit" class="btn btn-danger">Delete Section</button>
             </form>
         </div>
     </div>

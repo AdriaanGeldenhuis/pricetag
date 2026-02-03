@@ -214,4 +214,31 @@ class SeoController extends Controller
             curl_close($ch);
         }
     }
+
+    protected function view(string $view, array $data = []): void
+    {
+        $this->data = array_merge($this->data, $data);
+        extract($this->data);
+        $viewPath = ADMIN_PATH . '/Views/' . str_replace('.', '/', $view) . '.php';
+        if (!file_exists($viewPath)) {
+            throw new \RuntimeException("View '$view' not found at '$viewPath'");
+        }
+        ob_start();
+        include $viewPath;
+        $content = ob_get_clean();
+        if (isset($this->data['_layout'])) {
+            $layoutPath = ADMIN_PATH . '/Views/layouts/' . $this->data['_layout'] . '.php';
+            if (file_exists($layoutPath)) {
+                include $layoutPath;
+                return;
+            }
+        }
+        echo $content;
+    }
+
+    protected function layout(string $layout): self
+    {
+        $this->data['_layout'] = $layout;
+        return $this;
+    }
 }

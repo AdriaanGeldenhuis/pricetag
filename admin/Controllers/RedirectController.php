@@ -26,6 +26,16 @@ class RedirectController extends Controller
         ]);
     }
 
+    public function create(): void
+    {
+        $this->layout('admin');
+        $this->view('pages/redirects/form', [
+            'page_title' => 'Add Redirect',
+            'active_page' => 'redirects',
+            'redirect' => null,
+        ]);
+    }
+
     public function store(): void
     {
         if (!$this->validateCsrf()) {
@@ -39,7 +49,7 @@ class RedirectController extends Controller
 
         if (!$fromUrl || !$toUrl) {
             flash('error', 'Both URLs are required');
-            $this->redirect('/admin/redirects');
+            $this->redirect('/admin/redirects/create');
             return;
         }
 
@@ -50,14 +60,70 @@ class RedirectController extends Controller
 
         $stmt = $db->prepare("
             INSERT INTO redirects (from_url, to_url, status_code, is_active)
-            VALUES (?, ?, ?, 1)
-            ON DUPLICATE KEY UPDATE to_url = ?, status_code = ?, updated_at = NOW()
+            VALUES (?, ?, ?, ?)
         ");
 
         $statusCode = (int)($_POST['status_code'] ?? 301);
-        $stmt->execute([$fromUrl, $toUrl, $statusCode, $toUrl, $statusCode]);
+        $isActive = !empty($_POST['is_active']) ? 1 : 0;
+        $stmt->execute([$fromUrl, $toUrl, $statusCode, $isActive]);
 
-        flash('success', 'Redirect saved successfully');
+        flash('success', 'Redirect created successfully');
+        $this->redirect('/admin/redirects');
+    }
+
+    public function edit(int $id): void
+    {
+        $db = Database::getInstance();
+        $stmt = $db->prepare("SELECT * FROM redirects WHERE id = ?");
+        $stmt->execute([$id]);
+        $redirect = $stmt->fetch();
+
+        if (!$redirect) {
+            flash('error', 'Redirect not found');
+            $this->redirect('/admin/redirects');
+            return;
+        }
+
+        $this->layout('admin');
+        $this->view('pages/redirects/form', [
+            'page_title' => 'Edit Redirect',
+            'active_page' => 'redirects',
+            'redirect' => $redirect,
+        ]);
+    }
+
+    public function update(int $id): void
+    {
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        $fromUrl = trim($_POST['from_url'] ?? '');
+        $toUrl = trim($_POST['to_url'] ?? '');
+
+        if (!$fromUrl || !$toUrl) {
+            flash('error', 'Both URLs are required');
+            $this->redirect('/admin/redirects/' . $id . '/edit');
+            return;
+        }
+
+        // Ensure from_url starts with /
+        if (!str_starts_with($fromUrl, '/')) {
+            $fromUrl = '/' . $fromUrl;
+        }
+
+        $stmt = $db->prepare("
+            UPDATE redirects SET from_url = ?, to_url = ?, status_code = ?, is_active = ?
+            WHERE id = ?
+        ");
+
+        $statusCode = (int)($_POST['status_code'] ?? 301);
+        $isActive = !empty($_POST['is_active']) ? 1 : 0;
+        $stmt->execute([$fromUrl, $toUrl, $statusCode, $isActive, $id]);
+
+        flash('success', 'Redirect updated successfully');
         $this->redirect('/admin/redirects');
     }
 

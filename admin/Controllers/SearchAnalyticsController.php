@@ -38,16 +38,17 @@ class SearchAnalyticsController extends Controller
 
         // Stats
         $stmt = $db->query("SELECT
-            COUNT(*) as total_terms,
-            SUM(count) as total_searches,
-            SUM(results_count = 0) as zero_result_terms
+            SUM(count) as total,
+            COUNT(*) as unique_terms,
+            SUM(results_count = 0) as zero_results,
+            SUM(DATE(last_searched_at) = CURDATE()) as today
             FROM search_terms");
         $stats = $stmt->fetch();
 
         $this->layout('admin');
         $this->view('pages/search/index', [
             'page_title' => 'Search Analytics',
-            'active_page' => 'search',
+            'active_page' => 'search-analytics',
             'topSearches' => $topSearches,
             'zeroResults' => $zeroResults,
             'synonyms' => $synonyms,

@@ -14,7 +14,7 @@
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Unique Terms</div>
-        <div class="admin-stat-value"><?= number_format($stats['unique'] ?? 0) ?></div>
+        <div class="admin-stat-value"><?= number_format($stats['unique_terms'] ?? 0) ?></div>
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Zero Results</div>
@@ -54,10 +54,10 @@
                         </td>
                         <td class="text-muted"><?= number_format($search['count']) ?></td>
                         <td>
-                            <?php if ($search['results'] == 0): ?>
+                            <?php if ($search['results_count'] == 0): ?>
                             <span class="text-danger">0</span>
                             <?php else: ?>
-                            <span class="text-success"><?= $search['results'] ?></span>
+                            <span class="text-success"><?= $search['results_count'] ?></span>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -137,12 +137,7 @@
             <?php foreach ($synonyms as $synonym): ?>
             <div class="admin-synonym-item">
                 <div class="admin-synonym-terms">
-                    <span class="admin-synonym-from"><?= e($synonym['term']) ?></span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
-                    <span class="admin-synonym-to"><?= e($synonym['synonyms']) ?></span>
+                    <span class="admin-synonym-from"><?= e($synonym['terms']) ?></span>
                 </div>
                 <form method="POST" action="<?= url('/admin/search/synonyms/' . $synonym['id']) ?>" style="display: inline;" onsubmit="return confirm('Delete this synonym?')">
                     <?= csrf_field() ?>
@@ -173,14 +168,9 @@
             <?= csrf_field() ?>
             <div class="admin-modal-body">
                 <div class="admin-form-group">
-                    <label class="admin-label">Search Term</label>
-                    <input type="text" name="term" id="synonymTerm" class="admin-input" placeholder="e.g., sofa" required>
-                    <p class="admin-help">The term customers search for</p>
-                </div>
-                <div class="admin-form-group">
-                    <label class="admin-label">Synonyms</label>
-                    <input type="text" name="synonyms" class="admin-input" placeholder="e.g., couch, settee, loveseat" required>
-                    <p class="admin-help">Comma-separated list of words to also match</p>
+                    <label class="admin-label">Synonym Terms</label>
+                    <input type="text" name="terms" id="synonymTerm" class="admin-input" placeholder="e.g., sofa, couch, settee, loveseat" required>
+                    <p class="admin-help">Comma-separated list of words that should match each other</p>
                 </div>
             </div>
             <div class="admin-modal-footer">

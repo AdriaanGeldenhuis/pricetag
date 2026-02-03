@@ -17,19 +17,15 @@
 <div class="admin-stats-grid mb-6">
     <div class="admin-stat-card">
         <div class="admin-stat-label">Total Vendors</div>
-        <div class="admin-stat-value"><?= $stats['total'] ?? 0 ?></div>
+        <div class="admin-stat-value"><?= count($vendors ?? []) ?></div>
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Active</div>
-        <div class="admin-stat-value text-success"><?= $stats['active'] ?? 0 ?></div>
+        <div class="admin-stat-value text-success"><?= count(array_filter($vendors ?? [], fn($v) => $v['status'] === 'active')) ?></div>
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Total Products</div>
-        <div class="admin-stat-value"><?= number_format($stats['products'] ?? 0) ?></div>
-    </div>
-    <div class="admin-stat-card">
-        <div class="admin-stat-label">Last Sync</div>
-        <div class="admin-stat-value text-sm"><?= $stats['last_sync'] ? date('M j H:i', strtotime($stats['last_sync'])) : 'Never' ?></div>
+        <div class="admin-stat-value"><?= number_format(array_sum(array_column($vendors ?? [], 'product_count'))) ?></div>
     </div>
 </div>
 
@@ -63,8 +59,8 @@
                     <?php endif; ?>
                     <div class="admin-vendor-info">
                         <h3 class="admin-vendor-name"><?= e($vendor['name']) ?></h3>
-                        <span class="admin-badge <?= $vendor['is_active'] ? 'active' : 'inactive' ?> sm">
-                            <?= $vendor['is_active'] ? 'Active' : 'Inactive' ?>
+                        <span class="admin-badge <?= $vendor['status'] === 'active' ? 'active' : ($vendor['status'] === 'pending' ? 'warning' : 'inactive') ?> sm">
+                            <?= ucfirst($vendor['status']) ?>
                         </span>
                     </div>
                 </div>
@@ -79,17 +75,14 @@
                         <span class="admin-vendor-stat-label">Commission</span>
                     </div>
                     <div class="admin-vendor-stat">
-                        <span class="admin-vendor-stat-value"><?= $vendor['last_sync'] ? date('M j', strtotime($vendor['last_sync'])) : 'Never' ?></span>
+                        <span class="admin-vendor-stat-value"><?= $vendor['last_sync_at'] ? date('M j', strtotime($vendor['last_sync_at'])) : 'Never' ?></span>
                         <span class="admin-vendor-stat-label">Last Sync</span>
                     </div>
                 </div>
 
-                <?php if (!empty($vendor['api_type'])): ?>
+                <?php if ($vendor['sync_enabled']): ?>
                 <div class="admin-vendor-api">
-                    <span class="admin-badge neutral sm"><?= strtoupper($vendor['api_type']) ?></span>
-                    <?php if ($vendor['sync_enabled']): ?>
                     <span class="text-success text-xs">Auto-sync enabled</span>
-                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
 

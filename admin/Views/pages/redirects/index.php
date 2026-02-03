@@ -17,15 +17,11 @@
 <div class="admin-stats-grid mb-6">
     <div class="admin-stat-card">
         <div class="admin-stat-label">Total Redirects</div>
-        <div class="admin-stat-value"><?= $stats['total'] ?? 0 ?></div>
+        <div class="admin-stat-value"><?= count($redirects ?? []) ?></div>
     </div>
     <div class="admin-stat-card">
         <div class="admin-stat-label">Active</div>
-        <div class="admin-stat-value text-success"><?= $stats['active'] ?? 0 ?></div>
-    </div>
-    <div class="admin-stat-card">
-        <div class="admin-stat-label">Total Hits</div>
-        <div class="admin-stat-value"><?= number_format($stats['hits'] ?? 0) ?></div>
+        <div class="admin-stat-value text-success"><?= count(array_filter($redirects ?? [], fn($r) => $r['is_active'])) ?></div>
     </div>
 </div>
 
@@ -38,10 +34,9 @@
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Source URL</th>
-                    <th>Destination URL</th>
+                    <th>From URL</th>
+                    <th>To URL</th>
                     <th>Type</th>
-                    <th>Hits</th>
                     <th>Status</th>
                     <th style="width: 120px;"></th>
                 </tr>
@@ -49,7 +44,7 @@
             <tbody>
                 <?php if (empty($redirects)): ?>
                 <tr>
-                    <td colspan="6">
+                    <td colspan="5">
                         <div class="admin-empty">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" class="admin-empty-icon">
                                 <path d="M13 10V3L4 14h7v7l9-11h-7z"></path>
@@ -64,17 +59,16 @@
                 <?php foreach ($redirects as $redirect): ?>
                 <tr>
                     <td>
-                        <code class="text-sm"><?= e($redirect['source_url']) ?></code>
+                        <code class="text-sm"><?= e($redirect['from_url']) ?></code>
                     </td>
                     <td>
-                        <code class="text-sm"><?= e($redirect['destination_url']) ?></code>
+                        <code class="text-sm"><?= e($redirect['to_url']) ?></code>
                     </td>
                     <td>
-                        <span class="admin-badge <?= $redirect['type'] === '301' ? 'active' : 'warning' ?>">
-                            <?= $redirect['type'] ?>
+                        <span class="admin-badge <?= $redirect['status_code'] == 301 ? 'active' : 'warning' ?>">
+                            <?= $redirect['status_code'] ?>
                         </span>
                     </td>
-                    <td class="text-muted"><?= number_format($redirect['hits'] ?? 0) ?></td>
                     <td>
                         <span class="admin-badge <?= $redirect['is_active'] ? 'active' : 'inactive' ?>">
                             <?= $redirect['is_active'] ? 'Active' : 'Inactive' ?>

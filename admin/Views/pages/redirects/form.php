@@ -25,26 +25,26 @@
         </div>
         <div class="admin-card-body">
             <div class="admin-form-group">
-                <label class="admin-label">Source URL <span class="text-danger">*</span></label>
+                <label class="admin-label">From URL <span class="text-danger">*</span></label>
                 <div class="admin-input-group">
                     <span class="admin-input-prefix"><?= rtrim(url(''), '/') ?></span>
-                    <input type="text" name="source_url" class="admin-input" value="<?= e($redirect['source_url'] ?? '') ?>" placeholder="/old-page" required>
+                    <input type="text" name="from_url" class="admin-input" value="<?= e($redirect['from_url'] ?? '') ?>" placeholder="/old-page" required>
                 </div>
                 <p class="admin-help">The URL path to redirect from (e.g., /old-page or /products/old-item)</p>
             </div>
 
             <div class="admin-form-group">
-                <label class="admin-label">Destination URL <span class="text-danger">*</span></label>
-                <input type="text" name="destination_url" class="admin-input" value="<?= e($redirect['destination_url'] ?? '') ?>" placeholder="/new-page or https://example.com/page" required>
+                <label class="admin-label">To URL <span class="text-danger">*</span></label>
+                <input type="text" name="to_url" class="admin-input" value="<?= e($redirect['to_url'] ?? '') ?>" placeholder="/new-page or https://example.com/page" required>
                 <p class="admin-help">The URL to redirect to. Can be relative (/new-page) or absolute (https://...)</p>
             </div>
 
             <div class="admin-form-row">
                 <div class="admin-form-group">
                     <label class="admin-label">Redirect Type</label>
-                    <select name="type" class="admin-select">
-                        <option value="301" <?= ($redirect['type'] ?? '301') === '301' ? 'selected' : '' ?>>301 - Permanent</option>
-                        <option value="302" <?= ($redirect['type'] ?? '') === '302' ? 'selected' : '' ?>>302 - Temporary</option>
+                    <select name="status_code" class="admin-select">
+                        <option value="301" <?= ($redirect['status_code'] ?? 301) == 301 ? 'selected' : '' ?>>301 - Permanent</option>
+                        <option value="302" <?= ($redirect['status_code'] ?? 301) == 302 ? 'selected' : '' ?>>302 - Temporary</option>
                     </select>
                     <p class="admin-help">301 is best for SEO when a page permanently moves. 302 for temporary redirects.</p>
                 </div>
@@ -57,24 +57,6 @@
                     </select>
                 </div>
             </div>
-
-            <?php if (isset($redirect) && $redirect['hits']): ?>
-            <div class="admin-form-group">
-                <label class="admin-label">Statistics</label>
-                <div class="admin-stats-inline">
-                    <div class="admin-stat-inline">
-                        <span class="admin-stat-inline-label">Total Hits:</span>
-                        <span class="admin-stat-inline-value"><?= number_format($redirect['hits']) ?></span>
-                    </div>
-                    <?php if (!empty($redirect['last_hit_at'])): ?>
-                    <div class="admin-stat-inline">
-                        <span class="admin-stat-inline-label">Last Hit:</span>
-                        <span class="admin-stat-inline-value"><?= date('M j, Y H:i', strtotime($redirect['last_hit_at'])) ?></span>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <?php endif; ?>
         </div>
         <div class="admin-card-footer">
             <a href="<?= url('/admin/redirects') ?>" class="admin-btn admin-btn-ghost">Cancel</a>
@@ -105,21 +87,5 @@
 .admin-input-group .admin-input {
     border-radius: 0 6px 6px 0;
     flex: 1;
-}
-.admin-stats-inline {
-    display: flex;
-    gap: 24px;
-}
-.admin-stat-inline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.admin-stat-inline-label {
-    color: var(--admin-text-muted);
-    font-size: 13px;
-}
-.admin-stat-inline-value {
-    font-weight: 600;
 }
 </style>

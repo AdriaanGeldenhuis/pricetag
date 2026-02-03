@@ -45,6 +45,17 @@
                         <input type="hidden" name="remove_logo" id="removeLogo" value="">
                     </div>
                 </div>
+
+                <div class="form-group mt-4">
+                    <label for="logo_height" class="form-label">Logo Height</label>
+                    <p class="form-help mb-2">Set the display height of the logo in pixels (width auto-scales)</p>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="logo_height" name="logo_height"
+                               value="<?= e($settings['logo_height'] ?? '50') ?>"
+                               class="form-input" style="width: 100px;" min="20" max="120" step="5">
+                        <span class="text-muted">px</span>
+                    </div>
+                </div>
             </div>
         </div>
 

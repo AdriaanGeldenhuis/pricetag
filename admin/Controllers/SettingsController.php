@@ -57,6 +57,7 @@ class SettingsController extends Controller
             'secondary_color' => $_POST['secondary_color'] ?? '#1e40af',
             'accent_color' => $_POST['accent_color'] ?? '#f59e0b',
             'font_family' => $_POST['font_family'] ?? 'Inter',
+            'logo_height' => $_POST['logo_height'] ?? '50',
         ];
 
         $uploadFailed = false;

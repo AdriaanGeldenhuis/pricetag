@@ -581,6 +581,7 @@ function getBranding(): array
 
     $branding = [
         'logo' => getSetting('logo', 'branding'),
+        'logo_height' => getSetting('logo_height', 'branding', '50'),
         'favicon' => getSetting('favicon', 'branding'),
         'header_bg' => getSetting('header_bg', 'branding'),
         'primary_color' => getSetting('primary_color', 'branding', '#2563eb'),

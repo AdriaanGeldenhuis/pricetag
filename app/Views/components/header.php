@@ -15,7 +15,7 @@
             <?php $headerBranding = getBranding(); ?>
             <a href="<?= url('/') ?>" class="header-logo" aria-label="<?= e(config('app.name')) ?> - Home">
                 <?php if (!empty($headerBranding['logo'])): ?>
-                <img src="<?= url($headerBranding['logo']) ?>" alt="<?= e(config('app.name')) ?>" class="header-logo-img" style="max-height: 50px; width: auto;">
+                <img src="<?= url($headerBranding['logo']) ?>" alt="<?= e(config('app.name')) ?>" class="header-logo-img" style="height: <?= e($headerBranding['logo_height']) ?>px; width: auto;">
                 <?php else: ?>
                 <span class="header-logo-text"><?= e(config('app.name')) ?></span>
                 <?php endif; ?>

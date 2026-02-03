@@ -592,3 +592,53 @@ function getBranding(): array
 
     return $branding;
 }
+
+/**
+ * Get all appearance settings with defaults
+ */
+function getAppearance(): array
+{
+    static $appearance = null;
+
+    if ($appearance !== null) {
+        return $appearance;
+    }
+
+    $appearance = [
+        // Announcement Bar
+        'announcement_enabled' => getSetting('announcement_enabled', 'appearance', '0'),
+        'announcement_text' => getSetting('announcement_text', 'appearance', ''),
+        'announcement_link' => getSetting('announcement_link', 'appearance', ''),
+        'announcement_bg_color' => getSetting('announcement_bg_color', 'appearance', '#1e40af'),
+        'announcement_text_color' => getSetting('announcement_text_color', 'appearance', '#ffffff'),
+        // WhatsApp Widget
+        'whatsapp_enabled' => getSetting('whatsapp_enabled', 'appearance', '0'),
+        'whatsapp_number' => getSetting('whatsapp_number', 'appearance', ''),
+        'whatsapp_message' => getSetting('whatsapp_message', 'appearance', 'Hi! I have a question about your products.'),
+        'whatsapp_position' => getSetting('whatsapp_position', 'appearance', 'bottom-right'),
+        // Trust Badges
+        'trust_badges_enabled' => getSetting('trust_badges_enabled', 'appearance', '1'),
+        'trust_badge_1_title' => getSetting('trust_badge_1_title', 'appearance', 'Free Delivery'),
+        'trust_badge_1_subtitle' => getSetting('trust_badge_1_subtitle', 'appearance', 'Orders over R500'),
+        'trust_badge_2_title' => getSetting('trust_badge_2_title', 'appearance', 'Secure Payment'),
+        'trust_badge_2_subtitle' => getSetting('trust_badge_2_subtitle', 'appearance', '100% Protected'),
+        'trust_badge_3_title' => getSetting('trust_badge_3_title', 'appearance', 'Quality Products'),
+        'trust_badge_3_subtitle' => getSetting('trust_badge_3_subtitle', 'appearance', 'Best brands only'),
+        'trust_badge_4_title' => getSetting('trust_badge_4_title', 'appearance', '24/7 Support'),
+        'trust_badge_4_subtitle' => getSetting('trust_badge_4_subtitle', 'appearance', 'Always here to help'),
+        // Footer
+        'footer_description' => getSetting('footer_description', 'appearance', 'Your trusted destination for premium products at competitive prices. Fast delivery across South Africa.'),
+        'footer_email' => getSetting('footer_email', 'appearance', 'info@pricetag.co.za'),
+        'footer_phone' => getSetting('footer_phone', 'appearance', '+27 (0) 10 000 0000'),
+        'footer_hours' => getSetting('footer_hours', 'appearance', 'Mon - Fri: 8am - 5pm'),
+        'footer_copyright' => getSetting('footer_copyright', 'appearance', ''),
+        // Cookie Consent
+        'cookie_consent_enabled' => getSetting('cookie_consent_enabled', 'appearance', '0'),
+        'cookie_consent_text' => getSetting('cookie_consent_text', 'appearance', 'We use cookies to enhance your browsing experience.'),
+        'cookie_policy_link' => getSetting('cookie_policy_link', 'appearance', '/page/privacy'),
+        // Back to Top
+        'back_to_top_enabled' => getSetting('back_to_top_enabled', 'appearance', '1'),
+    ];
+
+    return $appearance;
+}

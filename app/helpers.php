@@ -141,6 +141,14 @@ function csrfField(): string
 }
 
 /**
+ * Alias for csrfField (snake_case version used in views)
+ */
+function csrf_field(): string
+{
+    return csrfField();
+}
+
+/**
  * Regenerate CSRF token
  */
 function regenerateCsrfToken(): void

@@ -8,7 +8,7 @@ namespace App\Core;
 
 abstract class Controller
 {
-    protected array $data = [];
+    protected $data = [];
 
     /**
      * Render a view

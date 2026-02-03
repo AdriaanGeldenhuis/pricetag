@@ -26,23 +26,10 @@ class BannerController extends Controller
     {
         $db = Database::getInstance();
         $location = $_GET['location'] ?? '';
+        $banners = [];
 
         try {
-            $sql = "SELECT * FROM banners";
-            $params = [];
-
-            if ($location) {
-                $sql .= " WHERE location = ?";
-                $params[] = $location;
-            }
-
-            $sql .= " ORDER BY location, sort_order ASC";
-
-            $stmt = $db->prepare($sql);
-            $stmt->execute($params);
-            $banners = $stmt->fetchAll();
-        } catch (\PDOException $e) {
-            // Table might not exist - create it
+            // Ensure table exists
             $db->exec("
                 CREATE TABLE IF NOT EXISTS `banners` (
                     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -64,6 +51,23 @@ class BannerController extends Controller
                     PRIMARY KEY (`id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             ");
+
+            $sql = "SELECT * FROM banners";
+            $params = [];
+
+            if ($location) {
+                $sql .= " WHERE location = ?";
+                $params[] = $location;
+            }
+
+            $sql .= " ORDER BY location, sort_order ASC";
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $banners = $stmt->fetchAll() ?: [];
+        } catch (\PDOException $e) {
+            // Log error but continue with empty banners
+            error_log("BannerController::index error: " . $e->getMessage());
             $banners = [];
         }
 

@@ -80,12 +80,10 @@ class HomepageController extends Controller
     public function index(): void
     {
         $db = Database::getInstance();
+        $sections = [];
 
         try {
-            $stmt = $db->query("SELECT * FROM home_sections ORDER BY sort_order ASC");
-            $sections = $stmt->fetchAll();
-        } catch (\PDOException $e) {
-            // Table might not exist - create it
+            // Ensure table exists
             $db->exec("
                 CREATE TABLE IF NOT EXISTS `home_sections` (
                     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -100,6 +98,12 @@ class HomepageController extends Controller
                     PRIMARY KEY (`id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             ");
+
+            $stmt = $db->query("SELECT * FROM home_sections ORDER BY sort_order ASC");
+            $sections = $stmt->fetchAll() ?: [];
+        } catch (\PDOException $e) {
+            // Log error but continue with empty sections
+            error_log("HomepageController::index error: " . $e->getMessage());
             $sections = [];
         }
 

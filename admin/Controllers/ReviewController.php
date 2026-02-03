@@ -18,38 +18,61 @@ class ReviewController extends Controller
         $status = $_GET['status'] ?? '';
         $rating = $_GET['rating'] ?? '';
 
-        $sql = "SELECT r.*, p.name as product_name, p.slug as product_slug,
-                       u.first_name, u.last_name, u.email
-                FROM reviews r
-                LEFT JOIN products p ON r.product_id = p.id
-                LEFT JOIN users u ON r.user_id = u.id
-                WHERE 1=1";
-        $params = [];
+        try {
+            $sql = "SELECT r.*, p.name as product_name, p.slug as product_slug,
+                           u.first_name, u.last_name, u.email
+                    FROM reviews r
+                    LEFT JOIN products p ON r.product_id = p.id
+                    LEFT JOIN users u ON r.user_id = u.id
+                    WHERE 1=1";
+            $params = [];
 
-        if ($status === 'pending') {
-            $sql .= " AND r.is_approved = 0";
-        } elseif ($status === 'approved') {
-            $sql .= " AND r.is_approved = 1";
+            if ($status === 'pending') {
+                $sql .= " AND r.is_approved = 0";
+            } elseif ($status === 'approved') {
+                $sql .= " AND r.is_approved = 1";
+            }
+
+            if ($rating) {
+                $sql .= " AND r.rating = ?";
+                $params[] = (int)$rating;
+            }
+
+            $sql .= " ORDER BY r.created_at DESC";
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $reviews = $stmt->fetchAll();
+
+            // Stats
+            $stmt = $db->query("SELECT
+                COUNT(*) as total,
+                SUM(is_approved = 0) as pending,
+                AVG(rating) as avg_rating
+                FROM reviews");
+            $stats = $stmt->fetch();
+        } catch (\PDOException $e) {
+            // Table might not exist - create it
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS `reviews` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `product_id` INT UNSIGNED NOT NULL,
+                    `user_id` INT UNSIGNED DEFAULT NULL,
+                    `order_item_id` INT UNSIGNED DEFAULT NULL,
+                    `rating` TINYINT UNSIGNED NOT NULL,
+                    `title` VARCHAR(255) DEFAULT NULL,
+                    `content` TEXT DEFAULT NULL,
+                    `is_verified` TINYINT(1) NOT NULL DEFAULT 0,
+                    `is_approved` TINYINT(1) NOT NULL DEFAULT 0,
+                    `helpful_count` INT UNSIGNED NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+            $reviews = [];
+            $stats = ['total' => 0, 'pending' => 0, 'avg_rating' => 0];
         }
-
-        if ($rating) {
-            $sql .= " AND r.rating = ?";
-            $params[] = (int)$rating;
-        }
-
-        $sql .= " ORDER BY r.created_at DESC";
-
-        $stmt = $db->prepare($sql);
-        $stmt->execute($params);
-        $reviews = $stmt->fetchAll();
-
-        // Stats
-        $stmt = $db->query("SELECT
-            COUNT(*) as total,
-            SUM(is_approved = 0) as pending,
-            AVG(rating) as avg_rating
-            FROM reviews");
-        $stats = $stmt->fetch();
 
         $this->layout('admin');
         $this->view('pages/reviews/index', [

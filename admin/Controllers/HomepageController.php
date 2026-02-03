@@ -78,8 +78,27 @@ class HomepageController extends Controller
     {
         $db = Database::getInstance();
 
-        $stmt = $db->query("SELECT * FROM home_sections ORDER BY sort_order ASC");
-        $sections = $stmt->fetchAll();
+        try {
+            $stmt = $db->query("SELECT * FROM home_sections ORDER BY sort_order ASC");
+            $sections = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            // Table might not exist - create it
+            $db->exec("
+                CREATE TABLE IF NOT EXISTS `home_sections` (
+                    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `type` VARCHAR(50) NOT NULL,
+                    `title` VARCHAR(255) DEFAULT NULL,
+                    `subtitle` TEXT DEFAULT NULL,
+                    `config` JSON DEFAULT NULL,
+                    `sort_order` INT NOT NULL DEFAULT 0,
+                    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ");
+            $sections = [];
+        }
 
         // Parse JSON config
         foreach ($sections as &$section) {

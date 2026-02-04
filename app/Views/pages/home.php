@@ -552,7 +552,11 @@
     transform: scale(1.2);
 }
 
-/* Trust Badges */
+/* Trust Badges - Dark Theme */
+.trust-badges {
+    background-color: var(--color-background-secondary) !important;
+}
+
 .trust-badges-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -570,14 +574,16 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-4);
-    background: var(--color-background);
+    background: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
     border-radius: var(--radius-xl);
     transition: var(--transition-all);
 }
 
 .trust-badge:hover {
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     transform: translateY(-2px);
+    border-color: var(--color-primary);
 }
 
 .trust-badge-icon {
@@ -586,8 +592,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-primary-50);
-    color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-text);
     border-radius: var(--radius-lg);
     flex-shrink: 0;
 }
@@ -596,6 +602,7 @@
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     margin-bottom: 2px;
+    color: var(--color-text);
 }
 
 .trust-badge-content p {
@@ -624,23 +631,23 @@
 }
 
 .badge-primary {
-    background: var(--color-primary-100);
-    color: var(--color-primary-700);
+    background: rgba(139, 43, 43, 0.2);
+    color: var(--color-primary-400);
 }
 
 .badge-success {
-    background: var(--color-success-100, #dcfce7);
-    color: var(--color-success-700, #15803d);
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--color-success);
 }
 
 .badge-danger {
-    background: var(--color-danger-100, #fee2e2);
-    color: var(--color-danger-700, #b91c1c);
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-danger);
 }
 
 .badge-warning {
-    background: var(--color-warning-100, #fef3c7);
-    color: var(--color-warning-700, #b45309);
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--color-warning);
 }
 
 .section-title {
@@ -660,12 +667,12 @@
     gap: var(--space-2);
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
-    color: var(--color-primary);
+    color: var(--color-accent);
     transition: var(--transition-colors);
 }
 
 .section-link:hover {
-    color: var(--color-primary-700);
+    color: var(--color-text);
 }
 
 .section-link svg {
@@ -700,16 +707,18 @@
     flex-direction: column;
     align-items: center;
     padding: var(--space-6);
-    background: var(--color-background-alt);
+    background: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
     border-radius: var(--radius-2xl);
     text-align: center;
     transition: var(--transition-all);
 }
 
 .category-spotlight-item:hover {
-    background: var(--color-background);
-    box-shadow: var(--shadow-lg);
+    background: var(--color-background-hover);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     transform: translateY(-4px);
+    border-color: var(--color-primary);
 }
 
 .category-spotlight-icon {
@@ -718,8 +727,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-primary-50);
-    color: var(--color-primary);
+    background: var(--color-background-hover);
+    color: var(--color-text-secondary);
     border-radius: var(--radius-xl);
     margin-bottom: var(--space-3);
     transition: var(--transition-all);
@@ -797,10 +806,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-background);
+    background: var(--color-background-elevated);
     border: var(--border-1) solid var(--color-border);
     border-radius: var(--radius-full);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     color: var(--color-text);
     transition: var(--transition-all);
     opacity: 0;
@@ -891,9 +900,9 @@
     color: var(--color-danger);
 }
 
-/* Deals Section */
+/* Deals Section - Dark Theme */
 .deals-section {
-    background: linear-gradient(180deg, var(--color-danger-50, #fef2f2) 0%, var(--color-background) 100%);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.1) 0%, var(--color-background) 100%);
 }
 
 /* Newsletter */

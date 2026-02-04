@@ -1,45 +1,44 @@
 /**
  * Design System - CSS Custom Properties
- * Pricetag.co.za - Enterprise E-commerce Platform
+ * Pricetag.co.za - Dark Theme (Evetech-inspired)
  *
  * Global tokens defined once, used everywhere.
- * No random CSS values allowed outside this system.
  */
 
 :root {
   /* =========================================================================
-     COLOR PALETTE
+     COLOR PALETTE - DARK THEME
      ========================================================================= */
 
-  /* Primary - Brand blue */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-  --color-primary: var(--color-primary-600);
+  /* Primary - Burgundy/Maroon */
+  --color-primary-50: #fdf2f2;
+  --color-primary-100: #fce4e4;
+  --color-primary-200: #fbd5d5;
+  --color-primary-300: #f5a3a3;
+  --color-primary-400: #ee6b6b;
+  --color-primary-500: #8B2B2B;
+  --color-primary-600: #7a2424;
+  --color-primary-700: #651e1e;
+  --color-primary-800: #541919;
+  --color-primary-900: #471515;
+  --color-primary: var(--color-primary-500);
 
-  /* Secondary - Deep blue */
-  --color-secondary-500: #1e40af;
-  --color-secondary-600: #1e3a8a;
-  --color-secondary-700: #172554;
-  --color-secondary: var(--color-secondary-500);
-
-  /* Accent - Amber/Gold */
-  --color-accent-50: #fffbeb;
-  --color-accent-100: #fef3c7;
-  --color-accent-200: #fde68a;
-  --color-accent-300: #fcd34d;
-  --color-accent-400: #fbbf24;
-  --color-accent-500: #f59e0b;
-  --color-accent-600: #d97706;
-  --color-accent-700: #b45309;
+  /* Accent - Pink/Magenta (for highlights) */
+  --color-accent-50: #fdf2f8;
+  --color-accent-100: #fce7f3;
+  --color-accent-200: #fbcfe8;
+  --color-accent-300: #f9a8d4;
+  --color-accent-400: #f472b6;
+  --color-accent-500: #ec4899;
+  --color-accent-600: #db2777;
+  --color-accent-700: #be185d;
   --color-accent: var(--color-accent-500);
+
+  /* Secondary - Deep Red */
+  --color-secondary-500: #991b1b;
+  --color-secondary-600: #7f1d1d;
+  --color-secondary-700: #450a0a;
+  --color-secondary: var(--color-secondary-500);
 
   /* Success - Green */
   --color-success-50: #f0fdf4;
@@ -49,11 +48,11 @@
   --color-success-700: #15803d;
   --color-success: var(--color-success-500);
 
-  /* Warning - Orange */
-  --color-warning-50: #fff7ed;
-  --color-warning-100: #ffedd5;
-  --color-warning-500: #f97316;
-  --color-warning-600: #ea580c;
+  /* Warning - Orange/Amber */
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
   --color-warning: var(--color-warning-500);
 
   /* Danger - Red */
@@ -64,30 +63,42 @@
   --color-danger-700: #b91c1c;
   --color-danger: var(--color-danger-500);
 
-  /* Neutral - Gray scale */
+  /* Dark Theme Neutrals */
   --color-neutral-0: #ffffff;
-  --color-neutral-50: #f9fafb;
-  --color-neutral-100: #f3f4f6;
-  --color-neutral-200: #e5e7eb;
-  --color-neutral-300: #d1d5db;
-  --color-neutral-400: #9ca3af;
-  --color-neutral-500: #6b7280;
-  --color-neutral-600: #4b5563;
-  --color-neutral-700: #374151;
-  --color-neutral-800: #1f2937;
-  --color-neutral-900: #111827;
-  --color-neutral-950: #030712;
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
 
-  /* Semantic colors */
-  --color-text: var(--color-neutral-900);
-  --color-text-muted: var(--color-neutral-500);
-  --color-text-light: var(--color-neutral-400);
-  --color-text-inverse: var(--color-neutral-0);
-  --color-background: var(--color-neutral-0);
-  --color-background-alt: var(--color-neutral-50);
-  --color-background-hover: var(--color-neutral-100);
-  --color-border: var(--color-neutral-200);
-  --color-border-light: var(--color-neutral-100);
+  /* Dark Theme Semantic colors */
+  --color-text: #ffffff;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-text-light: #52525b;
+  --color-text-inverse: #18181b;
+  --color-text-link: var(--color-accent-500);
+
+  --color-background: #121212;
+  --color-background-secondary: #1a1a1a;
+  --color-background-alt: #242424;
+  --color-background-elevated: #2a2a2a;
+  --color-background-hover: #333333;
+  --color-background-input: #1e1e1e;
+
+  --color-border: #333333;
+  --color-border-light: #2a2a2a;
+  --color-border-focus: var(--color-primary);
+
+  /* Card backgrounds with subtle gradients */
+  --color-card-bg: linear-gradient(135deg, #1e1e1e 0%, #252525 100%);
+  --color-card-bg-hover: linear-gradient(135deg, #252525 0%, #2d2d2d 100%);
 
   /* =========================================================================
      TYPOGRAPHY
@@ -182,21 +193,21 @@
   --border-8: 8px;
 
   /* =========================================================================
-     SHADOWS
+     SHADOWS (adjusted for dark theme)
      ========================================================================= */
 
-  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.6);
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.3);
   --shadow-none: 0 0 #0000;
 
-  /* Colored shadows for interactive elements */
-  --shadow-primary: 0 4px 14px 0 rgb(37 99 235 / 0.3);
-  --shadow-accent: 0 4px 14px 0 rgb(245 158 11 / 0.3);
+  /* Glow effects for dark theme */
+  --shadow-glow-primary: 0 0 20px rgb(139 43 43 / 0.4);
+  --shadow-glow-accent: 0 0 20px rgb(236 72 153 / 0.4);
 
   /* =========================================================================
      TRANSITIONS & ANIMATIONS
@@ -266,14 +277,14 @@
      FORM ELEMENTS
      ========================================================================= */
 
-  --input-height: 44px;
-  --input-height-sm: 36px;
-  --input-height-lg: 52px;
+  --input-height: 48px;
+  --input-height-sm: 40px;
+  --input-height-lg: 56px;
   --input-padding-x: var(--space-4);
   --input-border-radius: var(--radius-lg);
   --input-border-color: var(--color-border);
   --input-border-color-focus: var(--color-primary);
-  --input-background: var(--color-background);
+  --input-background: var(--color-background-input);
 
   /* =========================================================================
      COMPONENT SPECIFIC
@@ -282,8 +293,9 @@
   /* Cards */
   --card-padding: var(--space-6);
   --card-radius: var(--radius-xl);
-  --card-shadow: var(--shadow-sm);
-  --card-shadow-hover: var(--shadow-md);
+  --card-shadow: var(--shadow-md);
+  --card-shadow-hover: var(--shadow-lg);
+  --card-background: var(--color-background-elevated);
 
   /* Buttons */
   --button-padding-x: var(--space-6);
@@ -292,8 +304,8 @@
   --button-font-weight: var(--font-semibold);
 
   /* Badges */
-  --badge-padding-x: var(--space-2);
-  --badge-padding-y: var(--space-0-5);
+  --badge-padding-x: var(--space-3);
+  --badge-padding-y: var(--space-1);
   --badge-radius: var(--radius-full);
   --badge-font-size: var(--text-xs);
 
@@ -303,30 +315,33 @@
 }
 
 /* =========================================================================
-   DARK MODE (Future-ready)
+   GLOBAL RESETS FOR DARK THEME
    ========================================================================= */
 
-@media (prefers-color-scheme: dark) {
-  :root.auto-dark {
-    --color-text: var(--color-neutral-100);
-    --color-text-muted: var(--color-neutral-400);
-    --color-background: var(--color-neutral-900);
-    --color-background-alt: var(--color-neutral-800);
-    --color-background-hover: var(--color-neutral-700);
-    --color-border: var(--color-neutral-700);
-    --color-border-light: var(--color-neutral-800);
-  }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-600) var(--color-background-secondary);
 }
 
-/* =========================================================================
-   RESPONSIVE BREAKPOINTS (Reference)
-   ========================================================================= */
-/*
-  Mobile first approach:
-  - Default: 0-639px (mobile)
-  - sm: 640px+ (large mobile / small tablet)
-  - md: 768px+ (tablet)
-  - lg: 1024px+ (small desktop)
-  - xl: 1280px+ (desktop)
-  - 2xl: 1536px+ (large desktop)
-*/
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--color-background-secondary);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-600);
+  border-radius: var(--radius-full);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-500);
+}
+
+::selection {
+  background: var(--color-primary);
+  color: white;
+}

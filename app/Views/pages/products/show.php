@@ -970,6 +970,15 @@
 .product-wishlist-btn {
     flex-shrink: 0;
     width: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.product-wishlist-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
 }
 
 /* Notify */
@@ -1355,6 +1364,38 @@
 }
 
 /* Gallery is now relative, no sticky behavior */
+
+/* Social Share Section */
+.product-share {
+    display: flex;
+    align-items: center;
+    border-top: var(--border-1) solid var(--color-border);
+    padding-top: var(--space-4);
+    margin-top: var(--space-6);
+}
+
+.product-share .btn-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    background-color: var(--color-background);
+    border: var(--border-1) solid var(--color-border);
+    transition: var(--transition-all);
+}
+
+.product-share .btn-icon:hover {
+    background-color: var(--color-background-hover);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.product-share .btn-icon svg {
+    width: 18px;
+    height: 18px;
+}
 </style>
 
 <script>

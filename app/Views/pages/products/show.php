@@ -974,12 +974,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    color: var(--color-text);
+    border-color: var(--color-border);
 }
 
 .product-wishlist-btn svg {
     width: 24px;
     height: 24px;
-    stroke: currentColor;
+    stroke: var(--color-text);
+    stroke-width: 2;
+}
+
+.product-wishlist-btn:hover svg {
+    stroke: var(--color-primary);
+    fill: var(--color-primary-100);
 }
 
 /* Notify */
@@ -1395,9 +1403,9 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-lg);
-    background-color: #ffffff;
+    background-color: var(--color-background-elevated);
     border: 1px solid var(--color-border);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     transition: all 0.2s ease;
     cursor: pointer;
     text-decoration: none;
@@ -1408,13 +1416,29 @@
     border-color: var(--color-primary);
     color: #ffffff;
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .product-share-btn svg {
     width: 18px;
     height: 18px;
     flex-shrink: 0;
+}
+
+.product-share-btn svg[fill="currentColor"] {
+    fill: var(--color-text);
+}
+
+.product-share-btn svg[stroke="currentColor"] {
+    stroke: var(--color-text);
+}
+
+.product-share-btn:hover svg[fill="currentColor"] {
+    fill: #ffffff;
+}
+
+.product-share-btn:hover svg[stroke="currentColor"] {
+    stroke: #ffffff;
 }
 </style>
 

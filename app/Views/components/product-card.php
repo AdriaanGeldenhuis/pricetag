@@ -7,8 +7,10 @@
 $primaryImage = $product->getPrimaryImage();
 $primaryCategory = $product->getPrimaryCategory();
 $discount = $product->getDiscountPercentage();
+$inStock = $product->isInStock();
+$stockStatus = $product->getStockStatus();
 ?>
-<article class="product-card">
+<article class="product-card <?php echo !$inStock ? 'product-card-out-of-stock' : ''; ?>">
     <div class="product-card-image">
         <a href="<?php echo url('/products/' . $product->slug); ?>">
             <?php if ($primaryImage): ?>
@@ -28,13 +30,17 @@ $discount = $product->getDiscountPercentage();
         </a>
 
         <!-- Badges -->
-        <?php if (($product->is_on_sale && $discount) || $product->is_new): ?>
+        <?php if (!$inStock || ($product->is_on_sale && $discount) || $product->is_new): ?>
         <div class="product-card-badges">
-            <?php if ($product->is_on_sale && $discount): ?>
-            <span class="product-badge badge-sale">-<?php echo $discount; ?>%</span>
-            <?php endif; ?>
-            <?php if ($product->is_new): ?>
-            <span class="product-badge badge-new">New</span>
+            <?php if (!$inStock): ?>
+            <span class="product-badge badge-out-of-stock">Out of Stock</span>
+            <?php else: ?>
+                <?php if ($product->is_on_sale && $discount): ?>
+                <span class="product-badge badge-sale">-<?php echo $discount; ?>%</span>
+                <?php endif; ?>
+                <?php if ($product->is_new): ?>
+                <span class="product-badge badge-new">New</span>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
         <?php endif; ?>
@@ -59,9 +65,10 @@ $discount = $product->getDiscountPercentage();
                 </svg>
             </button>
             <button type="button"
-                    class="product-action-btn product-action-cart"
+                    class="product-action-btn product-action-cart <?php echo !$inStock ? 'disabled' : ''; ?>"
                     data-add-to-cart="<?php echo $product->id; ?>"
-                    aria-label="Add to cart">
+                    aria-label="<?php echo $inStock ? 'Add to cart' : 'Out of stock'; ?>"
+                    <?php echo !$inStock ? 'disabled' : ''; ?>>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="9" cy="21" r="1"></circle>
                     <circle cx="20" cy="21" r="1"></circle>
@@ -178,6 +185,28 @@ $discount = $product->getDiscountPercentage();
 .badge-new {
     background-color: var(--color-success);
     color: var(--color-neutral-900);
+}
+
+.badge-out-of-stock {
+    background-color: var(--color-neutral-600);
+    color: white;
+}
+
+/* Out of Stock State */
+.product-card-out-of-stock .product-card-img {
+    opacity: 0.6;
+    filter: grayscale(30%);
+}
+
+.product-card-out-of-stock:hover .product-card-img {
+    transform: none;
+}
+
+.product-action-btn.disabled,
+.product-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* Quick Actions */

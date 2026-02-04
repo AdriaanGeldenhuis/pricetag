@@ -318,6 +318,21 @@ class Product extends Model
     }
 
     /**
+     * Get specifications
+     */
+    public function getSpecifications(): array
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("SELECT spec_name, spec_value FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC");
+            $stmt->execute([$this->id]);
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
      * Check if in stock
      */
     public function isInStock(): bool
@@ -404,36 +419,36 @@ class Product extends Model
     {
         $db = Database::getInstance();
 
-        $where = ["status = 'active'"];
+        $where = ["p.status = 'active'"];
         $params = [];
 
         if (!empty($filters['category_id'])) {
-            $where[] = "id IN (SELECT product_id FROM product_categories WHERE category_id = ?)";
+            $where[] = "p.id IN (SELECT product_id FROM product_categories WHERE category_id = ?)";
             $params[] = $filters['category_id'];
         }
 
         if (!empty($filters['is_featured'])) {
-            $where[] = "is_featured = 1";
+            $where[] = "p.is_featured = 1";
         }
 
         if (!empty($filters['is_on_sale'])) {
-            $where[] = "is_on_sale = 1";
+            $where[] = "p.is_on_sale = 1";
         }
 
         if (!empty($filters['is_new'])) {
-            $where[] = "is_new = 1";
+            $where[] = "p.is_new = 1";
         }
 
         $whereClause = implode(' AND ', $where);
 
         $orderBy = match ($sort) {
-            'price_asc' => 'price ASC',
-            'price_desc' => 'price DESC',
-            'popular' => 'sold_count DESC',
-            'rating' => 'rating_average DESC',
-            'name_asc' => 'name ASC',
-            'name_desc' => 'name DESC',
-            default => 'created_at DESC'
+            'price_asc' => 'p.price ASC',
+            'price_desc' => 'p.price DESC',
+            'popular' => 'p.sold_count DESC',
+            'rating' => 'p.rating_average DESC',
+            'name_asc' => 'p.name ASC',
+            'name_desc' => 'p.name DESC',
+            default => 'p.created_at DESC'
         };
 
         $offset = ($page - 1) * $limit;
@@ -442,8 +457,8 @@ class Product extends Model
             FROM products p
             LEFT JOIN product_categories pc ON pc.product_id = p.id AND pc.is_primary = 1
             LEFT JOIN categories c ON c.id = pc.category_id
-            WHERE p.{$whereClause}
-            ORDER BY p.{$orderBy}
+            WHERE {$whereClause}
+            ORDER BY {$orderBy}
             LIMIT ? OFFSET ?
         ");
         $params[] = $limit;

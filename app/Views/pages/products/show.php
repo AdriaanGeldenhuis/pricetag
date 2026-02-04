@@ -517,10 +517,9 @@
 <style>
 /* Product Gallery */
 .product-gallery {
-    position: sticky;
-    top: 100px;
-    align-self: start;
-    height: fit-content;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
 }
 
 .product-main-image-wrapper {
@@ -1286,11 +1285,7 @@
     font-size: var(--text-sm);
 }
 
-@media (max-width: 1024px) {
-    .product-gallery {
-        position: static;
-    }
-}
+/* Gallery is now relative, no sticky behavior */
 </style>
 
 <script>

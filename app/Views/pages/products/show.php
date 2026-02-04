@@ -952,6 +952,8 @@
     border: none;
     border-left: var(--border-1) solid var(--color-border);
     border-right: var(--border-1) solid var(--color-border);
+    background: var(--color-background-elevated);
+    color: var(--color-text);
 }
 
 /* Actions */

@@ -45,21 +45,31 @@
                     <h3 class="font-semibold mb-4">Filters</h3>
 
                     <form action="<?= url('/categories/' . $category->slug) ?>" method="GET" id="filter-form">
-                        <!-- Price Range -->
-                        <?php if ($availableFilters['price_range']['min_price'] !== null): ?>
+                        <!-- Price Range Slider -->
+                        <?php if ($availableFilters['price_range']['min_price'] !== null):
+                            $priceMin = (int)$availableFilters['price_range']['min_price'];
+                            $priceMax = (int)$availableFilters['price_range']['max_price'];
+                            $currentMin = (int)($filters['min_price'] ?? $priceMin);
+                            $currentMax = (int)($filters['max_price'] ?? $priceMax);
+                        ?>
                         <div class="mb-6">
                             <h4 class="text-sm font-medium mb-3">Price</h4>
-                            <div class="flex gap-2">
-                                <input type="number" name="min_price" placeholder="Min"
-                                       value="<?= e($filters['min_price'] ?? '') ?>"
-                                       class="form-input" style="width: 50%;">
-                                <input type="number" name="max_price" placeholder="Max"
-                                       value="<?= e($filters['max_price'] ?? '') ?>"
-                                       class="form-input" style="width: 50%;">
+                            <div class="price-range-slider">
+                                <div class="price-range-track">
+                                    <div class="price-range-progress" id="priceProgress"></div>
+                                </div>
+                                <input type="range" class="price-range-input" id="priceMin"
+                                       min="<?= $priceMin ?>" max="<?= $priceMax ?>" value="<?= $currentMin ?>">
+                                <input type="range" class="price-range-input" id="priceMax"
+                                       min="<?= $priceMin ?>" max="<?= $priceMax ?>" value="<?= $currentMax ?>">
                             </div>
-                            <p class="text-xs text-muted mt-1">
-                                Range: <?= formatPrice($availableFilters['price_range']['min_price']) ?> - <?= formatPrice($availableFilters['price_range']['max_price']) ?>
-                            </p>
+                            <div class="price-range-values">
+                                <span id="priceMinDisplay"><?= formatPrice($currentMin) ?></span>
+                                <span>-</span>
+                                <span id="priceMaxDisplay"><?= formatPrice($currentMax) ?></span>
+                            </div>
+                            <input type="hidden" name="min_price" id="minPriceInput" value="<?= $currentMin ?>">
+                            <input type="hidden" name="max_price" id="maxPriceInput" value="<?= $currentMax ?>">
                         </div>
                         <?php endif; ?>
 
@@ -164,3 +174,63 @@
         </div>
     </div>
 </div>
+
+<?php if ($availableFilters['price_range']['min_price'] !== null): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const priceMin = document.getElementById('priceMin');
+    const priceMax = document.getElementById('priceMax');
+    const progress = document.getElementById('priceProgress');
+    const minDisplay = document.getElementById('priceMinDisplay');
+    const maxDisplay = document.getElementById('priceMaxDisplay');
+    const minInput = document.getElementById('minPriceInput');
+    const maxInput = document.getElementById('maxPriceInput');
+
+    if (!priceMin || !priceMax) return;
+
+    const min = parseInt(priceMin.min);
+    const max = parseInt(priceMin.max);
+    const gap = Math.max(1, Math.floor((max - min) * 0.01)); // 1% minimum gap
+
+    function formatPrice(value) {
+        return 'R' + parseInt(value).toLocaleString('en-ZA');
+    }
+
+    function updateSlider() {
+        let minVal = parseInt(priceMin.value);
+        let maxVal = parseInt(priceMax.value);
+
+        // Prevent overlap
+        if (maxVal - minVal < gap) {
+            if (this === priceMin) {
+                priceMin.value = maxVal - gap;
+                minVal = maxVal - gap;
+            } else {
+                priceMax.value = minVal + gap;
+                maxVal = minVal + gap;
+            }
+        }
+
+        // Update progress bar
+        const leftPercent = ((minVal - min) / (max - min)) * 100;
+        const rightPercent = ((maxVal - min) / (max - min)) * 100;
+        progress.style.left = leftPercent + '%';
+        progress.style.width = (rightPercent - leftPercent) + '%';
+
+        // Update display
+        minDisplay.textContent = formatPrice(minVal);
+        maxDisplay.textContent = formatPrice(maxVal);
+
+        // Update hidden inputs
+        minInput.value = minVal;
+        maxInput.value = maxVal;
+    }
+
+    priceMin.addEventListener('input', updateSlider);
+    priceMax.addEventListener('input', updateSlider);
+
+    // Initialize
+    updateSlider.call(priceMin);
+});
+</script>
+<?php endif; ?>

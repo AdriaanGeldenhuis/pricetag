@@ -190,7 +190,7 @@ class AttributeController extends Controller
         $this->redirect('/admin/attributes');
     }
 
-    public function storeValue(int $attributeId): void
+    public function storeValue(int $id): void
     {
         if (!$this->validateCsrf()) {
             return;
@@ -207,7 +207,7 @@ class AttributeController extends Controller
         $slug = slugify($value);
 
         $stmt = $db->prepare("SELECT MAX(sort_order) FROM attribute_values WHERE attribute_id = ?");
-        $stmt->execute([$attributeId]);
+        $stmt->execute([$id]);
         $maxSort = (int) $stmt->fetchColumn();
 
         $stmt = $db->prepare("
@@ -215,7 +215,7 @@ class AttributeController extends Controller
             VALUES (?, ?, ?, ?, ?, NOW())
         ");
         $stmt->execute([
-            $attributeId,
+            $id,
             $value,
             $slug,
             $_POST['color_code'] ?? null,

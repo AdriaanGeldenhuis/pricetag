@@ -2840,3 +2840,857 @@
     opacity: 0.4;
     cursor: not-allowed;
 }
+
+/* ============================================================================
+   PRODUCT FORM - COMPREHENSIVE STYLING
+   ============================================================================ */
+
+/* Main form container - prevent overflow */
+.admin-wrapper .admin-form {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Product form grid layout */
+.product-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+    max-width: 100%;
+}
+
+@media (max-width: 1200px) {
+    .product-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Main content column */
+.product-main-form {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Sidebar column */
+.product-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+}
+
+@media (min-width: 1201px) {
+    .product-sidebar {
+        position: sticky;
+        top: calc(var(--admin-header-height, 70px) + 1.5rem);
+        align-self: flex-start;
+    }
+}
+
+/* Card body form group spacing */
+.admin-wrapper .admin-form .card-body.space-y-4 {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.admin-wrapper .admin-form .card-body.space-y-3 {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Form groups - consistent spacing */
+.admin-wrapper .admin-form .form-group {
+    margin-bottom: 0;
+}
+
+/* Form help text */
+.admin-wrapper .form-help {
+    font-size: 0.75rem;
+    color: var(--admin-text-muted);
+    margin-top: 0.375rem;
+    line-height: 1.4;
+}
+
+/* Input group styling */
+.admin-wrapper .input-group {
+    display: flex;
+    align-items: stretch;
+}
+
+.admin-wrapper .input-group .input-group-text {
+    display: flex;
+    align-items: center;
+    padding: 0 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--admin-text-muted);
+    background: var(--admin-bg-card);
+    border: 1px solid var(--admin-border);
+    border-right: none;
+    border-radius: var(--admin-radius) 0 0 var(--admin-radius);
+}
+
+.admin-wrapper .input-group .form-input {
+    border-radius: 0 var(--admin-radius) var(--admin-radius) 0;
+    flex: 1;
+    min-width: 0;
+}
+
+/* ============================================================================
+   PRODUCT IMAGES - PROPER SIZING
+   ============================================================================ */
+
+/* Image grid - 3 columns max, responsive */
+.product-images-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) {
+    .product-images-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .product-images-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Image container */
+.product-image-item {
+    position: relative;
+    border-radius: var(--admin-radius);
+    overflow: hidden;
+    background: var(--admin-bg-elevated);
+    border: 1px solid var(--admin-glass-border);
+}
+
+/* Image sizing - constrained */
+.product-image-item .product-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: cover;
+    display: block;
+    max-height: 160px;
+}
+
+/* Primary image indicator */
+.product-image-item .product-image.is-primary {
+    border: 2px solid var(--admin-primary);
+}
+
+/* Primary badge on images */
+.product-image-badge {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    background: var(--admin-primary);
+    color: #fff;
+    border-radius: 4px;
+    text-transform: uppercase;
+    z-index: 2;
+}
+
+/* Delete button on images */
+.product-image-delete {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(239, 68, 68, 0.9);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 2;
+}
+
+.product-image-item:hover .product-image-delete {
+    opacity: 1;
+}
+
+.product-image-delete:hover {
+    background: var(--admin-danger);
+}
+
+/* Set Primary button on images */
+.product-image-set-primary {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1a1a1a;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 2;
+}
+
+.product-image-item:hover .product-image-set-primary {
+    opacity: 1;
+}
+
+.product-image-set-primary:hover {
+    background: #fff;
+}
+
+/* Drag hint on images */
+.product-image-drag-hint {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    font-size: 0.625rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 2;
+}
+
+.product-image-item:hover .product-image-drag-hint {
+    opacity: 1;
+}
+
+/* Draggable cursor */
+.product-image-item[draggable="true"] {
+    cursor: move;
+}
+
+/* ============================================================================
+   SPECIFICATIONS - IMPROVED LAYOUT
+   ============================================================================ */
+
+#specifications-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.spec-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--admin-bg-elevated);
+    border-radius: var(--admin-radius);
+    border: 1px solid var(--admin-glass-border);
+}
+
+.spec-row .form-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.spec-row .btn {
+    flex-shrink: 0;
+}
+
+#no-specs-msg {
+    padding: 1.5rem;
+    text-align: center;
+    background: var(--admin-bg-elevated);
+    border-radius: var(--admin-radius);
+    border: 1px dashed var(--admin-border);
+}
+
+/* ============================================================================
+   REVIEWS SECTION
+   ============================================================================ */
+
+.review-item {
+    padding: 1.25rem;
+    background: var(--admin-bg-elevated);
+    border-radius: var(--admin-radius);
+    border: 1px solid var(--admin-glass-border);
+    margin-bottom: 1rem;
+}
+
+.review-item:last-child {
+    margin-bottom: 0;
+}
+
+/* ============================================================================
+   COLOR SWATCHES - ATTRIBUTE SELECTION
+   ============================================================================ */
+
+.color-swatch {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.color-swatch.selected,
+.color-option input:checked + .color-swatch {
+    border-color: var(--admin-primary);
+    box-shadow: 0 0 0 2px var(--admin-primary);
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ============================================================================
+   VARIANTS SECTION
+   ============================================================================ */
+
+.variant-item {
+    background: var(--admin-bg-elevated);
+    border: 1px solid var(--admin-glass-border);
+    border-radius: var(--admin-radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.variant-item:last-child {
+    margin-bottom: 0;
+}
+
+/* ============================================================================
+   GENERIC ADMIN LAYOUT - ALL PAGES
+   ============================================================================ */
+
+/* Main grid layout for 2-column forms (main + sidebar) */
+.admin-wrapper .grid.lg\:grid-cols-3 {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+    max-width: 100%;
+}
+
+@media (max-width: 1024px) {
+    .admin-wrapper .grid.lg\:grid-cols-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Main content column spanning 2 of 3 */
+.admin-wrapper .lg\:col-span-2 {
+    grid-column: 1;
+    min-width: 0;
+}
+
+/* Settings page 4-column layout */
+.admin-wrapper .grid.lg\:grid-cols-4 {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 1.5rem;
+    max-width: 100%;
+}
+
+@media (max-width: 1024px) {
+    .admin-wrapper .grid.lg\:grid-cols-4 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.admin-wrapper .lg\:col-span-3 {
+    min-width: 0;
+}
+
+/* 2-column grid for equal cards */
+.admin-wrapper .grid.md\:grid-cols-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .admin-wrapper .grid.md\:grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 3-column grid */
+.admin-wrapper .grid.md\:grid-cols-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 768px) {
+    .admin-wrapper .grid.md\:grid-cols-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 4-column grid */
+.admin-wrapper .grid.md\:grid-cols-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 768px) {
+    .admin-wrapper .grid.md\:grid-cols-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Space-y utility classes - convert to flexbox for proper spacing */
+.admin-wrapper .space-y-1 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.admin-wrapper .space-y-2 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.admin-wrapper .space-y-3 {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.admin-wrapper .space-y-4 {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.admin-wrapper .space-y-6 {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Sidebar sticky positioning */
+.admin-wrapper .grid.lg\:grid-cols-3 > .space-y-6:last-child,
+.admin-wrapper .grid.lg\:grid-cols-3 > div:last-child:not(.lg\:col-span-2) {
+    position: sticky;
+    top: calc(var(--admin-header-height, 70px) + 1.5rem);
+    align-self: flex-start;
+}
+
+@media (max-width: 1024px) {
+    .admin-wrapper .grid.lg\:grid-cols-3 > .space-y-6:last-child,
+    .admin-wrapper .grid.lg\:grid-cols-3 > div:last-child:not(.lg\:col-span-2) {
+        position: static;
+    }
+}
+
+/* ============================================================================
+   VENDOR-STYLE ADMIN CLASSES
+   ============================================================================ */
+
+.admin-grid {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.admin-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 1024px) {
+    .admin-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.admin-card {
+    background: var(--admin-bg-card);
+    border-radius: var(--admin-radius);
+    border: 1px solid var(--admin-glass-border);
+    overflow: hidden;
+}
+
+.admin-card-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--admin-glass-border);
+}
+
+.admin-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--admin-text);
+    margin: 0;
+}
+
+.admin-card-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.admin-card-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--admin-glass-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.admin-form-group {
+    margin-bottom: 0;
+}
+
+.admin-form-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 640px) {
+    .admin-form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.admin-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--admin-text);
+    margin-bottom: 0.5rem;
+}
+
+.admin-input,
+.admin-textarea,
+.admin-select {
+    display: block;
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    border-radius: var(--admin-radius);
+    color: var(--admin-text);
+    background: var(--admin-bg-card);
+    border: 1px solid var(--admin-border);
+    transition: all var(--admin-transition);
+}
+
+.admin-input:focus,
+.admin-textarea:focus,
+.admin-select:focus {
+    outline: none;
+    border-color: var(--admin-primary);
+    box-shadow: 0 0 0 3px var(--admin-primary-glow);
+}
+
+.admin-help {
+    font-size: 0.75rem;
+    color: var(--admin-text-muted);
+    margin-top: 0.375rem;
+}
+
+.admin-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.admin-checkbox input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 4px;
+}
+
+.admin-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: var(--admin-radius);
+    cursor: pointer;
+    transition: all var(--admin-transition);
+    border: 1px solid transparent;
+}
+
+.admin-btn-primary {
+    background: var(--admin-primary);
+    color: #fff;
+    border-color: var(--admin-primary);
+}
+
+.admin-btn-primary:hover {
+    background: var(--admin-primary-hover);
+    border-color: var(--admin-primary-hover);
+}
+
+.admin-btn-ghost {
+    background: transparent;
+    color: var(--admin-text);
+    border-color: var(--admin-border);
+}
+
+.admin-btn-ghost:hover {
+    background: var(--admin-bg-elevated);
+    border-color: var(--admin-text-muted);
+}
+
+.admin-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+}
+
+@media (max-width: 640px) {
+    .admin-page-header {
+        flex-direction: column;
+    }
+}
+
+.admin-page-subtitle {
+    color: var(--admin-text-muted);
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* ============================================================================
+   TABLE IMPROVEMENTS
+   ============================================================================ */
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 0.875rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--admin-glass-border);
+}
+
+.admin-table th {
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--admin-text-muted);
+    background: var(--admin-bg-elevated);
+}
+
+.admin-table tbody tr:hover {
+    background: var(--admin-bg-elevated);
+}
+
+.admin-table tfoot td {
+    font-weight: 500;
+    background: var(--admin-bg-elevated);
+}
+
+/* ============================================================================
+   IMAGES IN ADMIN FORMS
+   ============================================================================ */
+
+/* Generic image containers in forms */
+.admin-wrapper .card-body img:not(.product-image) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--admin-radius);
+}
+
+/* Constrain category/banner images */
+.admin-wrapper .w-32 {
+    width: 8rem;
+    max-width: 8rem;
+}
+
+.admin-wrapper .h-32 {
+    height: 8rem;
+    max-height: 8rem;
+}
+
+.admin-wrapper .w-full.aspect-square {
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 200px;
+    object-fit: cover;
+}
+
+/* ============================================================================
+   GAP UTILITIES
+   ============================================================================ */
+
+.admin-wrapper .gap-1 { gap: 0.25rem; }
+.admin-wrapper .gap-2 { gap: 0.5rem; }
+.admin-wrapper .gap-3 { gap: 0.75rem; }
+.admin-wrapper .gap-4 { gap: 1rem; }
+.admin-wrapper .gap-6 { gap: 1.5rem; }
+
+/* ============================================================================
+   OVERFLOW PREVENTION
+   ============================================================================ */
+
+.admin-wrapper .card {
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.admin-wrapper .card-body {
+    max-width: 100%;
+}
+
+.admin-wrapper .overflow-x-auto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent form inputs from overflowing */
+.admin-wrapper input[type="text"],
+.admin-wrapper input[type="email"],
+.admin-wrapper input[type="url"],
+.admin-wrapper input[type="password"],
+.admin-wrapper input[type="number"],
+.admin-wrapper textarea,
+.admin-wrapper select {
+    max-width: 100%;
+    min-width: 0;
+}
+
+/* ============================================================================
+   FLEX UTILITIES FOR ADMIN
+   ============================================================================ */
+
+.admin-wrapper .flex {
+    display: flex;
+}
+
+.admin-wrapper .flex-1 {
+    flex: 1;
+    min-width: 0;
+}
+
+.admin-wrapper .flex-shrink-0 {
+    flex-shrink: 0;
+}
+
+.admin-wrapper .items-center {
+    align-items: center;
+}
+
+.admin-wrapper .items-start {
+    align-items: flex-start;
+}
+
+.admin-wrapper .justify-between {
+    justify-content: space-between;
+}
+
+.admin-wrapper .flex-wrap {
+    flex-wrap: wrap;
+}
+
+/* ============================================================================
+   MARGIN/PADDING UTILITIES
+   ============================================================================ */
+
+.admin-wrapper .mb-0 { margin-bottom: 0; }
+.admin-wrapper .mb-1 { margin-bottom: 0.25rem; }
+.admin-wrapper .mb-2 { margin-bottom: 0.5rem; }
+.admin-wrapper .mb-3 { margin-bottom: 0.75rem; }
+.admin-wrapper .mb-4 { margin-bottom: 1rem; }
+.admin-wrapper .mb-6 { margin-bottom: 1.5rem; }
+
+.admin-wrapper .mt-1 { margin-top: 0.25rem; }
+.admin-wrapper .mt-2 { margin-top: 0.5rem; }
+.admin-wrapper .mt-3 { margin-top: 0.75rem; }
+.admin-wrapper .mt-4 { margin-top: 1rem; }
+.admin-wrapper .mt-6 { margin-top: 1.5rem; }
+
+.admin-wrapper .ml-1 { margin-left: 0.25rem; }
+.admin-wrapper .ml-2 { margin-left: 0.5rem; }
+.admin-wrapper .mr-1 { margin-right: 0.25rem; }
+.admin-wrapper .mr-2 { margin-right: 0.5rem; }
+
+.admin-wrapper .p-4 { padding: 1rem; }
+.admin-wrapper .px-4 { padding-left: 1rem; padding-right: 1rem; }
+.admin-wrapper .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.admin-wrapper .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+
+/* ============================================================================
+   SETTINGS SIDEBAR NAVIGATION
+   ============================================================================ */
+
+.admin-wrapper .grid.lg\:grid-cols-4 > .space-y-1:first-child {
+    position: sticky;
+    top: calc(var(--admin-header-height, 70px) + 1.5rem);
+    align-self: flex-start;
+}
+
+.admin-wrapper .grid.lg\:grid-cols-4 > .space-y-1:first-child a {
+    display: block;
+    padding: 0.625rem 1rem;
+    border-radius: var(--admin-radius);
+    color: var(--admin-text);
+    text-decoration: none;
+    transition: all var(--admin-transition);
+}
+
+.admin-wrapper .grid.lg\:grid-cols-4 > .space-y-1:first-child a:hover {
+    background: var(--admin-bg-elevated);
+}
+
+.admin-wrapper .grid.lg\:grid-cols-4 > .space-y-1:first-child a.bg-primary {
+    background: var(--admin-primary);
+    color: #fff;
+}
+
+/* ============================================================================
+   CURRENT IMAGE PREVIEW
+   ============================================================================ */
+
+.admin-current-image {
+    padding: 0.75rem;
+    background: var(--admin-bg-elevated);
+    border-radius: var(--admin-radius);
+    display: inline-block;
+}
+
+.admin-current-image img {
+    display: block;
+    border-radius: 4px;
+}

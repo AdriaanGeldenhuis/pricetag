@@ -444,10 +444,10 @@ async function addValue() {
     const color = currentAttributeType === 'color' ? colorInput.value : null;
 
     try {
-        const response = await fetch('<?= url('/admin/attributes/values') ?>', {
+        const response = await fetch(`<?= url('/admin/attributes/') ?>${currentAttributeId}/values`, {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-            body: `_token=<?= csrf_token() ?>&attribute_id=${currentAttributeId}&value=${encodeURIComponent(value)}&color_code=${color || ''}`,
+            body: `_token=<?= csrf_token() ?>&value=${encodeURIComponent(value)}&color_code=${color || ''}`,
         });
 
         const data = await response.json();

@@ -49,12 +49,40 @@ class BannerController extends Controller
     {
         $db = Database::getInstance();
 
-        $stmt = $db->prepare("INSERT INTO banners (location, title, image, url, is_active) VALUES (?, ?, ?, ?, ?)");
+        // Handle image upload
+        $imagePath = '';
+        if (!empty($_FILES['image']['tmp_name'])) {
+            $imagePath = $this->handleImageUpload($_FILES['image']);
+            if (!$imagePath) {
+                flash('error', 'Failed to upload image');
+                $this->redirect('/admin/banners/create');
+                return;
+            }
+        }
+
+        // Handle mobile image upload
+        $mobileImagePath = null;
+        if (!empty($_FILES['mobile_image']['tmp_name'])) {
+            $mobileImagePath = $this->handleImageUpload($_FILES['mobile_image'], 'mobile_');
+        }
+
+        $stmt = $db->prepare("
+            INSERT INTO banners (location, title, subtitle, image, mobile_image, url, button_text, text_color, overlay_opacity, sort_order, starts_at, expires_at, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
         $stmt->execute([
             $_POST['location'] ?? 'hero',
             $_POST['title'] ?? '',
-            $_POST['image'] ?? '',
+            $_POST['subtitle'] ?? '',
+            $imagePath,
+            $mobileImagePath,
             $_POST['url'] ?? '',
+            $_POST['button_text'] ?? '',
+            $_POST['text_color'] ?? '#ffffff',
+            (int) ($_POST['overlay_opacity'] ?? 0),
+            (int) ($_POST['sort_order'] ?? 0),
+            !empty($_POST['starts_at']) ? $_POST['starts_at'] : null,
+            !empty($_POST['expires_at']) ? $_POST['expires_at'] : null,
             isset($_POST['is_active']) ? 1 : 0
         ]);
 
@@ -82,12 +110,78 @@ class BannerController extends Controller
     {
         $db = Database::getInstance();
 
-        $stmt = $db->prepare("UPDATE banners SET location=?, title=?, image=?, url=?, is_active=? WHERE id=?");
+        // Get existing banner
+        $stmt = $db->prepare("SELECT * FROM banners WHERE id = ?");
+        $stmt->execute([$id]);
+        $existing = $stmt->fetch();
+
+        if (!$existing) {
+            flash('error', 'Banner not found');
+            $this->redirect('/admin/banners');
+            return;
+        }
+
+        // Handle image upload
+        $imagePath = $existing['image'];
+        if (!empty($_FILES['image']['tmp_name'])) {
+            $newPath = $this->handleImageUpload($_FILES['image']);
+            if ($newPath) {
+                // Delete old image if exists
+                if ($imagePath) {
+                    $oldFile = STORAGE_PATH . '/uploads/' . $imagePath;
+                    if (file_exists($oldFile)) {
+                        unlink($oldFile);
+                    }
+                }
+                $imagePath = $newPath;
+            }
+        }
+
+        // Handle mobile image upload
+        $mobileImagePath = $existing['mobile_image'];
+        if (!empty($_POST['remove_mobile_image'])) {
+            // Remove mobile image
+            if ($mobileImagePath) {
+                $oldFile = STORAGE_PATH . '/uploads/' . $mobileImagePath;
+                if (file_exists($oldFile)) {
+                    unlink($oldFile);
+                }
+            }
+            $mobileImagePath = null;
+        } elseif (!empty($_FILES['mobile_image']['tmp_name'])) {
+            $newPath = $this->handleImageUpload($_FILES['mobile_image'], 'mobile_');
+            if ($newPath) {
+                // Delete old mobile image if exists
+                if ($mobileImagePath) {
+                    $oldFile = STORAGE_PATH . '/uploads/' . $mobileImagePath;
+                    if (file_exists($oldFile)) {
+                        unlink($oldFile);
+                    }
+                }
+                $mobileImagePath = $newPath;
+            }
+        }
+
+        $stmt = $db->prepare("
+            UPDATE banners SET
+                location = ?, title = ?, subtitle = ?, image = ?, mobile_image = ?,
+                url = ?, button_text = ?, text_color = ?, overlay_opacity = ?,
+                sort_order = ?, starts_at = ?, expires_at = ?, is_active = ?
+            WHERE id = ?
+        ");
         $stmt->execute([
             $_POST['location'] ?? 'hero',
             $_POST['title'] ?? '',
-            $_POST['image'] ?? '',
+            $_POST['subtitle'] ?? '',
+            $imagePath,
+            $mobileImagePath,
             $_POST['url'] ?? '',
+            $_POST['button_text'] ?? '',
+            $_POST['text_color'] ?? '#ffffff',
+            (int) ($_POST['overlay_opacity'] ?? 0),
+            (int) ($_POST['sort_order'] ?? 0),
+            !empty($_POST['starts_at']) ? $_POST['starts_at'] : null,
+            !empty($_POST['expires_at']) ? $_POST['expires_at'] : null,
             isset($_POST['is_active']) ? 1 : 0,
             $id
         ]);
@@ -150,6 +244,45 @@ class BannerController extends Controller
 
         header('Content-Type: application/json');
         echo json_encode(['success' => true]);
+    }
+
+    /**
+     * Handle image upload for banners
+     */
+    private function handleImageUpload(array $file, string $prefix = ''): ?string
+    {
+        if (empty($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
+            return null;
+        }
+
+        // Validate file type
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+
+        if (!in_array($mimeType, $allowedTypes)) {
+            return null;
+        }
+
+        // Generate unique filename
+        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $filename = $prefix . 'banner_' . uniqid() . '_' . time() . '.' . $extension;
+
+        // Ensure upload directory exists
+        $uploadDir = STORAGE_PATH . '/uploads/banners';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $destination = $uploadDir . '/' . $filename;
+
+        // Move uploaded file
+        if (move_uploaded_file($file['tmp_name'], $destination)) {
+            return 'banners/' . $filename;
+        }
+
+        return null;
     }
 
     private function getBannerLocations(): array

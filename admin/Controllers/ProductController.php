@@ -12,6 +12,7 @@ use App\Core\Controller;
 use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
+use App\Services\OpenAIService;
 
 class ProductController extends Controller
 {
@@ -171,9 +172,9 @@ class ProductController extends Controller
         // Handle attributes
         $this->saveProductAttributes($db, $product->id);
 
-        // Handle image upload
-        if (!empty($_FILES['image']['tmp_name'])) {
-            $this->handleImageUpload($product->id, $_FILES['image']);
+        // Handle image uploads (multiple)
+        if (!empty($_FILES['images']['tmp_name'][0])) {
+            $this->handleImageUploads($product->id, $_FILES['images']);
         }
 
         flash('success', 'Product created successfully');
@@ -196,6 +197,8 @@ class ProductController extends Controller
         $vendors = $this->getVendors();
         $attributes = $this->getAttributesWithValues();
         $productAttributes = $this->getProductAttributes($product->id);
+        $specifications = $this->getProductSpecifications($product->id);
+        $reviews = $this->getProductReviews($product->id);
 
         $this->layout('admin');
         $this->view('pages/products/form', [
@@ -208,6 +211,8 @@ class ProductController extends Controller
             'vendors' => $vendors,
             'attributes' => $attributes,
             'productAttributes' => $productAttributes,
+            'specifications' => $specifications,
+            'reviews' => $reviews,
         ]);
     }
 
@@ -275,9 +280,12 @@ class ProductController extends Controller
         // Update attributes
         $this->saveProductAttributes($db, $product->id);
 
-        // Handle new image upload
-        if (!empty($_FILES['image']['tmp_name'])) {
-            $this->handleImageUpload($product->id, $_FILES['image']);
+        // Update specifications
+        $this->saveProductSpecifications($db, $product->id);
+
+        // Handle new image uploads (multiple)
+        if (!empty($_FILES['images']['tmp_name'][0])) {
+            $this->handleImageUploads($product->id, $_FILES['images']);
         }
 
         flash('success', 'Product updated successfully');
@@ -330,15 +338,24 @@ class ProductController extends Controller
             return;
         }
 
-        // Delete file
-        $fullPath = STORAGE_PATH . '/uploads/' . $image['path'];
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-        }
+        $imagePath = $image['path'];
 
-        // Delete from database
+        // Delete from database first
         $stmt = $db->prepare("DELETE FROM product_images WHERE id = ?");
         $stmt->execute([$id]);
+
+        // Check if this image file is used by any other product
+        $stmt = $db->prepare("SELECT COUNT(*) FROM product_images WHERE path = ?");
+        $stmt->execute([$imagePath]);
+        $usageCount = (int) $stmt->fetchColumn();
+
+        // Only delete the file if no other products are using it
+        if ($usageCount === 0) {
+            $fullPath = STORAGE_PATH . '/uploads/' . $imagePath;
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+        }
 
         // If this was primary, set another image as primary
         if ($image['is_primary']) {
@@ -456,6 +473,217 @@ class ProductController extends Controller
                 !empty($customValues[$attributeId]) ? $customValues[$attributeId] : null,
             ]);
         }
+    }
+
+    /**
+     * Get specifications for a product
+     */
+    private function getProductSpecifications(int $productId): array
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("SELECT * FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC");
+            $stmt->execute([$productId]);
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Save product specifications from POST data
+     */
+    private function saveProductSpecifications(\PDO $db, int $productId): void
+    {
+        try {
+            // Delete existing specifications
+            $stmt = $db->prepare("DELETE FROM product_specifications WHERE product_id = ?");
+            $stmt->execute([$productId]);
+
+            $specNames = $_POST['spec_name'] ?? [];
+            $specValues = $_POST['spec_value'] ?? [];
+
+            foreach ($specNames as $i => $name) {
+                $name = trim($name);
+                $value = trim($specValues[$i] ?? '');
+
+                if (empty($name) || empty($value)) {
+                    continue;
+                }
+
+                $stmt = $db->prepare("
+                    INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order)
+                    VALUES (?, ?, ?, ?)
+                ");
+                $stmt->execute([$productId, $name, $value, $i]);
+            }
+        } catch (\Throwable $e) {
+            // Table might not exist yet - log and continue
+            error_log("Could not save specifications: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get reviews for a product
+     */
+    private function getProductReviews(int $productId): array
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("
+                SELECT r.*, u.name as user_name, u.email as user_email
+                FROM reviews r
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE r.product_id = ?
+                ORDER BY r.created_at DESC
+            ");
+            $stmt->execute([$productId]);
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Update a review (AJAX)
+     */
+    public function updateReview(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        $stmt = $db->prepare("SELECT * FROM reviews WHERE id = ?");
+        $stmt->execute([$id]);
+        $review = $stmt->fetch();
+
+        if (!$review) {
+            $this->json(['success' => false, 'message' => 'Review not found']);
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $stmt = $db->prepare("
+            UPDATE reviews
+            SET rating = ?, title = ?, content = ?, is_approved = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            (int) ($data['rating'] ?? $review['rating']),
+            $data['title'] ?? $review['title'],
+            $data['content'] ?? $review['content'],
+            !empty($data['is_approved']) ? 1 : 0,
+            $id
+        ]);
+
+        $this->json(['success' => true]);
+    }
+
+    /**
+     * Delete a review (AJAX)
+     */
+    public function deleteReview(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $stmt = $db->prepare("DELETE FROM reviews WHERE id = ?");
+        $stmt->execute([$id]);
+
+        $this->json(['success' => true]);
+    }
+
+    /**
+     * Generate AI content for product (AJAX)
+     */
+    public function generateAiContent(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        if (!$openai->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+            return;
+        }
+
+        // Get product category
+        $categories = $product->getCategories();
+        $categoryName = !empty($categories) ? $categories[0]['name'] : '';
+
+        $result = $openai->generateProductContent([
+            'name' => $product->name,
+            'description' => $product->description,
+            'short_description' => $product->short_description,
+            'price' => $product->price,
+            'category' => $categoryName,
+        ]);
+
+        if (isset($result['error'])) {
+            $this->json(['success' => false, 'message' => $result['error']]);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'data' => $result['data'],
+        ]);
+    }
+
+    /**
+     * Search and fill AI product info for new products (AJAX)
+     */
+    public function searchAiInfo(): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        $productName = $data['name'] ?? '';
+        $sku = $data['sku'] ?? '';
+
+        if (empty($productName)) {
+            $this->json(['success' => false, 'message' => 'Product name is required']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        if (!$openai->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+            return;
+        }
+
+        $result = $openai->searchProductInfo($productName, $sku);
+
+        if (isset($result['error'])) {
+            $this->json(['success' => false, 'message' => $result['error']]);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'data' => $result['data'],
+        ]);
     }
 
     /**
@@ -678,10 +906,24 @@ class ProductController extends Controller
 
         $db = Database::getInstance();
         $updateExisting = !empty($_POST['update_existing']);
+        $aiGenerate = !empty($_POST['ai_generate']);
+        $aiFields = $_POST['ai_fields'] ?? [];
         $imported = 0;
         $updated = 0;
+        $aiGenerated = 0;
         $errors = [];
         $rowNum = 1;
+
+        // Initialize AI service if needed
+        $openai = null;
+        if ($aiGenerate) {
+            $openai = new OpenAIService();
+            if (!$openai->isConfigured()) {
+                flash('error', 'AI generation requested but OpenAI API key is not configured.');
+                $this->redirect('/admin/products/import');
+                return;
+            }
+        }
 
         // Get vendor lookup
         $vendorLookup = [];
@@ -819,6 +1061,83 @@ class ProductController extends Controller
                         }
                     }
                 }
+
+                // AI Generation for missing fields
+                if ($openai && !empty($aiFields)) {
+                    $needsAi = false;
+                    $missingFields = [];
+
+                    // Check which fields are empty and need AI generation
+                    if (in_array('description', $aiFields) && empty($productData['description'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'description';
+                    }
+                    if (in_array('short_description', $aiFields) && empty($productData['short_description'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'short_description';
+                    }
+                    if (in_array('meta_title', $aiFields) && empty($productData['meta_title'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'meta_title';
+                    }
+                    if (in_array('meta_description', $aiFields) && empty($productData['meta_description'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'meta_description';
+                    }
+
+                    if ($needsAi) {
+                        try {
+                            $aiResult = $openai->searchProductInfo($data['name'], $data['sku']);
+
+                            if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                                $aiData = $aiResult['data'];
+                                $updateFields = [];
+                                $updateParams = [];
+
+                                if (in_array('description', $missingFields) && !empty($aiData['description'])) {
+                                    $updateFields[] = 'description = ?';
+                                    $updateParams[] = $aiData['description'];
+                                }
+                                if (in_array('short_description', $missingFields) && !empty($aiData['short_description'])) {
+                                    $updateFields[] = 'short_description = ?';
+                                    $updateParams[] = $aiData['short_description'];
+                                }
+                                if (in_array('meta_title', $missingFields) && !empty($aiData['meta_title'])) {
+                                    $updateFields[] = 'meta_title = ?';
+                                    $updateParams[] = $aiData['meta_title'];
+                                }
+                                if (in_array('meta_description', $missingFields) && !empty($aiData['meta_description'])) {
+                                    $updateFields[] = 'meta_description = ?';
+                                    $updateParams[] = $aiData['meta_description'];
+                                }
+
+                                if (!empty($updateFields)) {
+                                    $updateParams[] = $productId;
+                                    $stmt = $db->prepare("UPDATE products SET " . implode(', ', $updateFields) . " WHERE id = ?");
+                                    $stmt->execute($updateParams);
+                                }
+
+                                // Handle AI-generated specifications
+                                if (in_array('specifications', $aiFields) && !empty($aiData['specifications'])) {
+                                    foreach ($aiData['specifications'] as $specIndex => $spec) {
+                                        if (!empty($spec['name']) && !empty($spec['value'])) {
+                                            $stmt = $db->prepare("
+                                                INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order)
+                                                VALUES (?, ?, ?, ?)
+                                            ");
+                                            $stmt->execute([$productId, $spec['name'], $spec['value'], $specIndex]);
+                                        }
+                                    }
+                                }
+
+                                $aiGenerated++;
+                            }
+                        } catch (\Throwable $aiError) {
+                            // Log AI error but don't fail the import
+                            error_log("AI generation error for product {$data['sku']}: " . $aiError->getMessage());
+                        }
+                    }
+                }
             } catch (\Throwable $e) {
                 $errors[] = "Row $rowNum: Database error - " . $e->getMessage();
             }
@@ -833,6 +1152,9 @@ class ProductController extends Controller
         }
         if ($updated > 0) {
             $messages[] = "$updated products updated";
+        }
+        if ($aiGenerated > 0) {
+            $messages[] = "$aiGenerated products enhanced with AI";
         }
         if (empty($messages)) {
             $messages[] = "No products were imported";
@@ -874,23 +1196,136 @@ class ProductController extends Controller
         return in_array($value, ['1', 'yes', 'true', 'y', 'on']);
     }
 
-    private function handleImageUpload(int $productId, array $file): void
+    /**
+     * Handle multiple image uploads with WebP conversion and 600x600 cropping
+     */
+    private function handleImageUploads(int $productId, array $files): void
     {
         $allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
         $maxSize = 5 * 1024 * 1024; // 5MB
 
-        if (!in_array($file['type'], $allowedTypes)) {
-            flash('error', 'Invalid image type');
-            return;
+        // Normalize files array structure
+        $fileCount = is_array($files['name']) ? count($files['name']) : 1;
+        $uploadedCount = 0;
+
+        $db = Database::getInstance();
+
+        // Check if product already has images
+        $stmt = $db->prepare("SELECT COUNT(*) FROM product_images WHERE product_id = ?");
+        $stmt->execute([$productId]);
+        $existingImages = (int) $stmt->fetchColumn();
+
+        for ($i = 0; $i < $fileCount; $i++) {
+            // Handle both single and multiple file uploads
+            if (is_array($files['name'])) {
+                $file = [
+                    'name' => $files['name'][$i],
+                    'type' => $files['type'][$i],
+                    'tmp_name' => $files['tmp_name'][$i],
+                    'error' => $files['error'][$i],
+                    'size' => $files['size'][$i],
+                ];
+            } else {
+                $file = $files;
+            }
+
+            // Skip empty uploads
+            if (empty($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
+                continue;
+            }
+
+            // Validate type
+            if (!in_array($file['type'], $allowedTypes)) {
+                flash('error', "Image '{$file['name']}' has invalid type. Skipped.");
+                continue;
+            }
+
+            // Validate size
+            if ($file['size'] > $maxSize) {
+                flash('error', "Image '{$file['name']}' is too large (max 5MB). Skipped.");
+                continue;
+            }
+
+            // Process and save image
+            $result = $this->processImage($file['tmp_name'], $productId);
+
+            if ($result) {
+                // Insert into database
+                $isPrimary = ($existingImages === 0 && $uploadedCount === 0) ? 1 : 0;
+                $stmt = $db->prepare("INSERT INTO product_images (product_id, path, is_primary) VALUES (?, ?, ?)");
+                $stmt->execute([$productId, $result, $isPrimary]);
+                $uploadedCount++;
+            }
         }
 
-        if ($file['size'] > $maxSize) {
-            flash('error', 'Image too large (max 5MB)');
-            return;
+        if ($uploadedCount > 0) {
+            flash('success', "$uploadedCount image(s) uploaded and processed successfully.");
+        }
+    }
+
+    /**
+     * Process image: convert to WebP and resize to 600x600
+     */
+    private function processImage(string $tmpPath, int $productId): ?string
+    {
+        // Create GD image from source
+        $imageInfo = getimagesize($tmpPath);
+        if (!$imageInfo) {
+            return null;
         }
 
-        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $filename = 'product-' . $productId . '-' . time() . '.' . $ext;
+        $sourceWidth = $imageInfo[0];
+        $sourceHeight = $imageInfo[1];
+        $mimeType = $imageInfo['mime'];
+
+        // Create source image based on type
+        switch ($mimeType) {
+            case 'image/jpeg':
+                $sourceImage = imagecreatefromjpeg($tmpPath);
+                break;
+            case 'image/png':
+                $sourceImage = imagecreatefrompng($tmpPath);
+                break;
+            case 'image/webp':
+                $sourceImage = imagecreatefromwebp($tmpPath);
+                break;
+            default:
+                return null;
+        }
+
+        if (!$sourceImage) {
+            return null;
+        }
+
+        // Calculate crop dimensions for 1024x1024 (center crop)
+        $targetSize = 1024;
+
+        // Determine crop area (center square)
+        $cropSize = min($sourceWidth, $sourceHeight);
+        $cropX = ($sourceWidth - $cropSize) / 2;
+        $cropY = ($sourceHeight - $cropSize) / 2;
+
+        // Create destination image
+        $destImage = imagecreatetruecolor($targetSize, $targetSize);
+
+        // Preserve transparency for PNG
+        imagealphablending($destImage, false);
+        imagesavealpha($destImage, true);
+        $transparent = imagecolorallocatealpha($destImage, 255, 255, 255, 127);
+        imagefilledrectangle($destImage, 0, 0, $targetSize, $targetSize, $transparent);
+
+        // Resize and crop
+        imagecopyresampled(
+            $destImage,
+            $sourceImage,
+            0, 0,
+            (int) $cropX, (int) $cropY,
+            $targetSize, $targetSize,
+            $cropSize, $cropSize
+        );
+
+        // Generate filename
+        $filename = 'product-' . $productId . '-' . time() . '-' . uniqid() . '.webp';
         $path = 'products/' . $filename;
         $fullPath = STORAGE_PATH . '/uploads/' . $path;
 
@@ -900,17 +1335,22 @@ class ProductController extends Controller
             mkdir($dir, 0755, true);
         }
 
-        if (move_uploaded_file($file['tmp_name'], $fullPath)) {
-            $db = Database::getInstance();
+        // Save as WebP with quality 85
+        $success = imagewebp($destImage, $fullPath, 85);
 
-            // Check if product has images
-            $stmt = $db->prepare("SELECT COUNT(*) FROM product_images WHERE product_id = ?");
-            $stmt->execute([$productId]);
-            $hasImages = $stmt->fetchColumn() > 0;
+        // Clean up
+        imagedestroy($sourceImage);
+        imagedestroy($destImage);
 
-            $stmt = $db->prepare("INSERT INTO product_images (product_id, path, is_primary) VALUES (?, ?, ?)");
-            $stmt->execute([$productId, $path, $hasImages ? 0 : 1]);
-        }
+        return $success ? $path : null;
+    }
+
+    /**
+     * Legacy single image upload handler (for backwards compatibility)
+     */
+    private function handleImageUpload(int $productId, array $file): void
+    {
+        $this->handleImageUploads($productId, $file);
     }
 
     protected function view(string $view, array $data = []): void

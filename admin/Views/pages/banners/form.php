@@ -40,7 +40,7 @@
                         <div class="upload-zone" id="imageZone">
                             <?php if ($banner && $banner['image']): ?>
                             <div class="upload-preview" id="imagePreview">
-                                <img src="<?= e($banner['image']) ?>" alt="Banner Image">
+                                <img src="<?= url('storage/uploads/' . e($banner['image'])) ?>" alt="Banner Image">
                             </div>
                             <?php else: ?>
                             <div class="upload-placeholder" id="imagePlaceholder">
@@ -65,7 +65,7 @@
                         <div class="upload-zone upload-zone-small" id="mobileImageZone">
                             <?php if ($banner && $banner['mobile_image']): ?>
                             <div class="upload-preview" id="mobileImagePreview">
-                                <img src="<?= e($banner['mobile_image']) ?>" alt="Mobile Image" style="max-height: 150px;">
+                                <img src="<?= url('storage/uploads/' . e($banner['mobile_image'])) ?>" alt="Mobile Image" style="max-height: 150px;">
                                 <button type="button" class="upload-remove" onclick="removeMobileImage()">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -232,7 +232,7 @@
                     <div class="banner-preview" id="bannerPreview">
                         <div class="banner-preview-image" id="previewImage">
                             <?php if ($banner && $banner['image']): ?>
-                            <img src="<?= e($banner['image']) ?>" alt="Preview">
+                            <img src="<?= url('storage/uploads/' . e($banner['image'])) ?>" alt="Preview">
                             <?php else: ?>
                             <div class="banner-preview-placeholder">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32">

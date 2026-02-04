@@ -14,7 +14,7 @@
 </nav>
 
 <div class="container py-8">
-    <div class="grid lg:grid-cols-2 gap-8 lg:gap-12">
+    <div class="product-layout">
         <!-- Product Gallery -->
         <div class="product-gallery">
             <div class="product-main-image-wrapper" id="product-gallery">
@@ -515,10 +515,23 @@
 </div>
 
 <style>
+/* Product Layout - 2 columns on desktop */
+.product-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 1024px) {
+    .product-layout {
+        grid-template-columns: 1fr 1fr;
+        gap: 3rem;
+    }
+}
+
 /* Product Gallery */
 .product-gallery {
-    position: sticky;
-    top: 100px;
+    position: relative;
 }
 
 .product-main-image-wrapper {
@@ -535,7 +548,12 @@
 }
 
 .product-main-image img {
-    width: 100%;
+    max-height: 450px;
+    width: auto;
+    max-width: 100%;
+    display: block;
+    margin: 0 auto;
+    object-fit: contain;
     transition: transform var(--duration-300);
 }
 
@@ -1284,11 +1302,7 @@
     font-size: var(--text-sm);
 }
 
-@media (max-width: 1024px) {
-    .product-gallery {
-        position: static;
-    }
-}
+/* Gallery is now relative, no sticky behavior */
 </style>
 
 <script>

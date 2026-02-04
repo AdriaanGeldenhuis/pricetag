@@ -518,8 +518,6 @@
 /* Product Gallery */
 .product-gallery {
     position: relative;
-    z-index: 1;
-    overflow: hidden;
 }
 
 .product-main-image-wrapper {
@@ -536,7 +534,12 @@
 }
 
 .product-main-image img {
-    width: 100%;
+    max-height: 450px;
+    width: auto;
+    max-width: 100%;
+    display: block;
+    margin: 0 auto;
+    object-fit: contain;
     transition: transform var(--duration-300);
 }
 

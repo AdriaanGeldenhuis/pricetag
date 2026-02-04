@@ -401,7 +401,7 @@
   line-height: 18px;
   text-align: center;
   background-color: var(--color-primary);
-  color: var(--color-text-inverse);
+  color: #ffffff;
   border-radius: var(--radius-full);
 }
 

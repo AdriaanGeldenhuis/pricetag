@@ -995,16 +995,7 @@
         select.addEventListener('change', () => this.updateVariant());
       });
 
-      // Quantity controls
-      const qtyInput = $('#product-quantity');
-      if (qtyInput) {
-        $('#qty-decrease')?.addEventListener('click', () => {
-          qtyInput.value = Math.max(1, parseInt(qtyInput.value) - 1);
-        });
-        $('#qty-increase')?.addEventListener('click', () => {
-          qtyInput.value = Math.min(99, parseInt(qtyInput.value) + 1);
-        });
-      }
+      // Quantity controls handled in product page inline script
     },
 
     initGallery() {

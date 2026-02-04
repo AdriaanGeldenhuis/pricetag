@@ -354,6 +354,7 @@ async function saveAttribute(e) {
 
         const response = await fetch(url, {
             method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
             body: formData,
         });
 
@@ -376,7 +377,7 @@ async function deleteAttribute(id) {
     try {
         const response = await fetch(`<?= url('/admin/attributes/') ?>${id}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: `_token=<?= csrf_token() ?>&_method=DELETE`,
         });
 
@@ -445,7 +446,7 @@ async function addValue() {
     try {
         const response = await fetch('<?= url('/admin/attributes/values') ?>', {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: `_token=<?= csrf_token() ?>&attribute_id=${currentAttributeId}&value=${encodeURIComponent(value)}&color_code=${color || ''}`,
         });
 
@@ -469,7 +470,7 @@ async function updateValue(id, value) {
     try {
         const response = await fetch(`<?= url('/admin/attributes/values/') ?>${id}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: `_token=<?= csrf_token() ?>&_method=PUT&value=${encodeURIComponent(value)}`,
         });
 
@@ -486,7 +487,7 @@ async function updateValueColor(id, color) {
     try {
         const response = await fetch(`<?= url('/admin/attributes/values/') ?>${id}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: `_token=<?= csrf_token() ?>&_method=PUT&color_code=${encodeURIComponent(color)}`,
         });
 
@@ -505,7 +506,7 @@ async function deleteValue(id) {
     try {
         const response = await fetch(`<?= url('/admin/attributes/values/') ?>${id}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: `_token=<?= csrf_token() ?>&_method=DELETE`,
         });
 

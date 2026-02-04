@@ -57,12 +57,17 @@
                                 <?php
                                 $categories = $categories ?? [];
                                 foreach (array_slice($categories, 0, 12) as $category):
-                                    $iconClass = $category['icon'] ?? 'default';
+                                    // Support both array and object access
+                                    $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
+                                    $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
+                                    $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
+                                    $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
+                                    $catCount = is_array($category) ? ($category['product_count'] ?? 0) : ($category->product_count ?? 0);
                                 ?>
-                                <a href="<?= url('/categories/' . $category['slug']) ?>" class="mega-menu-category-item" role="menuitem">
-                                    <span class="mega-menu-category-icon" data-icon="<?= e($iconClass) ?>">
-                                        <?php if (!empty($category['image'])): ?>
-                                        <img src="<?= e($category['image']) ?>" alt="" width="32" height="32">
+                                <a href="<?= url('/categories/' . $catSlug) ?>" class="mega-menu-category-item" role="menuitem">
+                                    <span class="mega-menu-category-icon" data-icon="<?= e($catIcon ?: 'default') ?>">
+                                        <?php if (!empty($catImage)): ?>
+                                        <img src="<?= e($catImage) ?>" alt="" width="32" height="32">
                                         <?php else: ?>
                                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <rect x="3" y="3" width="7" height="7"></rect>
@@ -72,9 +77,9 @@
                                         </svg>
                                         <?php endif; ?>
                                     </span>
-                                    <span class="mega-menu-category-name"><?= e($category['name']) ?></span>
-                                    <?php if (!empty($category['product_count'])): ?>
-                                    <span class="mega-menu-category-count"><?= $category['product_count'] ?></span>
+                                    <span class="mega-menu-category-name"><?= e($catName) ?></span>
+                                    <?php if (!empty($catCount)): ?>
+                                    <span class="mega-menu-category-count"><?= $catCount ?></span>
                                     <?php endif; ?>
                                 </a>
                                 <?php endforeach; ?>

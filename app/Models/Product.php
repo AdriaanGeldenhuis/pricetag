@@ -92,7 +92,8 @@ class Product extends Model
 
         $products = [];
         while ($data = $stmt->fetch()) {
-            $product = new self($data);
+            $product = new self();
+            $product->setOriginal($data);
             $product->exists = true;
             $products[] = $product;
         }
@@ -172,7 +173,8 @@ class Product extends Model
 
         $products = [];
         while ($data = $stmt->fetch()) {
-            $product = new self($data);
+            $product = new self();
+            $product->setOriginal($data);
             $product->exists = true;
             $products[] = $product;
         }

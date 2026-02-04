@@ -126,6 +126,46 @@ CREATE TABLE IF NOT EXISTS `activity_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
+-- ADMIN ROLE HISTORY (Audit Trail for Role Changes)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `role_history` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `user_id` INT UNSIGNED NOT NULL,
+    `old_role` VARCHAR(50) DEFAULT NULL,
+    `new_role` VARCHAR(50) NOT NULL,
+    `changed_by` INT UNSIGNED NOT NULL,
+    `reason` VARCHAR(255) DEFAULT NULL,
+    `ip_address` VARCHAR(45) DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `role_history_user_idx` (`user_id`),
+    KEY `role_history_changed_by_idx` (`changed_by`),
+    KEY `role_history_created_idx` (`created_at`),
+    CONSTRAINT `role_history_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `role_history_changed_by_fk` FOREIGN KEY (`changed_by`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- ADMIN NOTIFICATIONS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `admin_notifications` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `user_id` INT UNSIGNED NOT NULL,
+    `type` VARCHAR(50) NOT NULL,
+    `title` VARCHAR(255) NOT NULL,
+    `message` TEXT DEFAULT NULL,
+    `data` JSON DEFAULT NULL,
+    `read_at` TIMESTAMP NULL DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `admin_notifications_user_idx` (`user_id`),
+    KEY `admin_notifications_read_idx` (`read_at`),
+    CONSTRAINT `admin_notifications_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
 -- CATEGORIES
 -- ============================================================================
 

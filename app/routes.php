@@ -193,6 +193,14 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->put('/users/{id}', 'Admin\Controllers\UserController@update', 'admin.users.update');
     $router->delete('/users/{id}', 'Admin\Controllers\UserController@destroy', 'admin.users.destroy');
 
+    // User Management - Extended (Super Admin)
+    $router->get('/users/{id}/audit', 'Admin\Controllers\UserController@auditLog', 'admin.users.audit');
+    $router->post('/users/{id}/mfa/toggle', 'Admin\Controllers\UserController@toggleMfa', 'admin.users.mfa.toggle');
+    $router->post('/users/{id}/sessions/terminate', 'Admin\Controllers\UserController@terminateSessions', 'admin.users.sessions.terminate');
+    $router->post('/users/{id}/password/reset', 'Admin\Controllers\UserController@forcePasswordReset', 'admin.users.password.reset');
+    $router->post('/users/{id}/impersonate', 'Admin\Controllers\UserController@impersonate', 'admin.users.impersonate');
+    $router->post('/users/impersonate/stop', 'Admin\Controllers\UserController@stopImpersonation', 'admin.users.impersonate.stop');
+
     // Settings
     $router->get('/settings', 'Admin\Controllers\SettingsController@index', 'admin.settings.index');
     $router->post('/settings', 'Admin\Controllers\SettingsController@update', 'admin.settings.update');

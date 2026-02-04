@@ -44,6 +44,41 @@
                     <p class="form-help">If unchecked, products with existing SKUs will be skipped</p>
                 </div>
 
+                <div class="form-group mt-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="ai_generate" value="1" class="form-checkbox" id="ai_generate_check">
+                        <span>AI Generate missing info</span>
+                    </label>
+                    <p class="form-help">Use AI to generate missing descriptions, SEO meta tags, and specifications</p>
+                </div>
+
+                <div id="ai_options" class="mt-4 p-4 bg-gray-50 rounded-lg hidden">
+                    <h4 class="font-semibold text-sm mb-3">AI will generate:</h4>
+                    <div class="space-y-2 text-sm">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="ai_fields[]" value="description" checked class="form-checkbox">
+                            <span>Product description</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="ai_fields[]" value="short_description" checked class="form-checkbox">
+                            <span>Short description</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="ai_fields[]" value="meta_title" checked class="form-checkbox">
+                            <span>SEO Meta title</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="ai_fields[]" value="meta_description" checked class="form-checkbox">
+                            <span>SEO Meta description</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="ai_fields[]" value="specifications" checked class="form-checkbox">
+                            <span>Specifications</span>
+                        </label>
+                    </div>
+                    <p class="form-help mt-3">Note: AI generation may take longer for large imports. Only empty fields will be filled.</p>
+                </div>
+
                 <div class="mt-6">
                     <button type="submit" class="btn btn-primary">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-2">
@@ -210,6 +245,12 @@
     </div>
 </div>
 
+<script>
+document.getElementById('ai_generate_check').addEventListener('change', function() {
+    document.getElementById('ai_options').classList.toggle('hidden', !this.checked);
+});
+</script>
+
 <style>
 .badge-danger { background: var(--color-danger-100); color: var(--color-danger-700); }
 .badge-secondary { background: var(--color-gray-100); color: var(--color-gray-700); }
@@ -217,4 +258,5 @@
 .border-danger-200 { border-color: #fecaca; }
 .text-danger-700 { color: #b91c1c; }
 .text-danger-600 { color: #dc2626; }
+.bg-gray-50 { background: #f9fafb; }
 </style>

@@ -892,10 +892,24 @@ class ProductController extends Controller
 
         $db = Database::getInstance();
         $updateExisting = !empty($_POST['update_existing']);
+        $aiGenerate = !empty($_POST['ai_generate']);
+        $aiFields = $_POST['ai_fields'] ?? [];
         $imported = 0;
         $updated = 0;
+        $aiGenerated = 0;
         $errors = [];
         $rowNum = 1;
+
+        // Initialize AI service if needed
+        $openai = null;
+        if ($aiGenerate) {
+            $openai = new OpenAIService();
+            if (!$openai->isConfigured()) {
+                flash('error', 'AI generation requested but OpenAI API key is not configured.');
+                $this->redirect('/admin/products/import');
+                return;
+            }
+        }
 
         // Get vendor lookup
         $vendorLookup = [];
@@ -1033,6 +1047,83 @@ class ProductController extends Controller
                         }
                     }
                 }
+
+                // AI Generation for missing fields
+                if ($openai && !empty($aiFields)) {
+                    $needsAi = false;
+                    $missingFields = [];
+
+                    // Check which fields are empty and need AI generation
+                    if (in_array('description', $aiFields) && empty($productData['description'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'description';
+                    }
+                    if (in_array('short_description', $aiFields) && empty($productData['short_description'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'short_description';
+                    }
+                    if (in_array('meta_title', $aiFields) && empty($productData['meta_title'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'meta_title';
+                    }
+                    if (in_array('meta_description', $aiFields) && empty($productData['meta_description'])) {
+                        $needsAi = true;
+                        $missingFields[] = 'meta_description';
+                    }
+
+                    if ($needsAi) {
+                        try {
+                            $aiResult = $openai->searchProductInfo($data['name'], $data['sku']);
+
+                            if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                                $aiData = $aiResult['data'];
+                                $updateFields = [];
+                                $updateParams = [];
+
+                                if (in_array('description', $missingFields) && !empty($aiData['description'])) {
+                                    $updateFields[] = 'description = ?';
+                                    $updateParams[] = $aiData['description'];
+                                }
+                                if (in_array('short_description', $missingFields) && !empty($aiData['short_description'])) {
+                                    $updateFields[] = 'short_description = ?';
+                                    $updateParams[] = $aiData['short_description'];
+                                }
+                                if (in_array('meta_title', $missingFields) && !empty($aiData['meta_title'])) {
+                                    $updateFields[] = 'meta_title = ?';
+                                    $updateParams[] = $aiData['meta_title'];
+                                }
+                                if (in_array('meta_description', $missingFields) && !empty($aiData['meta_description'])) {
+                                    $updateFields[] = 'meta_description = ?';
+                                    $updateParams[] = $aiData['meta_description'];
+                                }
+
+                                if (!empty($updateFields)) {
+                                    $updateParams[] = $productId;
+                                    $stmt = $db->prepare("UPDATE products SET " . implode(', ', $updateFields) . " WHERE id = ?");
+                                    $stmt->execute($updateParams);
+                                }
+
+                                // Handle AI-generated specifications
+                                if (in_array('specifications', $aiFields) && !empty($aiData['specifications'])) {
+                                    foreach ($aiData['specifications'] as $specIndex => $spec) {
+                                        if (!empty($spec['name']) && !empty($spec['value'])) {
+                                            $stmt = $db->prepare("
+                                                INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order)
+                                                VALUES (?, ?, ?, ?)
+                                            ");
+                                            $stmt->execute([$productId, $spec['name'], $spec['value'], $specIndex]);
+                                        }
+                                    }
+                                }
+
+                                $aiGenerated++;
+                            }
+                        } catch (\Throwable $aiError) {
+                            // Log AI error but don't fail the import
+                            error_log("AI generation error for product {$data['sku']}: " . $aiError->getMessage());
+                        }
+                    }
+                }
             } catch (\Throwable $e) {
                 $errors[] = "Row $rowNum: Database error - " . $e->getMessage();
             }
@@ -1047,6 +1138,9 @@ class ProductController extends Controller
         }
         if ($updated > 0) {
             $messages[] = "$updated products updated";
+        }
+        if ($aiGenerated > 0) {
+            $messages[] = "$aiGenerated products enhanced with AI";
         }
         if (empty($messages)) {
             $messages[] = "No products were imported";

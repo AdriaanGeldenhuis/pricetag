@@ -149,10 +149,13 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->put('/products/{id}', 'Admin\Controllers\ProductController@update', 'admin.products.update');
     $router->delete('/products/{id}', 'Admin\Controllers\ProductController@destroy', 'admin.products.destroy');
     $router->delete('/products/images/{id}', 'Admin\Controllers\ProductController@deleteImage', 'admin.products.images.destroy');
+    $router->post('/products/images/{id}/primary', 'Admin\Controllers\ProductController@setPrimaryImage', 'admin.products.images.primary');
+    $router->post('/products/images/reorder', 'Admin\Controllers\ProductController@reorderImages', 'admin.products.images.reorder');
     $router->put('/products/reviews/{id}', 'Admin\Controllers\ProductController@updateReview', 'admin.products.reviews.update');
     $router->delete('/products/reviews/{id}', 'Admin\Controllers\ProductController@deleteReview', 'admin.products.reviews.destroy');
     $router->post('/products/{id}/ai-generate', 'Admin\Controllers\ProductController@generateAiContent', 'admin.products.ai.generate');
     $router->post('/products/ai-search', 'Admin\Controllers\ProductController@searchAiInfo', 'admin.products.ai.search');
+    $router->post('/products/bulk-action', 'Admin\Controllers\ProductController@bulkAction', 'admin.products.bulk');
 
     // Categories
     $router->get('/categories', 'Admin\Controllers\CategoryController@index', 'admin.categories.index');

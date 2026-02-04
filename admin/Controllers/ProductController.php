@@ -128,13 +128,25 @@ class ProductController extends Controller
 
         $slug = slugify($_POST['name']);
 
-        // Ensure unique slug
+        // Ensure unique slug with proper collision handling
         $db = Database::getInstance();
-        $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE slug LIKE ?");
-        $stmt->execute([$slug . '%']);
-        $count = $stmt->fetchColumn();
-        if ($count > 0) {
-            $slug .= '-' . ($count + 1);
+        $baseSlug = $slug;
+        $counter = 1;
+
+        while (true) {
+            $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? LIMIT 1");
+            $stmt->execute([$slug]);
+            if (!$stmt->fetch()) {
+                break; // Slug is unique
+            }
+            $counter++;
+            $slug = $baseSlug . '-' . $counter;
+
+            // Safety limit to prevent infinite loop
+            if ($counter > 1000) {
+                $slug = $baseSlug . '-' . uniqid();
+                break;
+            }
         }
 
         $product = Product::create([
@@ -151,6 +163,10 @@ class ProductController extends Controller
             'manage_stock' => !empty($_POST['manage_stock']),
             'stock_quantity' => (int) ($_POST['stock_quantity'] ?? 0),
             'low_stock_threshold' => (int) ($_POST['low_stock_threshold'] ?? 5),
+            'weight' => !empty($_POST['weight']) ? (float) $_POST['weight'] : null,
+            'length' => !empty($_POST['length']) ? (float) $_POST['length'] : null,
+            'width' => !empty($_POST['width']) ? (float) $_POST['width'] : null,
+            'height' => !empty($_POST['height']) ? (float) $_POST['height'] : null,
             'vendor_id' => !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null,
             'meta_title' => $_POST['meta_title'] ?? null,
             'meta_description' => $_POST['meta_description'] ?? null,
@@ -175,6 +191,11 @@ class ProductController extends Controller
         // Handle image uploads (multiple)
         if (!empty($_FILES['images']['tmp_name'][0])) {
             $this->handleImageUploads($product->id, $_FILES['images']);
+        }
+
+        // Handle variants for variable products
+        if (($product->type ?? 'simple') === 'variable') {
+            $this->saveProductVariants($db, $product->id);
         }
 
         flash('success', 'Product created successfully');
@@ -255,6 +276,10 @@ class ProductController extends Controller
         $product->manage_stock = !empty($_POST['manage_stock']);
         $product->stock_quantity = (int) ($_POST['stock_quantity'] ?? 0);
         $product->low_stock_threshold = (int) ($_POST['low_stock_threshold'] ?? 5);
+        $product->weight = !empty($_POST['weight']) ? (float) $_POST['weight'] : null;
+        $product->length = !empty($_POST['length']) ? (float) $_POST['length'] : null;
+        $product->width = !empty($_POST['width']) ? (float) $_POST['width'] : null;
+        $product->height = !empty($_POST['height']) ? (float) $_POST['height'] : null;
         $product->vendor_id = !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null;
         $product->meta_title = $_POST['meta_title'] ?? null;
         $product->meta_description = $_POST['meta_description'] ?? null;
@@ -286,6 +311,19 @@ class ProductController extends Controller
         // Handle new image uploads (multiple)
         if (!empty($_FILES['images']['tmp_name'][0])) {
             $this->handleImageUploads($product->id, $_FILES['images']);
+        }
+
+        // Handle variants for variable products
+        if ($product->type === 'variable') {
+            $this->saveProductVariants($db, $product->id);
+        }
+
+        // Handle variant deletions
+        if (!empty($_POST['delete_variants'])) {
+            $deleteIds = array_map('intval', $_POST['delete_variants']);
+            $placeholders = implode(',', array_fill(0, count($deleteIds), '?'));
+            $stmt = $db->prepare("DELETE FROM product_variants WHERE id IN ($placeholders) AND product_id = ?");
+            $stmt->execute([...$deleteIds, $product->id]);
         }
 
         flash('success', 'Product updated successfully');
@@ -357,13 +395,147 @@ class ProductController extends Controller
             }
         }
 
-        // If this was primary, set another image as primary
+        // If this was primary, set another image as primary (use lowest sort_order, then lowest id)
         if ($image['is_primary']) {
-            $stmt = $db->prepare("UPDATE product_images SET is_primary = 1 WHERE product_id = ? LIMIT 1");
+            $stmt = $db->prepare("UPDATE product_images SET is_primary = 1 WHERE product_id = ? ORDER BY sort_order ASC, id ASC LIMIT 1");
             $stmt->execute([$image['product_id']]);
         }
 
         $this->json(['success' => true]);
+    }
+
+    /**
+     * Set primary image
+     */
+    public function setPrimaryImage(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        // Get image info
+        $stmt = $db->prepare("SELECT * FROM product_images WHERE id = ?");
+        $stmt->execute([$id]);
+        $image = $stmt->fetch();
+
+        if (!$image) {
+            $this->json(['success' => false, 'message' => 'Image not found']);
+            return;
+        }
+
+        // Reset all images for this product to non-primary
+        $stmt = $db->prepare("UPDATE product_images SET is_primary = 0 WHERE product_id = ?");
+        $stmt->execute([$image['product_id']]);
+
+        // Set this image as primary
+        $stmt = $db->prepare("UPDATE product_images SET is_primary = 1 WHERE id = ?");
+        $stmt->execute([$id]);
+
+        $this->json(['success' => true]);
+    }
+
+    /**
+     * Reorder images
+     */
+    public function reorderImages(): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        $images = $input['images'] ?? [];
+
+        if (empty($images)) {
+            $this->json(['success' => false, 'message' => 'No images provided']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        foreach ($images as $imageData) {
+            $imageId = (int) ($imageData['id'] ?? 0);
+            $sortOrder = (int) ($imageData['sort_order'] ?? 0);
+
+            if ($imageId > 0) {
+                $stmt = $db->prepare("UPDATE product_images SET sort_order = ? WHERE id = ?");
+                $stmt->execute([$sortOrder, $imageId]);
+            }
+        }
+
+        $this->json(['success' => true]);
+    }
+
+    /**
+     * Bulk action for products
+     */
+    public function bulkAction(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $action = $input['action'] ?? '';
+        $ids = $input['ids'] ?? [];
+
+        if (empty($action) || empty($ids)) {
+            $this->json(['success' => false, 'message' => 'Invalid request'], 400);
+            return;
+        }
+
+        // Validate action
+        $validActions = ['active', 'draft', 'inactive', 'delete'];
+        if (!in_array($action, $validActions)) {
+            $this->json(['success' => false, 'message' => 'Invalid action'], 400);
+            return;
+        }
+
+        // Sanitize IDs to integers
+        $ids = array_map('intval', $ids);
+        $ids = array_filter($ids, fn($id) => $id > 0);
+
+        if (empty($ids)) {
+            $this->json(['success' => false, 'message' => 'No valid products selected'], 400);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        try {
+            if ($action === 'delete') {
+                // Delete products and their related data
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+                // Delete related data first
+                $db->prepare("DELETE FROM product_categories WHERE product_id IN ($placeholders)")->execute($ids);
+                $db->prepare("DELETE FROM product_images WHERE product_id IN ($placeholders)")->execute($ids);
+                $db->prepare("DELETE FROM product_attributes WHERE product_id IN ($placeholders)")->execute($ids);
+                $db->prepare("DELETE FROM product_variants WHERE product_id IN ($placeholders)")->execute($ids);
+
+                // Delete products
+                $stmt = $db->prepare("DELETE FROM products WHERE id IN ($placeholders)");
+                $stmt->execute($ids);
+
+                $this->json(['success' => true, 'message' => count($ids) . ' product(s) deleted']);
+            } else {
+                // Update status
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmt = $db->prepare("UPDATE products SET status = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([$action], $ids));
+
+                $this->json(['success' => true, 'message' => count($ids) . ' product(s) updated']);
+            }
+        } catch (\Throwable $e) {
+            error_log("Bulk action error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'An error occurred'], 500);
+        }
     }
 
     /**
@@ -520,6 +692,44 @@ class ProductController extends Controller
         } catch (\Throwable $e) {
             // Table might not exist yet - log and continue
             error_log("Could not save specifications: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save product variants
+     */
+    private function saveProductVariants(\PDO $db, int $productId): void
+    {
+        $variants = $_POST['variants'] ?? [];
+
+        foreach ($variants as $variantData) {
+            $name = trim($variantData['name'] ?? '');
+            $sku = trim($variantData['sku'] ?? '');
+            $price = (float) ($variantData['price'] ?? 0);
+            $stockQuantity = (int) ($variantData['stock_quantity'] ?? 0);
+            $variantId = !empty($variantData['id']) ? (int) $variantData['id'] : null;
+
+            // Skip empty variants
+            if (empty($sku) && empty($name) && $price <= 0) {
+                continue;
+            }
+
+            if ($variantId) {
+                // Update existing variant
+                $stmt = $db->prepare("
+                    UPDATE product_variants
+                    SET name = ?, sku = ?, price = ?, stock_quantity = ?, updated_at = NOW()
+                    WHERE id = ? AND product_id = ?
+                ");
+                $stmt->execute([$name, $sku, $price, $stockQuantity, $variantId, $productId]);
+            } else {
+                // Insert new variant
+                $stmt = $db->prepare("
+                    INSERT INTO product_variants (product_id, name, sku, price, stock_quantity, is_active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                ");
+                $stmt->execute([$productId, $name, $sku, $price, $stockQuantity]);
+            }
         }
     }
 

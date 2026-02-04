@@ -43,15 +43,21 @@
 
                     <div class="form-group">
                         <label for="short_description" class="form-label">Short Description</label>
-                        <textarea id="short_description" name="short_description" rows="2"
-                                  class="form-input"><?= e($product->short_description ?? '') ?></textarea>
-                        <p class="form-help">Brief description for product cards (max 160 characters)</p>
+                        <textarea id="short_description" name="short_description" rows="2" maxlength="160"
+                                  class="form-input seo-field" data-max-length="160"
+                                  oninput="updateCharCount(this)"><?= e($product->short_description ?? '') ?></textarea>
+                        <div class="flex justify-between text-sm mt-1">
+                            <span class="text-muted">Brief description for product cards</span>
+                            <span class="char-counter" data-for="short_description">
+                                <span class="char-count"><?= strlen($product->short_description ?? '') ?></span>/160
+                            </span>
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label for="description" class="form-label">Full Description</label>
                         <textarea id="description" name="description" rows="8"
-                                  class="form-input"><?= e($product->description ?? '') ?></textarea>
+                                  class="form-input tinymce-editor"><?= e($product->description ?? '') ?></textarea>
                     </div>
                 </div>
             </div>
@@ -126,6 +132,44 @@
                 </div>
             </div>
 
+            <!-- Shipping -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="font-semibold">Shipping</h2>
+                </div>
+                <div class="card-body space-y-4">
+                    <div class="form-group">
+                        <label for="weight" class="form-label">Weight (kg)</label>
+                        <input type="number" id="weight" name="weight" step="0.01" min="0"
+                               value="<?= $product->weight ?? '' ?>" class="form-input"
+                               placeholder="e.g. 0.5">
+                        <p class="form-help">Used for shipping calculations</p>
+                    </div>
+
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="form-group">
+                            <label for="length" class="form-label">Length (cm)</label>
+                            <input type="number" id="length" name="length" step="0.1" min="0"
+                                   value="<?= $product->length ?? '' ?>" class="form-input"
+                                   placeholder="e.g. 20">
+                        </div>
+                        <div class="form-group">
+                            <label for="width" class="form-label">Width (cm)</label>
+                            <input type="number" id="width" name="width" step="0.1" min="0"
+                                   value="<?= $product->width ?? '' ?>" class="form-input"
+                                   placeholder="e.g. 15">
+                        </div>
+                        <div class="form-group">
+                            <label for="height" class="form-label">Height (cm)</label>
+                            <input type="number" id="height" name="height" step="0.1" min="0"
+                                   value="<?= $product->height ?? '' ?>" class="form-input"
+                                   placeholder="e.g. 10">
+                        </div>
+                    </div>
+                    <p class="form-help text-sm text-muted">Dimensions are used for shipping box size calculations</p>
+                </div>
+            </div>
+
             <!-- Images -->
             <div class="card">
                 <div class="card-header">
@@ -133,13 +177,20 @@
                 </div>
                 <div class="card-body">
                     <?php if (!empty($images)): ?>
-                    <div class="grid grid-cols-4 gap-4 mb-4">
-                        <?php foreach ($images as $image): ?>
-                        <div class="relative group">
+                    <p class="text-sm text-muted mb-3">Drag images to reorder. Click "Set Primary" to change the main image.</p>
+                    <div id="sortable-images" class="grid grid-cols-4 gap-4 mb-4">
+                        <?php foreach ($images as $idx => $image): ?>
+                        <div class="product-image-item relative group cursor-move" draggable="true" data-image-id="<?= $image['id'] ?>" data-sort="<?= $idx ?>">
                             <img src="<?= url('storage/uploads/' . e($image['path'])) ?>"
-                                 alt="" class="w-full aspect-square object-cover rounded">
+                                 alt="" class="w-full aspect-square object-cover rounded border-2 <?= $image['is_primary'] ? 'border-primary' : 'border-transparent' ?>">
                             <?php if ($image['is_primary']): ?>
                             <span class="absolute top-2 left-2 badge badge-primary text-xs">Primary</span>
+                            <?php else: ?>
+                            <button type="button"
+                                    onclick="setPrimaryImage(<?= $image['id'] ?>)"
+                                    class="absolute top-2 left-2 btn btn-sm btn-ghost bg-white/90 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                Set Primary
+                            </button>
                             <?php endif; ?>
                             <button type="button"
                                     onclick="deleteImage(<?= $image['id'] ?>)"
@@ -149,6 +200,9 @@
                                     <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                                 </svg>
                             </button>
+                            <div class="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                                Drag to reorder
+                            </div>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -182,15 +236,27 @@
                     <div class="form-group">
                         <label for="meta_title" class="form-label">Meta Title</label>
                         <input type="text" id="meta_title" name="meta_title"
-                               value="<?php echo e($product->meta_title ?? ''); ?>" class="form-input" maxlength="70">
-                        <p class="form-help">Leave empty to use product name. Max 70 characters.</p>
+                               value="<?php echo e($product->meta_title ?? ''); ?>" class="form-input seo-field" maxlength="70"
+                               data-max-length="70" oninput="updateCharCount(this)">
+                        <div class="flex justify-between text-sm mt-1">
+                            <span class="text-muted">Leave empty to use product name</span>
+                            <span class="char-counter" data-for="meta_title">
+                                <span class="char-count"><?= strlen($product->meta_title ?? '') ?></span>/70
+                            </span>
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label for="meta_description" class="form-label">Meta Description</label>
                         <textarea id="meta_description" name="meta_description" rows="3"
-                                  class="form-input" maxlength="160"><?php echo e($product->meta_description ?? ''); ?></textarea>
-                        <p class="form-help">Leave empty to use short description. Max 160 characters.</p>
+                                  class="form-input seo-field" maxlength="160"
+                                  data-max-length="160" oninput="updateCharCount(this)"><?php echo e($product->meta_description ?? ''); ?></textarea>
+                        <div class="flex justify-between text-sm mt-1">
+                            <span class="text-muted">Leave empty to use short description</span>
+                            <span class="char-counter" data-for="meta_description">
+                                <span class="char-count"><?= strlen($product->meta_description ?? '') ?></span>/160
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -312,6 +378,70 @@
                             <option value="variable" <?= ($product->type ?? '') === 'variable' ? 'selected' : '' ?>>Variable</option>
                             <option value="bundle" <?= ($product->type ?? '') === 'bundle' ? 'selected' : '' ?>>Bundle</option>
                         </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Variants (shown only for variable products) -->
+            <?php
+            $variants = [];
+            if ($product && $product->type === 'variable') {
+                $variants = $product->getVariants();
+            }
+            ?>
+            <div class="card" id="variants-section" style="<?= ($product->type ?? 'simple') !== 'variable' ? 'display:none' : '' ?>">
+                <div class="card-header flex justify-between items-center">
+                    <h2 class="font-semibold">Product Variants</h2>
+                    <button type="button" id="add-variant-btn" class="btn btn-primary btn-sm">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Add Variant
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="variants-container">
+                        <?php if (empty($variants)): ?>
+                        <p class="text-muted text-center py-8" id="no-variants-msg">No variants added yet. Click "Add Variant" to create product variations.</p>
+                        <?php endif; ?>
+
+                        <?php foreach ($variants as $idx => $variant): ?>
+                        <div class="variant-item border rounded p-4 mb-4 bg-neutral-50" data-variant-id="<?= $variant['id'] ?>">
+                            <div class="flex justify-between items-start mb-4">
+                                <h4 class="font-medium">Variant #<?= $idx + 1 ?></h4>
+                                <button type="button" class="btn btn-ghost btn-sm text-danger remove-variant-btn" title="Remove">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <input type="hidden" name="variants[<?= $idx ?>][id]" value="<?= $variant['id'] ?>">
+                            <div class="grid md:grid-cols-4 gap-4">
+                                <div class="form-group">
+                                    <label class="form-label">Variant Name</label>
+                                    <input type="text" name="variants[<?= $idx ?>][name]" value="<?= e($variant['name'] ?? '') ?>"
+                                           class="form-input" placeholder="e.g. Red / Large">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">SKU</label>
+                                    <input type="text" name="variants[<?= $idx ?>][sku]" value="<?= e($variant['sku']) ?>"
+                                           class="form-input" placeholder="Variant SKU">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Price (R)</label>
+                                    <input type="number" name="variants[<?= $idx ?>][price]" value="<?= $variant['price'] ?>"
+                                           class="form-input" step="0.01" min="0">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Stock</label>
+                                    <input type="number" name="variants[<?= $idx ?>][stock_quantity]" value="<?= $variant['stock_quantity'] ?>"
+                                           class="form-input" min="0">
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </div>
@@ -469,6 +599,206 @@ document.getElementById('manage_stock_toggle').addEventListener('change', functi
     document.getElementById('stock_fields').style.display = this.checked ? '' : 'none';
 });
 
+// Character counter for SEO fields
+function updateCharCount(element) {
+    var maxLength = parseInt(element.dataset.maxLength || 160);
+    var currentLength = element.value.length;
+    var counter = document.querySelector('[data-for="' + element.id + '"] .char-count');
+
+    if (counter) {
+        counter.textContent = currentLength;
+
+        // Color coding
+        var parent = counter.parentNode;
+        parent.classList.remove('text-success', 'text-warning', 'text-danger');
+
+        if (currentLength === 0) {
+            parent.classList.add('text-muted');
+        } else if (currentLength <= maxLength * 0.7) {
+            parent.classList.add('text-success');
+        } else if (currentLength <= maxLength * 0.9) {
+            parent.classList.add('text-warning');
+        } else {
+            parent.classList.add('text-danger');
+        }
+    }
+}
+
+// Initialize char counters on load
+document.querySelectorAll('.seo-field').forEach(function(field) {
+    updateCharCount(field);
+});
+
+// Toggle variants section based on product type
+document.getElementById('type').addEventListener('change', function() {
+    var variantsSection = document.getElementById('variants-section');
+    if (this.value === 'variable') {
+        variantsSection.style.display = '';
+    } else {
+        variantsSection.style.display = 'none';
+    }
+});
+
+// Variant Management
+var variantIndex = <?= count($variants ?? []) ?>;
+
+document.getElementById('add-variant-btn').addEventListener('click', function() {
+    addVariant();
+});
+
+function addVariant() {
+    var container = document.getElementById('variants-container');
+    var noMsg = document.getElementById('no-variants-msg');
+    if (noMsg) noMsg.remove();
+
+    var idx = variantIndex++;
+    var html = '<div class="variant-item border rounded p-4 mb-4 bg-neutral-50" data-variant-idx="' + idx + '">' +
+        '<div class="flex justify-between items-start mb-4">' +
+        '<h4 class="font-medium">New Variant</h4>' +
+        '<button type="button" class="btn btn-ghost btn-sm text-danger remove-variant-btn" title="Remove" onclick="removeVariant(this)">' +
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<polyline points="3 6 5 6 21 6"/>' +
+        '<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>' +
+        '</svg></button></div>' +
+        '<div class="grid md:grid-cols-4 gap-4">' +
+        '<div class="form-group">' +
+        '<label class="form-label">Variant Name</label>' +
+        '<input type="text" name="variants[' + idx + '][name]" class="form-input" placeholder="e.g. Red / Large">' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label">SKU</label>' +
+        '<input type="text" name="variants[' + idx + '][sku]" class="form-input" placeholder="Variant SKU">' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label">Price (R)</label>' +
+        '<input type="number" name="variants[' + idx + '][price]" class="form-input" step="0.01" min="0">' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label">Stock</label>' +
+        '<input type="number" name="variants[' + idx + '][stock_quantity]" class="form-input" min="0" value="0">' +
+        '</div>' +
+        '</div></div>';
+
+    container.insertAdjacentHTML('beforeend', html);
+}
+
+function removeVariant(btn) {
+    var item = btn.closest('.variant-item');
+    var variantId = item.dataset.variantId;
+
+    if (variantId && confirm('Are you sure you want to delete this variant?')) {
+        // Mark for deletion on save
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'delete_variants[]';
+        input.value = variantId;
+        document.getElementById('product-form').appendChild(input);
+    }
+
+    item.remove();
+
+    // Show "no variants" message if empty
+    var container = document.getElementById('variants-container');
+    if (container.querySelectorAll('.variant-item').length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-8" id="no-variants-msg">No variants added yet. Click "Add Variant" to create product variations.</p>';
+    }
+}
+
+// Add onclick handlers to existing remove buttons
+document.querySelectorAll('.remove-variant-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        removeVariant(this);
+    });
+});
+
+// Image drag-drop reordering
+var draggedItem = null;
+var sortableContainer = document.getElementById('sortable-images');
+
+if (sortableContainer) {
+    sortableContainer.querySelectorAll('.product-image-item').forEach(function(item) {
+        item.addEventListener('dragstart', function(e) {
+            draggedItem = this;
+            this.classList.add('opacity-50');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        item.addEventListener('dragend', function(e) {
+            this.classList.remove('opacity-50');
+            draggedItem = null;
+            saveImageOrder();
+        });
+
+        item.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        });
+
+        item.addEventListener('dragenter', function(e) {
+            e.preventDefault();
+            if (this !== draggedItem) {
+                this.classList.add('border-2', 'border-primary');
+            }
+        });
+
+        item.addEventListener('dragleave', function(e) {
+            this.classList.remove('border-2', 'border-primary');
+        });
+
+        item.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('border-2', 'border-primary');
+            if (this !== draggedItem && draggedItem) {
+                var rect = this.getBoundingClientRect();
+                var midpoint = rect.left + rect.width / 2;
+                if (e.clientX < midpoint) {
+                    this.parentNode.insertBefore(draggedItem, this);
+                } else {
+                    this.parentNode.insertBefore(draggedItem, this.nextSibling);
+                }
+            }
+        });
+    });
+}
+
+function saveImageOrder() {
+    var items = document.querySelectorAll('.product-image-item');
+    var order = [];
+    items.forEach(function(item, index) {
+        order.push({
+            id: item.dataset.imageId,
+            sort_order: index
+        });
+    });
+
+    fetch('<?= url('/admin/products/images/reorder') ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify({ images: order })
+    });
+}
+
+function setPrimaryImage(imageId) {
+    fetch('<?= url('/admin/products/images/') ?>' + imageId + '/primary', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?= csrf_token() ?>'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.message || 'Failed to set primary image');
+        }
+    });
+}
+
 // Specification functions
 function addSpecification() {
     var container = document.getElementById('specifications-container');
@@ -557,16 +887,26 @@ function generateAiContent() {
 function applyAiContent(data) {
     // Apply SEO content
     if (data.meta_title) {
-        document.getElementById('meta_title').value = data.meta_title;
+        var metaTitle = document.getElementById('meta_title');
+        metaTitle.value = data.meta_title;
+        updateCharCount(metaTitle);
     }
     if (data.meta_description) {
-        document.getElementById('meta_description').value = data.meta_description;
+        var metaDesc = document.getElementById('meta_description');
+        metaDesc.value = data.meta_description;
+        updateCharCount(metaDesc);
     }
     if (data.short_description) {
-        document.getElementById('short_description').value = data.short_description;
+        var shortDesc = document.getElementById('short_description');
+        shortDesc.value = data.short_description;
+        updateCharCount(shortDesc);
     }
     if (data.description) {
         document.getElementById('description').value = data.description;
+        // Trigger TinyMCE update if available
+        if (typeof tinymce !== 'undefined' && tinymce.get('description')) {
+            tinymce.get('description').setContent(data.description);
+        }
     }
 
     // Apply specifications
@@ -669,6 +1009,42 @@ function deleteReview(id) {
     }
 }
 <?php endif; ?>
+
+// Initialize TinyMCE for rich text description
+if (typeof tinymce !== 'undefined') {
+    tinymce.init({
+        selector: '.tinymce-editor',
+        height: 300,
+        menubar: false,
+        plugins: 'lists link image table code',
+        toolbar: 'undo redo | formatselect | bold italic underline | alignleft aligncenter alignright | bullist numlist | link | code',
+        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
+        branding: false,
+        relative_urls: false,
+        remove_script_host: false
+    });
+}
+</script>
+
+<!-- TinyMCE CDN -->
+<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+<script>
+// Re-init TinyMCE after script loads
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof tinymce !== 'undefined') {
+        tinymce.init({
+            selector: '.tinymce-editor',
+            height: 300,
+            menubar: false,
+            plugins: 'lists link image table code',
+            toolbar: 'undo redo | formatselect | bold italic underline | alignleft aligncenter alignright | bullist numlist | link | code',
+            content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
+            branding: false,
+            relative_urls: false,
+            remove_script_host: false
+        });
+    }
+});
 </script>
 
 <style>

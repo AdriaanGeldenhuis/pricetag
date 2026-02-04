@@ -62,6 +62,7 @@ class ProductController extends Controller
         $primaryCategory = $product->getPrimaryCategory();
         $variants = $product->getVariants();
         $attributes = $product->getAttributes();
+        $specifications = $product->getSpecifications();
         $reviews = $product->getReviews();
         $relatedProducts = $product->getRelatedProducts(4);
 
@@ -101,6 +102,7 @@ class ProductController extends Controller
             'primaryCategory' => $primaryCategory,
             'variants' => $variants,
             'attributes' => $attributes,
+            'specifications' => $specifications,
             'reviews' => $reviews,
             'relatedProducts' => $relatedProducts,
             'breadcrumbs' => $breadcrumbs,

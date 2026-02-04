@@ -26,6 +26,7 @@
   justify-content: space-between;
   height: var(--header-height);
   gap: var(--space-6);
+  transition: height var(--duration-200) var(--ease-out);
 }
 
 .header-logo {
@@ -35,6 +36,7 @@
 .header-logo img {
   height: 40px;
   width: auto;
+  transition: height var(--duration-200) var(--ease-out);
 }
 
 .header-logo-text {
@@ -69,7 +71,10 @@
   border: var(--border-1) solid var(--color-border);
   border-radius: var(--radius-lg);
   color: var(--color-text);
-  transition: var(--transition-all);
+  transition: background-color var(--duration-200) var(--ease-out),
+              border-color var(--duration-200) var(--ease-out),
+              box-shadow var(--duration-200) var(--ease-out),
+              height var(--duration-200) var(--ease-out);
 }
 
 .search-input::placeholder {
@@ -366,7 +371,10 @@
   justify-content: center;
   border-radius: var(--radius-lg);
   color: var(--color-text-secondary);
-  transition: var(--transition-colors);
+  transition: color var(--duration-200) var(--ease-out),
+              background-color var(--duration-200) var(--ease-out),
+              width var(--duration-200) var(--ease-out),
+              height var(--duration-200) var(--ease-out);
 }
 
 .header-action-btn:hover {
@@ -377,6 +385,8 @@
 .header-action-btn svg {
   width: 24px;
   height: 24px;
+  transition: width var(--duration-200) var(--ease-out),
+              height var(--duration-200) var(--ease-out);
 }
 
 .header-action-count {
@@ -2053,6 +2063,10 @@
   --header-height: 56px;
 }
 
+.site-header.is-shrunk .header-logo img {
+  height: 32px;
+}
+
 .site-header.is-shrunk .header-logo-text {
   font-size: var(--text-lg);
 }
@@ -2065,6 +2079,10 @@
 .site-header.is-shrunk .header-action-btn svg {
   width: 20px;
   height: 20px;
+}
+
+.site-header.is-shrunk .search-input {
+  height: 40px;
 }
 
 /* =========================================================================

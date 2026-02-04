@@ -157,7 +157,7 @@
                     <div class="form-group">
                         <label for="images" class="form-label">Upload Images</label>
                         <input type="file" id="images" name="images[]" accept="image/jpeg,image/png,image/webp" class="form-input" multiple>
-                        <p class="form-help">Select multiple images. All images will be converted to WebP and resized to 600x600. Max 5MB per image.</p>
+                        <p class="form-help">Select multiple images. All images will be converted to WebP and resized to 1024x1024. Max 5MB per image.</p>
                     </div>
                 </div>
             </div>

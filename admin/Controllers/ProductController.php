@@ -338,15 +338,24 @@ class ProductController extends Controller
             return;
         }
 
-        // Delete file
-        $fullPath = STORAGE_PATH . '/uploads/' . $image['path'];
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-        }
+        $imagePath = $image['path'];
 
-        // Delete from database
+        // Delete from database first
         $stmt = $db->prepare("DELETE FROM product_images WHERE id = ?");
         $stmt->execute([$id]);
+
+        // Check if this image file is used by any other product
+        $stmt = $db->prepare("SELECT COUNT(*) FROM product_images WHERE path = ?");
+        $stmt->execute([$imagePath]);
+        $usageCount = (int) $stmt->fetchColumn();
+
+        // Only delete the file if no other products are using it
+        if ($usageCount === 0) {
+            $fullPath = STORAGE_PATH . '/uploads/' . $imagePath;
+            if (file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+        }
 
         // If this was primary, set another image as primary
         if ($image['is_primary']) {
@@ -1288,8 +1297,8 @@ class ProductController extends Controller
             return null;
         }
 
-        // Calculate crop dimensions for 600x600 (center crop)
-        $targetSize = 600;
+        // Calculate crop dimensions for 1024x1024 (center crop)
+        $targetSize = 1024;
 
         // Determine crop area (center square)
         $cropSize = min($sourceWidth, $sourceHeight);

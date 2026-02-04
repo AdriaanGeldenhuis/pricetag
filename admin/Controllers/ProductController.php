@@ -196,6 +196,8 @@ class ProductController extends Controller
         $vendors = $this->getVendors();
         $attributes = $this->getAttributesWithValues();
         $productAttributes = $this->getProductAttributes($product->id);
+        $specifications = $this->getProductSpecifications($product->id);
+        $reviews = $this->getProductReviews($product->id);
 
         $this->layout('admin');
         $this->view('pages/products/form', [
@@ -208,6 +210,8 @@ class ProductController extends Controller
             'vendors' => $vendors,
             'attributes' => $attributes,
             'productAttributes' => $productAttributes,
+            'specifications' => $specifications,
+            'reviews' => $reviews,
         ]);
     }
 
@@ -274,6 +278,9 @@ class ProductController extends Controller
 
         // Update attributes
         $this->saveProductAttributes($db, $product->id);
+
+        // Update specifications
+        $this->saveProductSpecifications($db, $product->id);
 
         // Handle new image upload
         if (!empty($_FILES['image']['tmp_name'])) {
@@ -456,6 +463,126 @@ class ProductController extends Controller
                 !empty($customValues[$attributeId]) ? $customValues[$attributeId] : null,
             ]);
         }
+    }
+
+    /**
+     * Get specifications for a product
+     */
+    private function getProductSpecifications(int $productId): array
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("SELECT * FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC");
+            $stmt->execute([$productId]);
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Save product specifications from POST data
+     */
+    private function saveProductSpecifications(\PDO $db, int $productId): void
+    {
+        // Delete existing specifications
+        $stmt = $db->prepare("DELETE FROM product_specifications WHERE product_id = ?");
+        $stmt->execute([$productId]);
+
+        $specNames = $_POST['spec_name'] ?? [];
+        $specValues = $_POST['spec_value'] ?? [];
+
+        foreach ($specNames as $i => $name) {
+            $name = trim($name);
+            $value = trim($specValues[$i] ?? '');
+
+            if (empty($name) || empty($value)) {
+                continue;
+            }
+
+            $stmt = $db->prepare("
+                INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order)
+                VALUES (?, ?, ?, ?)
+            ");
+            $stmt->execute([$productId, $name, $value, $i]);
+        }
+    }
+
+    /**
+     * Get reviews for a product
+     */
+    private function getProductReviews(int $productId): array
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("
+                SELECT r.*, u.name as user_name, u.email as user_email
+                FROM reviews r
+                LEFT JOIN users u ON u.id = r.user_id
+                WHERE r.product_id = ?
+                ORDER BY r.created_at DESC
+            ");
+            $stmt->execute([$productId]);
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Update a review (AJAX)
+     */
+    public function updateReview(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        $stmt = $db->prepare("SELECT * FROM reviews WHERE id = ?");
+        $stmt->execute([$id]);
+        $review = $stmt->fetch();
+
+        if (!$review) {
+            $this->json(['success' => false, 'message' => 'Review not found']);
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $stmt = $db->prepare("
+            UPDATE reviews
+            SET rating = ?, title = ?, content = ?, is_approved = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            (int) ($data['rating'] ?? $review['rating']),
+            $data['title'] ?? $review['title'],
+            $data['content'] ?? $review['content'],
+            !empty($data['is_approved']) ? 1 : 0,
+            $id
+        ]);
+
+        $this->json(['success' => true]);
+    }
+
+    /**
+     * Delete a review (AJAX)
+     */
+    public function deleteReview(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $stmt = $db->prepare("DELETE FROM reviews WHERE id = ?");
+        $stmt->execute([$id]);
+
+        $this->json(['success' => true]);
     }
 
     /**

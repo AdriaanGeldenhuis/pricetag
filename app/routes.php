@@ -149,6 +149,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->put('/products/{id}', 'Admin\Controllers\ProductController@update', 'admin.products.update');
     $router->delete('/products/{id}', 'Admin\Controllers\ProductController@destroy', 'admin.products.destroy');
     $router->delete('/products/images/{id}', 'Admin\Controllers\ProductController@deleteImage', 'admin.products.images.destroy');
+    $router->put('/products/reviews/{id}', 'Admin\Controllers\ProductController@updateReview', 'admin.products.reviews.update');
+    $router->delete('/products/reviews/{id}', 'Admin\Controllers\ProductController@deleteReview', 'admin.products.reviews.destroy');
 
     // Categories
     $router->get('/categories', 'Admin\Controllers\CategoryController@index', 'admin.categories.index');

@@ -141,10 +141,14 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     // Products
     $router->get('/products', 'Admin\Controllers\ProductController@index', 'admin.products.index');
     $router->get('/products/create', 'Admin\Controllers\ProductController@create', 'admin.products.create');
+    $router->get('/products/export', 'Admin\Controllers\ProductController@export', 'admin.products.export');
+    $router->get('/products/import', 'Admin\Controllers\ProductController@importForm', 'admin.products.import.form');
+    $router->post('/products/import', 'Admin\Controllers\ProductController@import', 'admin.products.import');
     $router->post('/products', 'Admin\Controllers\ProductController@store', 'admin.products.store');
     $router->get('/products/{id}/edit', 'Admin\Controllers\ProductController@edit', 'admin.products.edit');
     $router->put('/products/{id}', 'Admin\Controllers\ProductController@update', 'admin.products.update');
     $router->delete('/products/{id}', 'Admin\Controllers\ProductController@destroy', 'admin.products.destroy');
+    $router->delete('/products/images/{id}', 'Admin\Controllers\ProductController@deleteImage', 'admin.products.images.destroy');
 
     // Categories
     $router->get('/categories', 'Admin\Controllers\CategoryController@index', 'admin.categories.index');

@@ -458,6 +458,422 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Export products to CSV
+     */
+    public function export(): void
+    {
+        $db = Database::getInstance();
+
+        // Get filters from query string
+        $status = $_GET['status'] ?? '';
+        $vendor = $_GET['vendor'] ?? '';
+        $category = $_GET['category'] ?? '';
+
+        $where = ['1=1'];
+        $params = [];
+
+        if ($status) {
+            $where[] = "p.status = ?";
+            $params[] = $status;
+        }
+
+        if ($vendor) {
+            $where[] = "p.vendor_id = ?";
+            $params[] = $vendor;
+        }
+
+        if ($category) {
+            $where[] = "p.id IN (SELECT product_id FROM product_categories WHERE category_id = ?)";
+            $params[] = $category;
+        }
+
+        $whereClause = implode(' AND ', $where);
+
+        $stmt = $db->prepare("
+            SELECT
+                p.id,
+                p.sku,
+                p.name,
+                p.slug,
+                p.description,
+                p.short_description,
+                p.type,
+                p.status,
+                p.price,
+                p.compare_price,
+                p.cost_price,
+                p.manage_stock,
+                p.stock_quantity,
+                p.low_stock_threshold,
+                p.weight,
+                p.is_featured,
+                p.is_new,
+                p.is_on_sale,
+                p.meta_title,
+                p.meta_description,
+                v.name as vendor_name,
+                GROUP_CONCAT(DISTINCT c.name SEPARATOR '|') as categories
+            FROM products p
+            LEFT JOIN vendors v ON v.id = p.vendor_id
+            LEFT JOIN product_categories pc ON pc.product_id = p.id
+            LEFT JOIN categories c ON c.id = pc.category_id
+            WHERE $whereClause
+            GROUP BY p.id
+            ORDER BY p.id ASC
+        ");
+        $stmt->execute($params);
+        $products = $stmt->fetchAll();
+
+        // Set headers for CSV download
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="products_export_' . date('Y-m-d_His') . '.csv"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        // Open output stream
+        $output = fopen('php://output', 'w');
+
+        // Add UTF-8 BOM for Excel compatibility
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+        // Write header row
+        fputcsv($output, [
+            'ID',
+            'SKU',
+            'Name',
+            'Slug',
+            'Description',
+            'Short Description',
+            'Type',
+            'Status',
+            'Price',
+            'Compare Price',
+            'Cost Price',
+            'Manage Stock',
+            'Stock Quantity',
+            'Low Stock Threshold',
+            'Weight',
+            'Featured',
+            'New',
+            'On Sale',
+            'Meta Title',
+            'Meta Description',
+            'Vendor',
+            'Categories',
+        ]);
+
+        // Write data rows
+        foreach ($products as $product) {
+            fputcsv($output, [
+                $product['id'],
+                $product['sku'],
+                $product['name'],
+                $product['slug'],
+                $product['description'],
+                $product['short_description'],
+                $product['type'],
+                $product['status'],
+                $product['price'],
+                $product['compare_price'],
+                $product['cost_price'],
+                $product['manage_stock'] ? 'yes' : 'no',
+                $product['stock_quantity'],
+                $product['low_stock_threshold'],
+                $product['weight'],
+                $product['is_featured'] ? 'yes' : 'no',
+                $product['is_new'] ? 'yes' : 'no',
+                $product['is_on_sale'] ? 'yes' : 'no',
+                $product['meta_title'],
+                $product['meta_description'],
+                $product['vendor_name'],
+                $product['categories'],
+            ]);
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    /**
+     * Show import form
+     */
+    public function importForm(): void
+    {
+        $this->layout('admin');
+        $this->view('pages/products/import', [
+            'page_title' => 'Import Products',
+            'active_page' => 'products',
+        ]);
+    }
+
+    /**
+     * Process CSV import
+     */
+    public function import(): void
+    {
+        if (!$this->validateCsrf()) {
+            flash('error', 'Invalid security token. Please try again.');
+            $this->redirect('/admin/products/import');
+            return;
+        }
+
+        if (empty($_FILES['csv_file']['tmp_name'])) {
+            flash('error', 'Please select a CSV file to import.');
+            $this->redirect('/admin/products/import');
+            return;
+        }
+
+        $file = $_FILES['csv_file'];
+
+        // Validate file type
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+
+        $allowedTypes = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'];
+        if (!in_array($mimeType, $allowedTypes)) {
+            flash('error', 'Invalid file type. Please upload a CSV file.');
+            $this->redirect('/admin/products/import');
+            return;
+        }
+
+        // Read CSV file
+        $handle = fopen($file['tmp_name'], 'r');
+        if (!$handle) {
+            flash('error', 'Could not read the uploaded file.');
+            $this->redirect('/admin/products/import');
+            return;
+        }
+
+        // Skip BOM if present
+        $bom = fread($handle, 3);
+        if ($bom !== "\xEF\xBB\xBF") {
+            rewind($handle);
+        }
+
+        // Read header row
+        $header = fgetcsv($handle);
+        if (!$header) {
+            fclose($handle);
+            flash('error', 'CSV file is empty or invalid.');
+            $this->redirect('/admin/products/import');
+            return;
+        }
+
+        // Normalize header names
+        $header = array_map(function ($col) {
+            return strtolower(trim(str_replace([' ', '-'], '_', $col)));
+        }, $header);
+
+        // Required columns
+        $requiredColumns = ['sku', 'name', 'price'];
+        $missingColumns = array_diff($requiredColumns, $header);
+        if (!empty($missingColumns)) {
+            fclose($handle);
+            flash('error', 'Missing required columns: ' . implode(', ', $missingColumns));
+            $this->redirect('/admin/products/import');
+            return;
+        }
+
+        $db = Database::getInstance();
+        $updateExisting = !empty($_POST['update_existing']);
+        $imported = 0;
+        $updated = 0;
+        $errors = [];
+        $rowNum = 1;
+
+        // Get vendor lookup
+        $vendorLookup = [];
+        $stmt = $db->query("SELECT id, name FROM vendors");
+        foreach ($stmt->fetchAll() as $v) {
+            $vendorLookup[strtolower($v['name'])] = $v['id'];
+        }
+
+        // Get category lookup
+        $categoryLookup = [];
+        $stmt = $db->query("SELECT id, name FROM categories");
+        foreach ($stmt->fetchAll() as $c) {
+            $categoryLookup[strtolower($c['name'])] = $c['id'];
+        }
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNum++;
+
+            // Skip empty rows
+            if (empty(array_filter($row))) {
+                continue;
+            }
+
+            // Map row to associative array
+            $data = [];
+            foreach ($header as $i => $col) {
+                $data[$col] = $row[$i] ?? '';
+            }
+
+            // Validate required fields
+            if (empty($data['sku']) || empty($data['name']) || !isset($data['price'])) {
+                $errors[] = "Row $rowNum: Missing required fields (sku, name, or price)";
+                continue;
+            }
+
+            // Check if product exists
+            $stmt = $db->prepare("SELECT id FROM products WHERE sku = ?");
+            $stmt->execute([$data['sku']]);
+            $existingId = $stmt->fetchColumn();
+
+            if ($existingId && !$updateExisting) {
+                $errors[] = "Row $rowNum: SKU '{$data['sku']}' already exists (skipped)";
+                continue;
+            }
+
+            // Prepare product data
+            $slug = $this->getColumnValue($data, 'slug');
+            if (!$slug) {
+                $slug = slugify($data['name']);
+                // Ensure unique
+                $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE slug LIKE ? AND id != ?");
+                $stmt->execute([$slug . '%', $existingId ?: 0]);
+                $count = $stmt->fetchColumn();
+                if ($count > 0) {
+                    $slug .= '-' . ($count + 1);
+                }
+            }
+
+            // Lookup vendor
+            $vendorId = null;
+            $vendorName = $this->getColumnValue($data, 'vendor', 'vendor_name');
+            if ($vendorName && isset($vendorLookup[strtolower($vendorName)])) {
+                $vendorId = $vendorLookup[strtolower($vendorName)];
+            }
+
+            $productData = [
+                'sku' => $data['sku'],
+                'name' => $data['name'],
+                'slug' => $slug,
+                'description' => $this->getColumnValue($data, 'description'),
+                'short_description' => $this->getColumnValue($data, 'short_description'),
+                'type' => $this->getColumnValue($data, 'type') ?: 'simple',
+                'status' => $this->getColumnValue($data, 'status') ?: 'draft',
+                'price' => (float) $data['price'],
+                'compare_price' => $this->getColumnValue($data, 'compare_price') ?: null,
+                'cost_price' => $this->getColumnValue($data, 'cost_price') ?: null,
+                'manage_stock' => $this->parseBool($this->getColumnValue($data, 'manage_stock')),
+                'stock_quantity' => (int) ($this->getColumnValue($data, 'stock_quantity', 'stock') ?: 0),
+                'low_stock_threshold' => (int) ($this->getColumnValue($data, 'low_stock_threshold') ?: 5),
+                'weight' => $this->getColumnValue($data, 'weight') ?: null,
+                'vendor_id' => $vendorId,
+                'is_featured' => $this->parseBool($this->getColumnValue($data, 'is_featured', 'featured')),
+                'is_new' => $this->parseBool($this->getColumnValue($data, 'is_new', 'new')),
+                'is_on_sale' => $this->parseBool($this->getColumnValue($data, 'is_on_sale', 'on_sale')),
+                'meta_title' => $this->getColumnValue($data, 'meta_title'),
+                'meta_description' => $this->getColumnValue($data, 'meta_description'),
+            ];
+
+            try {
+                if ($existingId) {
+                    // Update existing
+                    $setClauses = [];
+                    $params = [];
+                    foreach ($productData as $col => $val) {
+                        if ($col !== 'sku') { // Don't update SKU
+                            $setClauses[] = "`$col` = ?";
+                            $params[] = $val;
+                        }
+                    }
+                    $params[] = $existingId;
+
+                    $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . " WHERE id = ?");
+                    $stmt->execute($params);
+                    $productId = $existingId;
+                    $updated++;
+                } else {
+                    // Insert new
+                    $columns = array_keys($productData);
+                    $placeholders = array_fill(0, count($columns), '?');
+
+                    $stmt = $db->prepare("
+                        INSERT INTO products (" . implode(', ', array_map(fn($c) => "`$c`", $columns)) . ")
+                        VALUES (" . implode(', ', $placeholders) . ")
+                    ");
+                    $stmt->execute(array_values($productData));
+                    $productId = $db->lastInsertId();
+                    $imported++;
+                }
+
+                // Handle categories
+                $categoryStr = $this->getColumnValue($data, 'categories', 'category');
+                if ($categoryStr) {
+                    // Delete existing category associations
+                    $stmt = $db->prepare("DELETE FROM product_categories WHERE product_id = ?");
+                    $stmt->execute([$productId]);
+
+                    $categoryNames = array_map('trim', explode('|', $categoryStr));
+                    $isPrimary = true;
+                    foreach ($categoryNames as $catName) {
+                        if (isset($categoryLookup[strtolower($catName)])) {
+                            $catId = $categoryLookup[strtolower($catName)];
+                            $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
+                            $stmt->execute([$productId, $catId, $isPrimary ? 1 : 0]);
+                            $isPrimary = false;
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                $errors[] = "Row $rowNum: Database error - " . $e->getMessage();
+            }
+        }
+
+        fclose($handle);
+
+        // Build result message
+        $messages = [];
+        if ($imported > 0) {
+            $messages[] = "$imported products imported";
+        }
+        if ($updated > 0) {
+            $messages[] = "$updated products updated";
+        }
+        if (empty($messages)) {
+            $messages[] = "No products were imported";
+        }
+
+        if (!empty($errors)) {
+            $_SESSION['import_errors'] = array_slice($errors, 0, 20); // Store first 20 errors
+            if (count($errors) > 20) {
+                $_SESSION['import_errors'][] = "... and " . (count($errors) - 20) . " more errors";
+            }
+        }
+
+        flash('success', implode(', ', $messages));
+        $this->redirect('/admin/products/import');
+    }
+
+    /**
+     * Get column value with fallback names
+     */
+    private function getColumnValue(array $data, string ...$names): ?string
+    {
+        foreach ($names as $name) {
+            if (isset($data[$name]) && $data[$name] !== '') {
+                return $data[$name];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Parse boolean from various formats
+     */
+    private function parseBool($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        $value = strtolower(trim((string) $value));
+        return in_array($value, ['1', 'yes', 'true', 'y', 'on']);
+    }
+
     private function handleImageUpload(int $productId, array $file): void
     {
         $allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];

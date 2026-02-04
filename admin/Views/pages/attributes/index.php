@@ -147,7 +147,7 @@
 
 <!-- Values Modal -->
 <div class="admin-modal-overlay" id="valuesModal">
-    <div class="admin-modal admin-modal-lg">
+    <div class="admin-modal lg">
         <div class="admin-modal-header">
             <h3 class="admin-modal-title" id="valuesModalTitle">Manage Values</h3>
             <button type="button" class="admin-modal-close" onclick="closeValuesModal()">
@@ -250,91 +250,7 @@
     flex-shrink: 0;
 }
 
-/* Admin Modal */
-.admin-modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.7);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1rem;
-}
-
-.admin-modal-overlay.open {
-    display: flex;
-}
-
-.admin-modal {
-    background: var(--admin-bg-card);
-    border-radius: var(--admin-radius);
-    border: 1px solid var(--admin-glass-border);
-    width: 100%;
-    max-width: 480px;
-    max-height: 90vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.admin-modal-lg {
-    max-width: 600px;
-}
-
-.admin-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--admin-glass-border);
-}
-
-.admin-modal-title {
-    font-size: 1.125rem;
-    font-weight: 600;
-    margin: 0;
-    color: var(--admin-text);
-}
-
-.admin-modal-close {
-    background: none;
-    border: none;
-    color: var(--admin-text-muted);
-    cursor: pointer;
-    padding: 0.25rem;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.admin-modal-close:hover {
-    background: var(--admin-bg-elevated);
-    color: var(--admin-text);
-}
-
-.admin-modal-body {
-    padding: 1.5rem;
-    overflow-y: auto;
-    flex: 1;
-}
-
-.admin-modal-body .form-group {
-    margin-bottom: 1rem;
-}
-
-.admin-modal-body .form-group:last-child {
-    margin-bottom: 0;
-}
-
-.admin-modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--admin-glass-border);
-}
+/* Admin Modal overrides for attributes page */
 
 /* Values Editor */
 .values-editor {
@@ -415,11 +331,11 @@ function openAttributeModal(id = null) {
         }
     }
 
-    document.getElementById('attributeModal').classList.add('open');
+    document.getElementById('attributeModal').classList.add('show');
 }
 
 function closeAttributeModal() {
-    document.getElementById('attributeModal').classList.remove('open');
+    document.getElementById('attributeModal').classList.remove('show');
 }
 
 function editAttribute(id) {
@@ -486,11 +402,11 @@ function manageValues(id) {
     document.getElementById('newColorInput').style.display = currentAttributeType === 'color' ? 'block' : 'none';
 
     renderValues();
-    document.getElementById('valuesModal').classList.add('open');
+    document.getElementById('valuesModal').classList.add('show');
 }
 
 function closeValuesModal() {
-    document.getElementById('valuesModal').classList.remove('open');
+    document.getElementById('valuesModal').classList.remove('show');
 }
 
 function renderValues() {
@@ -617,7 +533,7 @@ function escapeHtml(text) {
 document.querySelectorAll('.admin-modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) {
-            overlay.classList.remove('open');
+            overlay.classList.remove('show');
         }
     });
 });
@@ -625,8 +541,8 @@ document.querySelectorAll('.admin-modal-overlay').forEach(overlay => {
 // Close modals on Escape key
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        document.querySelectorAll('.admin-modal-overlay.open').forEach(modal => {
-            modal.classList.remove('open');
+        document.querySelectorAll('.admin-modal-overlay.show').forEach(modal => {
+            modal.classList.remove('show');
         });
     }
 });

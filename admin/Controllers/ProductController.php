@@ -172,9 +172,9 @@ class ProductController extends Controller
         // Handle attributes
         $this->saveProductAttributes($db, $product->id);
 
-        // Handle image upload
-        if (!empty($_FILES['image']['tmp_name'])) {
-            $this->handleImageUpload($product->id, $_FILES['image']);
+        // Handle image uploads (multiple)
+        if (!empty($_FILES['images']['tmp_name'][0])) {
+            $this->handleImageUploads($product->id, $_FILES['images']);
         }
 
         flash('success', 'Product created successfully');
@@ -283,9 +283,9 @@ class ProductController extends Controller
         // Update specifications
         $this->saveProductSpecifications($db, $product->id);
 
-        // Handle new image upload
-        if (!empty($_FILES['image']['tmp_name'])) {
-            $this->handleImageUpload($product->id, $_FILES['image']);
+        // Handle new image uploads (multiple)
+        if (!empty($_FILES['images']['tmp_name'][0])) {
+            $this->handleImageUploads($product->id, $_FILES['images']);
         }
 
         flash('success', 'Product updated successfully');
@@ -1182,23 +1182,136 @@ class ProductController extends Controller
         return in_array($value, ['1', 'yes', 'true', 'y', 'on']);
     }
 
-    private function handleImageUpload(int $productId, array $file): void
+    /**
+     * Handle multiple image uploads with WebP conversion and 600x600 cropping
+     */
+    private function handleImageUploads(int $productId, array $files): void
     {
         $allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
         $maxSize = 5 * 1024 * 1024; // 5MB
 
-        if (!in_array($file['type'], $allowedTypes)) {
-            flash('error', 'Invalid image type');
-            return;
+        // Normalize files array structure
+        $fileCount = is_array($files['name']) ? count($files['name']) : 1;
+        $uploadedCount = 0;
+
+        $db = Database::getInstance();
+
+        // Check if product already has images
+        $stmt = $db->prepare("SELECT COUNT(*) FROM product_images WHERE product_id = ?");
+        $stmt->execute([$productId]);
+        $existingImages = (int) $stmt->fetchColumn();
+
+        for ($i = 0; $i < $fileCount; $i++) {
+            // Handle both single and multiple file uploads
+            if (is_array($files['name'])) {
+                $file = [
+                    'name' => $files['name'][$i],
+                    'type' => $files['type'][$i],
+                    'tmp_name' => $files['tmp_name'][$i],
+                    'error' => $files['error'][$i],
+                    'size' => $files['size'][$i],
+                ];
+            } else {
+                $file = $files;
+            }
+
+            // Skip empty uploads
+            if (empty($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {
+                continue;
+            }
+
+            // Validate type
+            if (!in_array($file['type'], $allowedTypes)) {
+                flash('error', "Image '{$file['name']}' has invalid type. Skipped.");
+                continue;
+            }
+
+            // Validate size
+            if ($file['size'] > $maxSize) {
+                flash('error', "Image '{$file['name']}' is too large (max 5MB). Skipped.");
+                continue;
+            }
+
+            // Process and save image
+            $result = $this->processImage($file['tmp_name'], $productId);
+
+            if ($result) {
+                // Insert into database
+                $isPrimary = ($existingImages === 0 && $uploadedCount === 0) ? 1 : 0;
+                $stmt = $db->prepare("INSERT INTO product_images (product_id, path, is_primary) VALUES (?, ?, ?)");
+                $stmt->execute([$productId, $result, $isPrimary]);
+                $uploadedCount++;
+            }
         }
 
-        if ($file['size'] > $maxSize) {
-            flash('error', 'Image too large (max 5MB)');
-            return;
+        if ($uploadedCount > 0) {
+            flash('success', "$uploadedCount image(s) uploaded and processed successfully.");
+        }
+    }
+
+    /**
+     * Process image: convert to WebP and resize to 600x600
+     */
+    private function processImage(string $tmpPath, int $productId): ?string
+    {
+        // Create GD image from source
+        $imageInfo = getimagesize($tmpPath);
+        if (!$imageInfo) {
+            return null;
         }
 
-        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $filename = 'product-' . $productId . '-' . time() . '.' . $ext;
+        $sourceWidth = $imageInfo[0];
+        $sourceHeight = $imageInfo[1];
+        $mimeType = $imageInfo['mime'];
+
+        // Create source image based on type
+        switch ($mimeType) {
+            case 'image/jpeg':
+                $sourceImage = imagecreatefromjpeg($tmpPath);
+                break;
+            case 'image/png':
+                $sourceImage = imagecreatefrompng($tmpPath);
+                break;
+            case 'image/webp':
+                $sourceImage = imagecreatefromwebp($tmpPath);
+                break;
+            default:
+                return null;
+        }
+
+        if (!$sourceImage) {
+            return null;
+        }
+
+        // Calculate crop dimensions for 600x600 (center crop)
+        $targetSize = 600;
+
+        // Determine crop area (center square)
+        $cropSize = min($sourceWidth, $sourceHeight);
+        $cropX = ($sourceWidth - $cropSize) / 2;
+        $cropY = ($sourceHeight - $cropSize) / 2;
+
+        // Create destination image
+        $destImage = imagecreatetruecolor($targetSize, $targetSize);
+
+        // Preserve transparency for PNG
+        imagealphablending($destImage, false);
+        imagesavealpha($destImage, true);
+        $transparent = imagecolorallocatealpha($destImage, 255, 255, 255, 127);
+        imagefilledrectangle($destImage, 0, 0, $targetSize, $targetSize, $transparent);
+
+        // Resize and crop
+        imagecopyresampled(
+            $destImage,
+            $sourceImage,
+            0, 0,
+            (int) $cropX, (int) $cropY,
+            $targetSize, $targetSize,
+            $cropSize, $cropSize
+        );
+
+        // Generate filename
+        $filename = 'product-' . $productId . '-' . time() . '-' . uniqid() . '.webp';
         $path = 'products/' . $filename;
         $fullPath = STORAGE_PATH . '/uploads/' . $path;
 
@@ -1208,17 +1321,22 @@ class ProductController extends Controller
             mkdir($dir, 0755, true);
         }
 
-        if (move_uploaded_file($file['tmp_name'], $fullPath)) {
-            $db = Database::getInstance();
+        // Save as WebP with quality 85
+        $success = imagewebp($destImage, $fullPath, 85);
 
-            // Check if product has images
-            $stmt = $db->prepare("SELECT COUNT(*) FROM product_images WHERE product_id = ?");
-            $stmt->execute([$productId]);
-            $hasImages = $stmt->fetchColumn() > 0;
+        // Clean up
+        imagedestroy($sourceImage);
+        imagedestroy($destImage);
 
-            $stmt = $db->prepare("INSERT INTO product_images (product_id, path, is_primary) VALUES (?, ?, ?)");
-            $stmt->execute([$productId, $path, $hasImages ? 0 : 1]);
-        }
+        return $success ? $path : null;
+    }
+
+    /**
+     * Legacy single image upload handler (for backwards compatibility)
+     */
+    private function handleImageUpload(int $productId, array $file): void
+    {
+        $this->handleImageUploads($productId, $file);
     }
 
     protected function view(string $view, array $data = []): void

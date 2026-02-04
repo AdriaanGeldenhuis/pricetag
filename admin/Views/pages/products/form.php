@@ -155,9 +155,9 @@
                     <?php endif; ?>
 
                     <div class="form-group">
-                        <label for="image" class="form-label">Upload Image</label>
-                        <input type="file" id="image" name="image" accept="image/*" class="form-input">
-                        <p class="form-help">Accepted formats: JPEG, PNG, WebP. Max size: 5MB</p>
+                        <label for="images" class="form-label">Upload Images</label>
+                        <input type="file" id="images" name="images[]" accept="image/jpeg,image/png,image/webp" class="form-input" multiple>
+                        <p class="form-help">Select multiple images. All images will be converted to WebP and resized to 600x600. Max 5MB per image.</p>
                     </div>
                 </div>
             </div>

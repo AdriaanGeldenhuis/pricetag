@@ -17,9 +17,9 @@
     <input type="hidden" name="_method" value="PUT">
     <?php endif; ?>
 
-    <div class="grid lg:grid-cols-3 gap-6">
+    <div class="product-form-grid">
         <!-- Main Content -->
-        <div class="lg:col-span-2 space-y-6">
+        <div class="product-main-form">
             <!-- Basic Info -->
             <div class="card">
                 <div class="card-header">
@@ -177,32 +177,30 @@
                 </div>
                 <div class="card-body">
                     <?php if (!empty($images)): ?>
-                    <p class="text-sm text-muted mb-3">Drag images to reorder. Click "Set Primary" to change the main image.</p>
-                    <div id="sortable-images" class="grid grid-cols-4 gap-4 mb-4">
+                    <p class="form-help mb-4">Drag images to reorder. Click "Set Primary" to change the main image.</p>
+                    <div id="sortable-images" class="product-images-grid">
                         <?php foreach ($images as $idx => $image): ?>
-                        <div class="product-image-item relative group cursor-move" draggable="true" data-image-id="<?= $image['id'] ?>" data-sort="<?= $idx ?>">
+                        <div class="product-image-item group" draggable="true" data-image-id="<?= $image['id'] ?>" data-sort="<?= $idx ?>">
                             <img src="<?= url('storage/uploads/' . e($image['path'])) ?>"
-                                 alt="" class="w-full aspect-square object-cover rounded border-2 <?= $image['is_primary'] ? 'border-primary' : 'border-transparent' ?>">
+                                 alt="" class="product-image <?= $image['is_primary'] ? 'is-primary' : '' ?>">
                             <?php if ($image['is_primary']): ?>
-                            <span class="absolute top-2 left-2 badge badge-primary text-xs">Primary</span>
+                            <span class="product-image-badge">Primary</span>
                             <?php else: ?>
                             <button type="button"
                                     onclick="setPrimaryImage(<?= $image['id'] ?>)"
-                                    class="absolute top-2 left-2 btn btn-sm btn-ghost bg-white/90 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                                    class="product-image-set-primary">
                                 Set Primary
                             </button>
                             <?php endif; ?>
                             <button type="button"
                                     onclick="deleteImage(<?= $image['id'] ?>)"
-                                    class="absolute top-2 right-2 btn btn-danger btn-sm btn-icon opacity-0 group-hover:opacity-100 transition-opacity">
+                                    class="product-image-delete">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="3 6 5 6 21 6"/>
                                     <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                                 </svg>
                             </button>
-                            <div class="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                                Drag to reorder
-                            </div>
+                            <span class="product-image-drag-hint">Drag to reorder</span>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -281,11 +279,11 @@
                         <p class="text-muted text-sm" id="no-specs-msg">No specifications added yet. Click "Add Specification" to add one.</p>
                         <?php else:
                             foreach ($specifications as $i => $spec): ?>
-                        <div class="spec-row flex gap-2 items-start">
+                        <div class="spec-row">
                             <input type="text" name="spec_name[]" value="<?php echo e($spec['spec_name']); ?>"
-                                   class="form-input flex-1" placeholder="Name (e.g., Weight)">
+                                   class="form-input" placeholder="Name (e.g., Weight)">
                             <input type="text" name="spec_value[]" value="<?php echo e($spec['spec_value']); ?>"
-                                   class="form-input flex-1" placeholder="Value (e.g., 1.5kg)">
+                                   class="form-input" placeholder="Value (e.g., 1.5kg)">
                             <button type="button" onclick="removeSpecification(this)" class="btn btn-danger btn-icon btn-sm">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -355,7 +353,7 @@
         </div>
 
         <!-- Sidebar -->
-        <div class="space-y-6">
+        <div class="product-sidebar">
             <!-- Status -->
             <div class="card">
                 <div class="card-header">
@@ -806,9 +804,9 @@ function addSpecification() {
     if (noMsg) noMsg.remove();
 
     var row = document.createElement('div');
-    row.className = 'spec-row flex gap-2 items-start';
-    row.innerHTML = '<input type="text" name="spec_name[]" class="form-input flex-1" placeholder="Name (e.g., Weight)">' +
-        '<input type="text" name="spec_value[]" class="form-input flex-1" placeholder="Value (e.g., 1.5kg)">' +
+    row.className = 'spec-row';
+    row.innerHTML = '<input type="text" name="spec_name[]" class="form-input" placeholder="Name (e.g., Weight)">' +
+        '<input type="text" name="spec_value[]" class="form-input" placeholder="Value (e.g., 1.5kg)">' +
         '<button type="button" onclick="removeSpecification(this)" class="btn btn-danger btn-icon btn-sm">' +
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
@@ -920,9 +918,9 @@ function applyAiContent(data) {
 
         data.specifications.forEach(function(spec) {
             var row = document.createElement('div');
-            row.className = 'spec-row flex gap-2 items-start';
-            row.innerHTML = '<input type="text" name="spec_name[]" value="' + escapeHtml(spec.name) + '" class="form-input flex-1" placeholder="Name">' +
-                '<input type="text" name="spec_value[]" value="' + escapeHtml(spec.value) + '" class="form-input flex-1" placeholder="Value">' +
+            row.className = 'spec-row';
+            row.innerHTML = '<input type="text" name="spec_name[]" value="' + escapeHtml(spec.name) + '" class="form-input" placeholder="Name">' +
+                '<input type="text" name="spec_value[]" value="' + escapeHtml(spec.value) + '" class="form-input" placeholder="Value">' +
                 '<button type="button" onclick="removeSpecification(this)" class="btn btn-danger btn-icon btn-sm">' +
                 '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
                 '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
@@ -1047,37 +1045,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<style>
-/* Color swatch styles for attributes */
-.color-swatch {
-    display: inline-block;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-    transition: all 0.2s;
-}
-
-.color-swatch:hover {
-    transform: scale(1.1);
-}
-
-.color-swatch.selected,
-.color-option input:checked + .color-swatch {
-    border-color: var(--color-primary, #3b82f6);
-    box-shadow: 0 0 0 2px var(--color-primary, #3b82f6);
-}
-
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-}
-</style>

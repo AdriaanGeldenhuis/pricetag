@@ -218,6 +218,141 @@ class OpenAIService
     }
 
     /**
+     * Generate product content using AI
+     */
+    public function generateProductContent(array $product): array
+    {
+        if (empty($this->apiKey)) {
+            return ['error' => 'OpenAI API key not configured'];
+        }
+
+        $productName = $product['name'] ?? '';
+        $currentDescription = $product['description'] ?? '';
+        $currentShortDescription = $product['short_description'] ?? '';
+        $price = $product['price'] ?? 0;
+        $category = $product['category'] ?? '';
+
+        $prompt = "You are a professional e-commerce copywriter. Generate content for the following product:\n\n";
+        $prompt .= "Product Name: {$productName}\n";
+        if ($category) {
+            $prompt .= "Category: {$category}\n";
+        }
+        $prompt .= "Price: R" . number_format((float)$price, 2) . "\n";
+        if ($currentDescription) {
+            $prompt .= "Current Description: {$currentDescription}\n";
+        }
+
+        $prompt .= "\nGenerate the following in JSON format:\n";
+        $prompt .= "1. short_description: A compelling 1-2 sentence product summary (max 160 characters)\n";
+        $prompt .= "2. description: A detailed product description with features and benefits (2-3 paragraphs)\n";
+        $prompt .= "3. meta_title: SEO-optimized page title (max 70 characters)\n";
+        $prompt .= "4. meta_description: SEO meta description (max 160 characters)\n";
+        $prompt .= "5. specifications: Array of key-value pairs for product specs (e.g., [{\"name\": \"Material\", \"value\": \"Cotton\"}])\n";
+        $prompt .= "\nRespond ONLY with valid JSON, no other text.";
+
+        try {
+            $response = $this->makeRequest('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a helpful assistant that generates e-commerce product content. Always respond with valid JSON only.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 1000,
+                'temperature' => 0.7,
+            ]);
+
+            $content = $response['choices'][0]['message']['content'] ?? '';
+
+            // Clean up potential markdown code blocks
+            $content = preg_replace('/^```json\s*/', '', $content);
+            $content = preg_replace('/\s*```$/', '', $content);
+            $content = trim($content);
+
+            $data = json_decode($content, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return ['error' => 'Failed to parse AI response'];
+            }
+
+            return [
+                'success' => true,
+                'data' => $data,
+            ];
+
+        } catch (\Exception $e) {
+            error_log('OpenAI Product Generation Error: ' . $e->getMessage());
+            return ['error' => 'Failed to generate content: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Search and fill product information from the web
+     */
+    public function searchProductInfo(string $productName, string $sku = ''): array
+    {
+        if (empty($this->apiKey)) {
+            return ['error' => 'OpenAI API key not configured'];
+        }
+
+        $prompt = "Research and provide comprehensive product information for:\n";
+        $prompt .= "Product: {$productName}\n";
+        if ($sku) {
+            $prompt .= "SKU/Model: {$sku}\n";
+        }
+
+        $prompt .= "\nProvide the following in JSON format:\n";
+        $prompt .= "1. description: Detailed product description based on typical features of this product type\n";
+        $prompt .= "2. short_description: Brief summary (max 160 chars)\n";
+        $prompt .= "3. meta_title: SEO title (max 70 chars)\n";
+        $prompt .= "4. meta_description: SEO description (max 160 chars)\n";
+        $prompt .= "5. specifications: Array of typical specifications [{\"name\": \"spec\", \"value\": \"value\"}]\n";
+        $prompt .= "6. suggested_category: Best product category\n";
+        $prompt .= "\nBe helpful but don't make up specific technical specs you're not sure about. Respond ONLY with valid JSON.";
+
+        try {
+            $response = $this->makeRequest('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a product research assistant. Provide helpful product information based on general knowledge. Always respond with valid JSON only.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 1000,
+                'temperature' => 0.5,
+            ]);
+
+            $content = $response['choices'][0]['message']['content'] ?? '';
+
+            // Clean up potential markdown code blocks
+            $content = preg_replace('/^```json\s*/', '', $content);
+            $content = preg_replace('/\s*```$/', '', $content);
+            $content = trim($content);
+
+            $data = json_decode($content, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return ['error' => 'Failed to parse AI response'];
+            }
+
+            return [
+                'success' => true,
+                'data' => $data,
+            ];
+
+        } catch (\Exception $e) {
+            error_log('OpenAI Product Search Error: ' . $e->getMessage());
+            return ['error' => 'Failed to search product: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Check if API is configured
+     */
+    public function isConfigured(): bool
+    {
+        return !empty($this->apiKey);
+    }
+
+    /**
      * Fallback response when API is unavailable
      */
     private function getFallbackResponse(string $message, array $context): array

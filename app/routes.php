@@ -151,6 +151,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->delete('/products/images/{id}', 'Admin\Controllers\ProductController@deleteImage', 'admin.products.images.destroy');
     $router->put('/products/reviews/{id}', 'Admin\Controllers\ProductController@updateReview', 'admin.products.reviews.update');
     $router->delete('/products/reviews/{id}', 'Admin\Controllers\ProductController@deleteReview', 'admin.products.reviews.destroy');
+    $router->post('/products/{id}/ai-generate', 'Admin\Controllers\ProductController@generateAiContent', 'admin.products.ai.generate');
+    $router->post('/products/ai-search', 'Admin\Controllers\ProductController@searchAiInfo', 'admin.products.ai.search');
 
     // Categories
     $router->get('/categories', 'Admin\Controllers\CategoryController@index', 'admin.categories.index');

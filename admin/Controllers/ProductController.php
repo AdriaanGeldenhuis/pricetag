@@ -12,6 +12,7 @@ use App\Core\Controller;
 use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
+use App\Services\OpenAIService;
 
 class ProductController extends Controller
 {
@@ -583,6 +584,92 @@ class ProductController extends Controller
         $stmt->execute([$id]);
 
         $this->json(['success' => true]);
+    }
+
+    /**
+     * Generate AI content for product (AJAX)
+     */
+    public function generateAiContent(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        if (!$openai->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+            return;
+        }
+
+        // Get product category
+        $categories = $product->getCategories();
+        $categoryName = !empty($categories) ? $categories[0]['name'] : '';
+
+        $result = $openai->generateProductContent([
+            'name' => $product->name,
+            'description' => $product->description,
+            'short_description' => $product->short_description,
+            'price' => $product->price,
+            'category' => $categoryName,
+        ]);
+
+        if (isset($result['error'])) {
+            $this->json(['success' => false, 'message' => $result['error']]);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'data' => $result['data'],
+        ]);
+    }
+
+    /**
+     * Search and fill AI product info for new products (AJAX)
+     */
+    public function searchAiInfo(): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        $productName = $data['name'] ?? '';
+        $sku = $data['sku'] ?? '';
+
+        if (empty($productName)) {
+            $this->json(['success' => false, 'message' => 'Product name is required']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        if (!$openai->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+            return;
+        }
+
+        $result = $openai->searchProductInfo($productName, $sku);
+
+        if (isset($result['error'])) {
+            $this->json(['success' => false, 'message' => $result['error']]);
+            return;
+        }
+
+        $this->json([
+            'success' => true,
+            'data' => $result['data'],
+        ]);
     }
 
     /**

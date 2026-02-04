@@ -164,10 +164,21 @@
 
             <!-- SEO -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header flex justify-between items-center">
                     <h2 class="font-semibold">SEO</h2>
+                    <button type="button" onclick="generateAiContent()" class="btn btn-sm btn-primary" id="ai-generate-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                            <path d="M2 17l10 5 10-5"/>
+                            <path d="M2 12l10 5 10-5"/>
+                        </svg>
+                        Generate AI Info
+                    </button>
                 </div>
                 <div class="card-body space-y-4">
+                    <div id="ai-status" class="alert alert-info hidden">
+                        <span id="ai-status-text">Generating content...</span>
+                    </div>
                     <div class="form-group">
                         <label for="meta_title" class="form-label">Meta Title</label>
                         <input type="text" id="meta_title" name="meta_title"
@@ -476,6 +487,116 @@ function addSpecification() {
 
 function removeSpecification(btn) {
     btn.closest('.spec-row').remove();
+}
+
+// AI Content Generation
+function generateAiContent() {
+    var btn = document.getElementById('ai-generate-btn');
+    var statusDiv = document.getElementById('ai-status');
+    var statusText = document.getElementById('ai-status-text');
+
+    <?php if ($product): ?>
+    var productId = <?php echo $product->id; ?>;
+    var endpoint = '<?php echo url('/admin/products/'); ?>' + productId + '/ai-generate';
+    <?php else: ?>
+    var productName = document.getElementById('name').value;
+    var sku = document.getElementById('sku').value;
+
+    if (!productName) {
+        alert('Please enter a product name first');
+        return;
+    }
+
+    var endpoint = '<?php echo url('/admin/products/ai-search'); ?>';
+    <?php endif; ?>
+
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="animate-spin mr-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Generating...';
+    statusDiv.classList.remove('hidden');
+    statusText.textContent = 'AI is generating content for your product...';
+
+    <?php if ($product): ?>
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-Token': '<?php echo csrf_token(); ?>',
+            'Content-Type': 'application/json'
+        }
+    })
+    <?php else: ?>
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-Token': '<?php echo csrf_token(); ?>',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: productName, sku: sku })
+    })
+    <?php endif; ?>
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Generate AI Info';
+
+        if (data.success) {
+            statusDiv.classList.add('hidden');
+            applyAiContent(data.data);
+        } else {
+            statusDiv.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + data.message;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> Generate AI Info';
+        statusDiv.className = 'alert alert-danger';
+        statusText.textContent = 'Error: Failed to connect to AI service';
+    });
+}
+
+function applyAiContent(data) {
+    // Apply SEO content
+    if (data.meta_title) {
+        document.getElementById('meta_title').value = data.meta_title;
+    }
+    if (data.meta_description) {
+        document.getElementById('meta_description').value = data.meta_description;
+    }
+    if (data.short_description) {
+        document.getElementById('short_description').value = data.short_description;
+    }
+    if (data.description) {
+        document.getElementById('description').value = data.description;
+    }
+
+    // Apply specifications
+    if (data.specifications && Array.isArray(data.specifications)) {
+        var container = document.getElementById('specifications-container');
+        var noMsg = document.getElementById('no-specs-msg');
+        if (noMsg) noMsg.remove();
+
+        // Clear existing specifications
+        container.innerHTML = '';
+
+        data.specifications.forEach(function(spec) {
+            var row = document.createElement('div');
+            row.className = 'spec-row flex gap-2 items-start';
+            row.innerHTML = '<input type="text" name="spec_name[]" value="' + escapeHtml(spec.name) + '" class="form-input flex-1" placeholder="Name">' +
+                '<input type="text" name="spec_value[]" value="' + escapeHtml(spec.value) + '" class="form-input flex-1" placeholder="Value">' +
+                '<button type="button" onclick="removeSpecification(this)" class="btn btn-danger btn-icon btn-sm">' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+                '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+            container.appendChild(row);
+        });
+    }
+
+    alert('AI content has been generated and applied. Please review and save the product.');
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 <?php if ($product): ?>

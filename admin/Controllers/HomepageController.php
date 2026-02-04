@@ -31,6 +31,7 @@ class HomepageController extends Controller
             'page_title' => 'Homepage Builder',
             'active_page' => 'homepage',
             'sections' => $sections,
+            'sectionTypes' => $this->getSectionTypes(),
         ]);
     }
 
@@ -93,6 +94,52 @@ class HomepageController extends Controller
 
         flash('success', 'Section deleted');
         $this->redirect('/admin/homepage');
+    }
+
+    /**
+     * Toggle section active status (AJAX)
+     */
+    public function toggle($id): void
+    {
+        $db = Database::getInstance();
+
+        // Toggle status
+        $stmt = $db->prepare("UPDATE home_sections SET is_active = NOT is_active WHERE id = ?");
+        $stmt->execute([$id]);
+
+        // Get new status
+        $stmt = $db->prepare("SELECT is_active FROM home_sections WHERE id = ?");
+        $stmt->execute([$id]);
+        $section = $stmt->fetch();
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'is_active' => (bool) $section['is_active'],
+        ]);
+    }
+
+    /**
+     * Reorder sections (AJAX)
+     */
+    public function reorder(): void
+    {
+        $order = $_POST['order'] ?? [];
+        if (empty($order) || !is_array($order)) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false]);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $stmt = $db->prepare("UPDATE home_sections SET sort_order = ? WHERE id = ?");
+
+        foreach ($order as $position => $id) {
+            $stmt->execute([(int) $position, (int) $id]);
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
     }
 
     private function getSectionTypes(): array

@@ -141,10 +141,14 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     // Products
     $router->get('/products', 'Admin\Controllers\ProductController@index', 'admin.products.index');
     $router->get('/products/create', 'Admin\Controllers\ProductController@create', 'admin.products.create');
+    $router->get('/products/export', 'Admin\Controllers\ProductController@export', 'admin.products.export');
+    $router->get('/products/import', 'Admin\Controllers\ProductController@importForm', 'admin.products.import.form');
+    $router->post('/products/import', 'Admin\Controllers\ProductController@import', 'admin.products.import');
     $router->post('/products', 'Admin\Controllers\ProductController@store', 'admin.products.store');
     $router->get('/products/{id}/edit', 'Admin\Controllers\ProductController@edit', 'admin.products.edit');
     $router->put('/products/{id}', 'Admin\Controllers\ProductController@update', 'admin.products.update');
     $router->delete('/products/{id}', 'Admin\Controllers\ProductController@destroy', 'admin.products.destroy');
+    $router->delete('/products/images/{id}', 'Admin\Controllers\ProductController@deleteImage', 'admin.products.images.destroy');
 
     // Categories
     $router->get('/categories', 'Admin\Controllers\CategoryController@index', 'admin.categories.index');
@@ -192,6 +196,14 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->get('/users/{id}/edit', 'Admin\Controllers\UserController@edit', 'admin.users.edit');
     $router->put('/users/{id}', 'Admin\Controllers\UserController@update', 'admin.users.update');
     $router->delete('/users/{id}', 'Admin\Controllers\UserController@destroy', 'admin.users.destroy');
+
+    // User Management - Extended (Super Admin)
+    $router->get('/users/{id}/audit', 'Admin\Controllers\UserController@auditLog', 'admin.users.audit');
+    $router->post('/users/{id}/mfa/toggle', 'Admin\Controllers\UserController@toggleMfa', 'admin.users.mfa.toggle');
+    $router->post('/users/{id}/sessions/terminate', 'Admin\Controllers\UserController@terminateSessions', 'admin.users.sessions.terminate');
+    $router->post('/users/{id}/password/reset', 'Admin\Controllers\UserController@forcePasswordReset', 'admin.users.password.reset');
+    $router->post('/users/{id}/impersonate', 'Admin\Controllers\UserController@impersonate', 'admin.users.impersonate');
+    $router->post('/users/impersonate/stop', 'Admin\Controllers\UserController@stopImpersonation', 'admin.users.impersonate.stop');
 
     // Settings
     $router->get('/settings', 'Admin\Controllers\SettingsController@index', 'admin.settings.index');

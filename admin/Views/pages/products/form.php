@@ -241,6 +241,29 @@
                 </div>
             </div>
 
+            <!-- Vendor -->
+            <?php if (!empty($vendors)): ?>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="font-semibold">Vendor</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="vendor_id" class="form-label">Select Vendor</label>
+                        <select id="vendor_id" name="vendor_id" class="form-select">
+                            <option value="">-- No Vendor --</option>
+                            <?php foreach ($vendors as $vendor): ?>
+                            <option value="<?= $vendor['id'] ?>" <?= ($product->vendor_id ?? '') == $vendor['id'] ? 'selected' : '' ?>>
+                                <?= e($vendor['name']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p class="form-help">Associate this product with a vendor/supplier</p>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <!-- Flags -->
             <div class="card">
                 <div class="card-header">
@@ -266,6 +289,55 @@
                     </label>
                 </div>
             </div>
+
+            <!-- Attributes -->
+            <?php if (!empty($attributes)): ?>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="font-semibold">Attributes</h2>
+                </div>
+                <div class="card-body space-y-4">
+                    <?php
+                    $productAttributes = $productAttributes ?? [];
+                    foreach ($attributes as $attr):
+                        $selectedValue = $productAttributes[$attr['id']]['value_id'] ?? '';
+                        $customValue = $productAttributes[$attr['id']]['custom_value'] ?? '';
+                    ?>
+                    <div class="form-group">
+                        <label class="form-label"><?= e($attr['name']) ?></label>
+                        <?php if ($attr['type'] === 'text'): ?>
+                        <input type="hidden" name="attribute_values[<?= $attr['id'] ?>]" value="">
+                        <input type="text" name="attribute_custom[<?= $attr['id'] ?>]"
+                               value="<?= e($customValue) ?>" class="form-input"
+                               placeholder="Enter <?= e(strtolower($attr['name'])) ?>">
+                        <?php elseif ($attr['type'] === 'color'): ?>
+                        <div class="flex flex-wrap gap-2">
+                            <?php foreach ($attr['values'] as $value): ?>
+                            <label class="color-option cursor-pointer" title="<?= e($value['value']) ?>">
+                                <input type="radio" name="attribute_values[<?= $attr['id'] ?>]"
+                                       value="<?= $value['id'] ?>"
+                                       <?= $selectedValue == $value['id'] ? 'checked' : '' ?>
+                                       class="sr-only">
+                                <span class="color-swatch <?= $selectedValue == $value['id'] ? 'selected' : '' ?>"
+                                      style="background-color: <?= e($value['color_code'] ?? '#ccc') ?>;"></span>
+                            </label>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php else: ?>
+                        <select name="attribute_values[<?= $attr['id'] ?>]" class="form-select">
+                            <option value="">-- Select --</option>
+                            <?php foreach ($attr['values'] as $value): ?>
+                            <option value="<?= $value['id'] ?>" <?= $selectedValue == $value['id'] ? 'selected' : '' ?>>
+                                <?= e($value['value']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <!-- Actions -->
             <div class="card">
@@ -334,3 +406,38 @@ function deleteImage(id) {
 }
 <?php endif; ?>
 </script>
+
+<style>
+/* Color swatch styles for attributes */
+.color-swatch {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+    transition: all 0.2s;
+}
+
+.color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.color-swatch.selected,
+.color-option input:checked + .color-swatch {
+    border-color: var(--color-primary, #3b82f6);
+    box-shadow: 0 0 0 2px var(--color-primary, #3b82f6);
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+</style>

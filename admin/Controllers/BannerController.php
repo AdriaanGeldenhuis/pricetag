@@ -106,6 +106,52 @@ class BannerController extends Controller
         $this->redirect('/admin/banners');
     }
 
+    /**
+     * Toggle banner active status (AJAX)
+     */
+    public function toggle($id): void
+    {
+        $db = Database::getInstance();
+
+        // Toggle status
+        $stmt = $db->prepare("UPDATE banners SET is_active = NOT is_active WHERE id = ?");
+        $stmt->execute([$id]);
+
+        // Get new status
+        $stmt = $db->prepare("SELECT is_active FROM banners WHERE id = ?");
+        $stmt->execute([$id]);
+        $banner = $stmt->fetch();
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'is_active' => (bool) $banner['is_active'],
+        ]);
+    }
+
+    /**
+     * Reorder banners (AJAX)
+     */
+    public function reorder(): void
+    {
+        $order = $_POST['order'] ?? [];
+        if (empty($order) || !is_array($order)) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false]);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $stmt = $db->prepare("UPDATE banners SET sort_order = ? WHERE id = ?");
+
+        foreach ($order as $position => $id) {
+            $stmt->execute([(int) $position, (int) $id]);
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true]);
+    }
+
     private function getBannerLocations(): array
     {
         return [

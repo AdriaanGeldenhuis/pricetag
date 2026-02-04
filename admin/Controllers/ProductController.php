@@ -486,26 +486,31 @@ class ProductController extends Controller
      */
     private function saveProductSpecifications(\PDO $db, int $productId): void
     {
-        // Delete existing specifications
-        $stmt = $db->prepare("DELETE FROM product_specifications WHERE product_id = ?");
-        $stmt->execute([$productId]);
+        try {
+            // Delete existing specifications
+            $stmt = $db->prepare("DELETE FROM product_specifications WHERE product_id = ?");
+            $stmt->execute([$productId]);
 
-        $specNames = $_POST['spec_name'] ?? [];
-        $specValues = $_POST['spec_value'] ?? [];
+            $specNames = $_POST['spec_name'] ?? [];
+            $specValues = $_POST['spec_value'] ?? [];
 
-        foreach ($specNames as $i => $name) {
-            $name = trim($name);
-            $value = trim($specValues[$i] ?? '');
+            foreach ($specNames as $i => $name) {
+                $name = trim($name);
+                $value = trim($specValues[$i] ?? '');
 
-            if (empty($name) || empty($value)) {
-                continue;
+                if (empty($name) || empty($value)) {
+                    continue;
+                }
+
+                $stmt = $db->prepare("
+                    INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order)
+                    VALUES (?, ?, ?, ?)
+                ");
+                $stmt->execute([$productId, $name, $value, $i]);
             }
-
-            $stmt = $db->prepare("
-                INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order)
-                VALUES (?, ?, ?, ?)
-            ");
-            $stmt->execute([$productId, $name, $value, $i]);
+        } catch (\Throwable $e) {
+            // Table might not exist yet - log and continue
+            error_log("Could not save specifications: " . $e->getMessage());
         }
     }
 

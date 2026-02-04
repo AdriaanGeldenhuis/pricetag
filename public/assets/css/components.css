@@ -884,7 +884,7 @@
    ========================================================================= */
 
 .site-footer {
-  background-color: #0a0a0a;
+  background-color: #18181e;
   color: var(--color-text-secondary);
   margin-top: auto;
   border-top: var(--border-1) solid var(--color-border);
@@ -1008,7 +1008,7 @@
 .footer-bottom {
   padding: var(--space-6) 0;
   border-top: var(--border-1) solid var(--color-border);
-  background-color: #050505;
+  background-color: #141418;
 }
 
 .footer-bottom-inner {

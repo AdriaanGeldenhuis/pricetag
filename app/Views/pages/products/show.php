@@ -519,6 +519,8 @@
 .product-gallery {
     position: sticky;
     top: 100px;
+    align-self: start;
+    height: fit-content;
 }
 
 .product-main-image-wrapper {

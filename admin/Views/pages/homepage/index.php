@@ -31,7 +31,7 @@
         <?php else: ?>
         <div id="sortableSections" class="space-y-3">
             <?php foreach ($sections as $section): ?>
-            <div class="section-item" data-id="<?= $section['id'] ?>">
+            <div class="section-item" data-id="<?php echo $section['id']; ?>">
                 <div class="flex items-center gap-4">
                     <div class="drag-handle cursor-move text-muted">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
@@ -44,24 +44,24 @@
                         </svg>
                     </div>
                     <div class="flex-1">
-                        <h4 class="font-medium"><?= e($section['title'] ?: ucwords(str_replace('_', ' ', $section['type']))) ?></h4>
-                        <p class="text-sm text-muted"><?= e($section['type']) ?></p>
+                        <h4 class="font-medium"><?php echo e($section['title'] ?: ucwords(str_replace('_', ' ', $section['type']))); ?></h4>
+                        <p class="text-sm text-muted"><?php echo e($section['type']); ?></p>
                     </div>
                     <div class="flex items-center gap-3">
                         <button type="button"
-                                onclick="toggleSection(<?= $section['id'] ?>)"
-                                class="toggle-btn <?= $section['is_active'] ? 'active' : '' ?>"
-                                title="<?= $section['is_active'] ? 'Click to deactivate' : 'Click to activate' ?>">
+                                onclick="toggleSection(<?php echo $section['id']; ?>, this)"
+                                class="toggle-btn <?php echo $section['is_active'] ? 'active' : ''; ?>"
+                                title="<?php echo $section['is_active'] ? 'Click to deactivate' : 'Click to activate'; ?>">
                             <span class="toggle-slider"></span>
                         </button>
-                        <a href="<?= url('/admin/homepage/' . $section['id'] . '/edit') ?>" class="admin-btn admin-btn-sm admin-btn-secondary">
+                        <a href="<?php echo url('/admin/homepage/' . $section['id'] . '/edit'); ?>" class="admin-btn admin-btn-sm admin-btn-secondary">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                 <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path>
                                 <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                             </svg>
                             Edit
                         </a>
-                        <button type="button" onclick="deleteSection(<?= $section['id'] ?>)" class="admin-btn admin-btn-sm admin-btn-danger-outline">
+                        <button type="button" onclick="deleteSection(<?php echo $section['id']; ?>)" class="admin-btn admin-btn-sm admin-btn-danger-outline">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                                 <polyline points="3 6 5 6 21 6"></polyline>
                                 <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
@@ -88,18 +88,18 @@
                 </svg>
             </button>
         </div>
-        <form action="<?= url('/admin/homepage') ?>" method="POST">
-            <?= csrf_field() ?>
+        <form action="<?php echo url('/admin/homepage'); ?>" method="POST">
+            <?php echo csrf_field(); ?>
             <div class="admin-modal-body">
                 <div class="form-group">
                     <label class="form-label">Section Type</label>
                     <div class="section-type-grid">
-                        <?php foreach ($sectionTypes ?? [] as $type => $info): ?>
+                        <?php foreach ($sectionTypes as $type => $info): ?>
                         <label class="section-type-option">
-                            <input type="radio" name="type" value="<?= $type ?>" class="sr-only" required>
+                            <input type="radio" name="type" value="<?php echo $type; ?>" class="sr-only" required>
                             <div class="section-type-card">
-                                <strong><?= e($info['name']) ?></strong>
-                                <p class="text-sm text-muted"><?= e($info['description'] ?? '') ?></p>
+                                <strong><?php echo e($info['name']); ?></strong>
+                                <p class="text-sm text-muted"><?php echo e($info['description'] ?? ''); ?></p>
                             </div>
                         </label>
                         <?php endforeach; ?>
@@ -132,7 +132,7 @@
         <div class="admin-modal-footer">
             <button class="admin-btn admin-btn-secondary" onclick="hideDeleteModal()">Cancel</button>
             <form id="deleteSectionForm" method="POST" style="display: inline;">
-                <?= csrf_field() ?>
+                <?php echo csrf_field(); ?>
                 <input type="hidden" name="_method" value="DELETE">
                 <button type="submit" class="admin-btn admin-btn-danger">Delete Section</button>
             </form>
@@ -249,11 +249,11 @@ function hideAddSectionModal() {
 }
 
 // Delete Section Modal
-let deleteSectionId = null;
+var deleteSectionId = null;
 
 function deleteSection(id) {
     deleteSectionId = id;
-    document.getElementById('deleteSectionForm').action = '<?= url('/admin/homepage/') ?>' + id;
+    document.getElementById('deleteSectionForm').action = '<?php echo url('/admin/homepage/'); ?>' + id;
     document.getElementById('deleteSectionModal').classList.add('show');
 }
 
@@ -263,27 +263,25 @@ function hideDeleteModal() {
 }
 
 // Toggle Section
-function toggleSection(id) {
-    const btn = event.currentTarget;
-
-    fetch('<?= url('/admin/homepage/') ?>' + id + '/toggle', {
+function toggleSection(id, btn) {
+    fetch('<?php echo url('/admin/homepage/'); ?>' + id + '/toggle', {
         method: 'POST',
         headers: {
-            'X-CSRF-Token': '<?= csrf_token() ?>',
+            'X-CSRF-Token': '<?php echo csrf_token(); ?>',
             'Content-Type': 'application/json'
         }
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (data.success) {
             btn.classList.toggle('active', data.is_active);
         }
     })
-    .catch(error => console.error('Error:', error));
+    .catch(function(error) { console.error('Error:', error); });
 }
 
 // Close modals on overlay click
-document.querySelectorAll('.admin-modal-overlay').forEach(overlay => {
+document.querySelectorAll('.admin-modal-overlay').forEach(function(overlay) {
     overlay.addEventListener('click', function(e) {
         if (e.target === this) {
             this.classList.remove('show');
@@ -292,11 +290,11 @@ document.querySelectorAll('.admin-modal-overlay').forEach(overlay => {
 });
 
 // Drag and drop reordering
-const sortable = document.getElementById('sortableSections');
+var sortable = document.getElementById('sortableSections');
 if (sortable) {
-    let draggedItem = null;
+    var draggedItem = null;
 
-    sortable.querySelectorAll('.section-item').forEach(item => {
+    sortable.querySelectorAll('.section-item').forEach(function(item) {
         item.setAttribute('draggable', 'true');
 
         item.addEventListener('dragstart', function(e) {
@@ -313,7 +311,7 @@ if (sortable) {
 
         item.addEventListener('dragover', function(e) {
             e.preventDefault();
-            const afterElement = getDragAfterElement(sortable, e.clientY);
+            var afterElement = getDragAfterElement(sortable, e.clientY);
             if (afterElement == null) {
                 sortable.appendChild(draggedItem);
             } else {
@@ -324,11 +322,11 @@ if (sortable) {
 }
 
 function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.section-item:not(.dragging)')];
+    var draggableElements = Array.from(container.querySelectorAll('.section-item:not(.dragging)'));
 
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
+    return draggableElements.reduce(function(closest, child) {
+        var box = child.getBoundingClientRect();
+        var offset = y - box.top - box.height / 2;
         if (offset < 0 && offset > closest.offset) {
             return { offset: offset, element: child };
         } else {
@@ -338,23 +336,23 @@ function getDragAfterElement(container, y) {
 }
 
 function saveOrder() {
-    const items = document.querySelectorAll('#sortableSections .section-item');
-    const order = Array.from(items).map(item => item.dataset.id);
+    var items = document.querySelectorAll('#sortableSections .section-item');
+    var order = Array.from(items).map(function(item) { return item.dataset.id; });
 
-    fetch('<?= url('/admin/homepage/reorder') ?>', {
+    fetch('<?php echo url('/admin/homepage/reorder'); ?>', {
         method: 'POST',
         headers: {
-            'X-CSRF-Token': '<?= csrf_token() ?>',
+            'X-CSRF-Token': '<?php echo csrf_token(); ?>',
             'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: 'order[]=' + order.join('&order[]=')
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (!data.success) {
             console.error('Failed to save order');
         }
     })
-    .catch(error => console.error('Error:', error));
+    .catch(function(error) { console.error('Error:', error); });
 }
 </script>

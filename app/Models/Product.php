@@ -116,8 +116,12 @@ class Product extends Model
             $params[] = $query . '*';
         }
 
-        // Category filter
-        if (!empty($filters['category_id'])) {
+        // Category filter - support both single and multiple category IDs
+        if (!empty($filters['category_ids']) && is_array($filters['category_ids'])) {
+            $placeholders = implode(',', array_fill(0, count($filters['category_ids']), '?'));
+            $where[] = "id IN (SELECT product_id FROM product_categories WHERE category_id IN ($placeholders))";
+            $params = array_merge($params, $filters['category_ids']);
+        } elseif (!empty($filters['category_id'])) {
             $where[] = "id IN (SELECT product_id FROM product_categories WHERE category_id = ?)";
             $params[] = $filters['category_id'];
         }

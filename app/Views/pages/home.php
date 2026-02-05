@@ -72,59 +72,52 @@
 </section>
 <?php endif; ?>
 
-<!-- Trust Badges -->
-<section class="trust-badges py-8 bg-background-alt">
-    <div class="container">
-        <div class="trust-badges-grid">
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="1" y="3" width="15" height="13"/>
-                        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                        <circle cx="5.5" cy="18.5" r="2.5"/>
-                        <circle cx="18.5" cy="18.5" r="2.5"/>
+<!-- Quick Category Bar -->
+<section class="quick-categories-bar">
+    <div class="quick-categories-container">
+        <div class="quick-categories-scroll">
+            <?php
+            $allCategories = $categories ?? $featuredCategories ?? [];
+            if (!empty($allCategories)):
+                foreach ($allCategories as $category):
+                    $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
+                    $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
+                    $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
+                    $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
+            ?>
+            <a href="<?= url('/categories/' . $catSlug) ?>" class="quick-category-item">
+                <div class="quick-category-image">
+                    <?php if (!empty($catImage)): ?>
+                    <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="<?= e($catName) ?>" loading="lazy">
+                    <?php elseif (!empty($catIcon)): ?>
+                    <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="<?= e($catName) ?>" loading="lazy">
+                    <?php else: ?>
+                    <div class="quick-category-placeholder">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <span class="quick-category-name"><?= e($catName) ?></span>
+            </a>
+            <?php
+                endforeach;
+            endif;
+            ?>
+            <!-- View All Link -->
+            <a href="<?= url('/categories') ?>" class="quick-category-item quick-category-view-all">
+                <div class="quick-category-image">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
                     </svg>
                 </div>
-                <div class="trust-badge-content">
-                    <h3>Free Delivery</h3>
-                    <p>Orders over R500</p>
-                </div>
-            </div>
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        <path d="M9 12l2 2 4-4"/>
-                    </svg>
-                </div>
-                <div class="trust-badge-content">
-                    <h3>Secure Payment</h3>
-                    <p>100% Protected</p>
-                </div>
-            </div>
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                    </svg>
-                </div>
-                <div class="trust-badge-content">
-                    <h3>Quality Products</h3>
-                    <p>Best brands only</p>
-                </div>
-            </div>
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                </div>
-                <div class="trust-badge-content">
-                    <h3>24/7 Support</h3>
-                    <p>Always here to help</p>
-                </div>
-            </div>
+                <span class="quick-category-name">View All</span>
+            </a>
         </div>
     </div>
 </section>
@@ -552,62 +545,138 @@
     transform: scale(1.2);
 }
 
-/* Trust Badges - Dark Theme */
-.trust-badges {
-    background-color: var(--color-background-secondary) !important;
+/* Quick Categories Bar */
+.quick-categories-bar {
+    background-color: var(--color-background-secondary);
+    border-bottom: var(--border-1) solid var(--color-border);
+    position: relative;
 }
 
-.trust-badges-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-4);
+.quick-categories-container {
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 0;
+}
+
+.quick-categories-scroll {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding: var(--space-4) var(--space-4);
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.quick-categories-scroll::-webkit-scrollbar {
+    display: none;
 }
 
 @media (min-width: 768px) {
-    .trust-badges-grid {
-        grid-template-columns: repeat(4, 1fr);
+    .quick-categories-scroll {
+        gap: var(--space-3);
+        padding: var(--space-5) var(--space-8);
+        justify-content: center;
     }
 }
 
-.trust-badge {
+.quick-category-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    background: var(--color-background-elevated);
-    border: var(--border-1) solid var(--color-border);
+    gap: var(--space-2);
+    padding: var(--space-3);
+    min-width: 90px;
+    text-align: center;
     border-radius: var(--radius-xl);
     transition: var(--transition-all);
-}
-
-.trust-badge:hover {
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    transform: translateY(-2px);
-    border-color: var(--color-primary);
-}
-
-.trust-badge-icon {
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--color-primary);
-    color: var(--color-text);
-    border-radius: var(--radius-lg);
+    scroll-snap-align: start;
     flex-shrink: 0;
 }
 
-.trust-badge-content h3 {
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    margin-bottom: 2px;
+@media (min-width: 768px) {
+    .quick-category-item {
+        min-width: 110px;
+        padding: var(--space-3) var(--space-4);
+    }
+}
+
+.quick-category-item:hover {
+    background-color: var(--color-background-hover);
+    transform: translateY(-2px);
+}
+
+.quick-category-image {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, var(--color-background-elevated) 0%, var(--color-background-alt) 100%);
+    border: var(--border-2) solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    transition: var(--transition-all);
+}
+
+@media (min-width: 768px) {
+    .quick-category-image {
+        width: 70px;
+        height: 70px;
+    }
+}
+
+.quick-category-item:hover .quick-category-image {
+    border-color: var(--color-primary);
+    box-shadow: 0 4px 15px rgba(139, 43, 43, 0.3);
+    transform: scale(1.05);
+}
+
+.quick-category-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.quick-category-placeholder {
+    color: var(--color-text-muted);
+}
+
+.quick-category-name {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+    white-space: nowrap;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (min-width: 768px) {
+    .quick-category-name {
+        font-size: var(--text-sm);
+        max-width: 100px;
+    }
+}
+
+.quick-category-item:hover .quick-category-name {
+    color: var(--color-primary);
+}
+
+/* View All Link */
+.quick-category-view-all .quick-category-image {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
+    border-color: var(--color-primary);
     color: var(--color-text);
 }
 
-.trust-badge-content p {
-    font-size: var(--text-xs);
-    color: var(--color-text-muted);
+.quick-category-view-all:hover .quick-category-image {
+    background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-700) 100%);
+}
+
+.quick-category-view-all .quick-category-name {
+    color: var(--color-primary);
+    font-weight: var(--font-semibold);
 }
 
 /* Section Headers */

@@ -1575,7 +1575,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Create form data
         const formData = new FormData();
-        formData.append('csrf_token', '<?= csrf_token() ?>');
+        formData.append('_token', '<?= csrf_token() ?>');
         formData.append('data', JSON.stringify(importData));
         formData.append('update_existing', document.getElementById('updateExisting').checked ? '1' : '0');
         formData.append('create_new', document.getElementById('createNew').checked ? '1' : '0');

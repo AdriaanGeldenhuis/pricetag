@@ -22,8 +22,18 @@
         <div class="product-main-form">
             <!-- Basic Info -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header flex justify-between items-center">
                     <h2 class="font-semibold">Basic Information</h2>
+                    <?php if ($product && !empty($product->sku)): ?>
+                    <button type="button" onclick="regenerateFromSku()" class="btn btn-sm btn-secondary" id="ai-sku-btn" title="Regenerate product name and description from SKU">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1">
+                            <path d="M23 4v6h-6"/>
+                            <path d="M1 20v-6h6"/>
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        AI from SKU
+                    </button>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body space-y-4">
                     <div class="form-group">
@@ -938,6 +948,69 @@ function escapeHtml(text) {
 }
 
 <?php if ($product): ?>
+// Regenerate product info from SKU using AI
+function regenerateFromSku() {
+    var btn = document.getElementById('ai-sku-btn');
+    var statusDiv = document.getElementById('ai-status');
+    var statusText = document.getElementById('ai-status-text');
+
+    var productId = <?php echo $product->id; ?>;
+    var endpoint = '<?php echo url('/admin/products/'); ?>' + productId + '/ai-regenerate-sku';
+
+    btn.disabled = true;
+    var originalContent = btn.innerHTML;
+    btn.innerHTML = '<svg class="animate-spin mr-1" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Analyzing SKU...';
+
+    statusDiv.classList.remove('hidden');
+    statusDiv.className = 'alert alert-info';
+    statusText.textContent = 'AI is analyzing the SKU to generate product information...';
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-Token': '<?php echo csrf_token(); ?>',
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+
+        if (data.success) {
+            // Apply the generated content
+            if (data.data.name) {
+                document.getElementById('name').value = data.data.name;
+            }
+            if (data.data.short_description) {
+                var shortDesc = document.getElementById('short_description');
+                shortDesc.value = data.data.short_description;
+                updateCharCount(shortDesc);
+            }
+            if (data.data.description) {
+                document.getElementById('description').value = data.data.description;
+                if (typeof tinymce !== 'undefined' && tinymce.get('description')) {
+                    tinymce.get('description').setContent(data.data.description);
+                }
+            }
+
+            statusDiv.className = 'alert alert-success';
+            statusText.textContent = 'Product info regenerated from SKU. Please review and save the product.';
+
+            alert('Product information has been regenerated from SKU (<?php echo e($product->sku ?? ''); ?>). Please review the changes and click Save.');
+        } else {
+            statusDiv.className = 'alert alert-danger';
+            statusText.textContent = 'Error: ' + data.message;
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        statusDiv.className = 'alert alert-danger';
+        statusText.textContent = 'Error: Failed to connect to AI service';
+    });
+}
+
 // Delete product
 function deleteProduct(id) {
     if (confirm('Are you sure you want to delete this product? This action cannot be undone.')) {

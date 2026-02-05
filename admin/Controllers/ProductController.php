@@ -897,6 +897,73 @@ class ProductController extends Controller
     }
 
     /**
+     * Regenerate product info from SKU using AI (AJAX)
+     * This is useful for fixing products that were imported with generic names
+     */
+    public function regenerateFromSku(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        if (empty($product->sku)) {
+            $this->json(['success' => false, 'message' => 'Product has no SKU']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        // Get product brand from attributes
+        $db = Database::getInstance();
+        $stmt = $db->prepare("
+            SELECT av.value as brand
+            FROM product_attributes pa
+            JOIN attribute_values av ON pa.attribute_value_id = av.id
+            JOIN attributes a ON av.attribute_id = a.id
+            WHERE pa.product_id = ? AND LOWER(a.name) = 'brand'
+            LIMIT 1
+        ");
+        $stmt->execute([$product->id]);
+        $brandRow = $stmt->fetch();
+        $brand = $brandRow ? $brandRow['brand'] : '';
+
+        // Get product category
+        $categories = $product->getCategories();
+        $categoryName = !empty($categories) ? $categories[0]['name'] : '';
+
+        $result = $openai->generateFromSku($product->sku, [
+            'brand' => $brand,
+            'category' => $categoryName,
+            'price' => $product->price,
+        ]);
+
+        if (empty($result['name']) || $result['name'] === $product->sku) {
+            $this->json(['success' => false, 'message' => 'Could not identify product from SKU. Try the web search option instead.']);
+            return;
+        }
+
+        // Return the generated data for preview
+        $this->json([
+            'success' => true,
+            'data' => [
+                'name' => $result['name'],
+                'short_description' => $result['short_description'] ?? '',
+                'description' => $result['description'] ?? '',
+                'brand' => $result['brand'] ?? $brand,
+                'suggested_category' => $result['suggested_category'] ?? $categoryName,
+            ],
+        ]);
+    }
+
+    /**
      * Export products to CSV
      */
     public function export(): void

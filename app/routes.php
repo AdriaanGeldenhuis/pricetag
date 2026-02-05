@@ -156,6 +156,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->put('/products/reviews/{id}', 'Admin\Controllers\ProductController@updateReview', 'admin.products.reviews.update');
     $router->delete('/products/reviews/{id}', 'Admin\Controllers\ProductController@deleteReview', 'admin.products.reviews.destroy');
     $router->post('/products/{id}/ai-generate', 'Admin\Controllers\ProductController@generateAiContent', 'admin.products.ai.generate');
+    $router->post('/products/{id}/ai-regenerate-sku', 'Admin\Controllers\ProductController@regenerateFromSku', 'admin.products.ai.regenerate');
     $router->post('/products/ai-search', 'Admin\Controllers\ProductController@searchAiInfo', 'admin.products.ai.search');
     $router->post('/products/bulk-action', 'Admin\Controllers\ProductController@bulkAction', 'admin.products.bulk');
 

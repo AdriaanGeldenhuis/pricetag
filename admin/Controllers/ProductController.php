@@ -1483,10 +1483,15 @@ class ProductController extends Controller
                     'short_description' => $row['short_description'] ?? '',
                     'price' => $price,
                     'compare_price' => !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
+                    'cost_price' => !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
                     'stock_quantity' => (int) ($row['stock'] ?? 0),
+                    'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
                     'vendor_id' => $vendorId,
                     'status' => $row['status'] ?? 'active',
                 ];
+
+                // Store brand for attribute handling
+                $brandValue = $row['brand'] ?? null;
 
                 // AI Generate if enabled
                 if ($aiGenerate && !empty($aiFields)) {
@@ -1532,6 +1537,16 @@ class ProductController extends Controller
                             $stmt->execute([$productId, $catId]);
                         }
                     }
+
+                    // Handle brand as attribute
+                    if (!empty($brandValue)) {
+                        $this->handleBrandAttribute($db, $productId, trim($brandValue));
+                    }
+                }
+
+                // Also update brand for existing products
+                if ($existingId && !empty($brandValue)) {
+                    $this->handleBrandAttribute($db, $existingId, trim($brandValue));
                 }
             } catch (\Throwable $e) {
                 $errors[] = "Row " . ($idx + 1) . ": " . $e->getMessage();
@@ -1574,6 +1589,45 @@ class ProductController extends Controller
         }
         $desc .= "High quality product available at competitive prices. Order now for fast delivery.";
         return $desc;
+    }
+
+    /**
+     * Handle brand attribute - create if not exists and associate with product
+     */
+    private function handleBrandAttribute($db, int $productId, string $brandValue): void
+    {
+        // Find or create the "Brand" attribute
+        $stmt = $db->prepare("SELECT id FROM attributes WHERE LOWER(name) = 'brand' LIMIT 1");
+        $stmt->execute();
+        $attributeId = $stmt->fetchColumn();
+
+        if (!$attributeId) {
+            // Create Brand attribute
+            $stmt = $db->prepare("INSERT INTO attributes (name, slug, type, is_filterable, is_visible) VALUES ('Brand', 'brand', 'select', 1, 1)");
+            $stmt->execute();
+            $attributeId = $db->lastInsertId();
+        }
+
+        // Find or create the attribute value
+        $stmt = $db->prepare("SELECT id FROM attribute_values WHERE attribute_id = ? AND LOWER(value) = LOWER(?) LIMIT 1");
+        $stmt->execute([$attributeId, $brandValue]);
+        $valueId = $stmt->fetchColumn();
+
+        if (!$valueId) {
+            // Create the attribute value
+            $slug = slugify($brandValue);
+            $stmt = $db->prepare("INSERT INTO attribute_values (attribute_id, value, slug) VALUES (?, ?, ?)");
+            $stmt->execute([$attributeId, $brandValue, $slug]);
+            $valueId = $db->lastInsertId();
+        }
+
+        // Remove existing brand association for this product
+        $stmt = $db->prepare("DELETE FROM product_attributes WHERE product_id = ? AND attribute_id = ?");
+        $stmt->execute([$productId, $attributeId]);
+
+        // Associate attribute value with product
+        $stmt = $db->prepare("INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)");
+        $stmt->execute([$productId, $attributeId, $valueId]);
     }
 
     /**

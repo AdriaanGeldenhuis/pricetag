@@ -304,6 +304,12 @@
     height: 12px;
 }
 
+.field-hint {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    font-style: italic;
+}
+
 /* Preview Table */
 .preview-container {
     overflow-x: auto;
@@ -618,6 +624,10 @@
                             <span class="target-field-name">Compare Price</span>
                             <div class="target-field-value" data-drop="compare_price"></div>
                         </div>
+                        <div class="target-field" data-field="cost_price">
+                            <span class="target-field-name">Cost Price</span>
+                            <div class="target-field-value" data-drop="cost_price"></div>
+                        </div>
                         <div class="target-field" data-field="stock">
                             <span class="target-field-name">Stock Quantity</span>
                             <div class="target-field-value" data-drop="stock"></div>
@@ -626,13 +636,22 @@
                             <span class="target-field-name">Category</span>
                             <div class="target-field-value" data-drop="category"></div>
                         </div>
+                        <div class="target-field" data-field="brand">
+                            <span class="target-field-name">Brand</span>
+                            <div class="target-field-value" data-drop="brand"></div>
+                            <span class="field-hint">(Creates attribute if not exists)</span>
+                        </div>
                         <div class="target-field" data-field="vendor">
-                            <span class="target-field-name">Vendor</span>
+                            <span class="target-field-name">Vendor / Supplier</span>
                             <div class="target-field-value" data-drop="vendor"></div>
                         </div>
                         <div class="target-field" data-field="image">
                             <span class="target-field-name">Image URL</span>
                             <div class="target-field-value" data-drop="image"></div>
+                        </div>
+                        <div class="target-field" data-field="weight">
+                            <span class="target-field-name">Weight (kg)</span>
+                            <div class="target-field-value" data-drop="weight"></div>
                         </div>
                         <div class="target-field" data-field="status">
                             <span class="target-field-name">Status</span>
@@ -987,38 +1006,71 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Drag and drop for column mapping
     let draggedColumn = null;
+    let draggedElement = null;
 
     function handleDragStart(e) {
-        draggedColumn = e.target.dataset.column;
-        e.target.classList.add('dragging');
+        draggedColumn = e.target.dataset.column || e.target.closest('.source-column')?.dataset.column;
+        draggedElement = e.target.closest('.source-column') || e.target;
+
+        if (draggedColumn) {
+            e.dataTransfer.setData('text/plain', draggedColumn);
+            e.dataTransfer.effectAllowed = 'move';
+            draggedElement.classList.add('dragging');
+        }
     }
 
     function handleDragEnd(e) {
-        e.target.classList.remove('dragging');
+        if (draggedElement) {
+            draggedElement.classList.remove('dragging');
+        }
         draggedColumn = null;
+        draggedElement = null;
+        // Remove all drag-over states
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
     }
 
-    // Set up drop targets
-    document.querySelectorAll('.target-field-value').forEach(target => {
-        target.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            target.parentElement.classList.add('drag-over');
-        });
+    // Set up drop targets - also on the parent .target-field
+    function setupDropTargets() {
+        document.querySelectorAll('.target-field').forEach(targetField => {
+            const dropZone = targetField.querySelector('.target-field-value');
+            const field = dropZone?.dataset.drop;
+            if (!field) return;
 
-        target.addEventListener('dragleave', () => {
-            target.parentElement.classList.remove('drag-over');
-        });
+            // Handle dragover on the whole target-field
+            targetField.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = 'move';
+                targetField.classList.add('drag-over');
+            });
 
-        target.addEventListener('drop', (e) => {
-            e.preventDefault();
-            target.parentElement.classList.remove('drag-over');
+            targetField.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                targetField.classList.add('drag-over');
+            });
 
-            if (draggedColumn) {
-                const field = target.dataset.drop;
-                setMapping(field, draggedColumn);
-            }
+            targetField.addEventListener('dragleave', (e) => {
+                // Only remove if leaving the target field entirely
+                if (!targetField.contains(e.relatedTarget)) {
+                    targetField.classList.remove('drag-over');
+                }
+            });
+
+            targetField.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                targetField.classList.remove('drag-over');
+
+                const columnName = e.dataTransfer.getData('text/plain') || draggedColumn;
+                if (columnName && field) {
+                    setMapping(field, columnName);
+                }
+            });
         });
-    });
+    }
+
+    // Initialize drop targets
+    setupDropTargets();
 
     function setMapping(field, column) {
         // Remove previous mapping for this field
@@ -1111,17 +1163,20 @@ document.addEventListener('DOMContentLoaded', function() {
     autoMapBtn.addEventListener('click', () => {
         const columns = Object.keys(parsedData[0] || {});
         const mappings = {
-            'sku': ['sku', 'product_sku', 'item_sku', 'code', 'product_code', 'item_code'],
+            'sku': ['sku', 'product_sku', 'item_sku', 'code', 'product_code', 'item_code', 'barcode'],
             'name': ['name', 'product_name', 'title', 'product_title', 'item_name'],
-            'price': ['price', 'product_price', 'cost', 'amount', 'selling_price'],
+            'price': ['price', 'product_price', 'selling_price', 'sale_price'],
             'description': ['description', 'product_description', 'desc', 'details', 'long_description'],
-            'short_description': ['short_description', 'short_desc', 'summary', 'brief'],
-            'compare_price': ['compare_price', 'original_price', 'msrp', 'retail_price', 'was_price'],
-            'stock': ['stock', 'stock_quantity', 'quantity', 'qty', 'inventory'],
+            'short_description': ['short_description', 'short_desc', 'summary', 'brief', 'short_descriptions'],
+            'compare_price': ['compare_price', 'original_price', 'msrp', 'retail_price', 'was_price', 'rrp'],
+            'cost_price': ['cost_price', 'cost', 'purchase_price', 'buying_price', 'supplier_price'],
+            'stock': ['stock', 'stock_quantity', 'quantity', 'qty', 'inventory', 'stock_qty'],
             'category': ['category', 'categories', 'product_category', 'cat'],
-            'vendor': ['vendor', 'supplier', 'brand', 'manufacturer'],
-            'image': ['image', 'image_url', 'photo', 'picture', 'img'],
-            'status': ['status', 'product_status', 'active', 'enabled']
+            'brand': ['brand', 'brand_name', 'manufacturer', 'make'],
+            'vendor': ['vendor', 'supplier', 'supplier_name', 'seller'],
+            'image': ['image', 'image_url', 'photo', 'picture', 'img', 'image_link'],
+            'weight': ['weight', 'product_weight', 'weight_kg', 'mass'],
+            'status': ['status', 'product_status', 'active', 'enabled', 'availability']
         };
 
         columns.forEach(col => {

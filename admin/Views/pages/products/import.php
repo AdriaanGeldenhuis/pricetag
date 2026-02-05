@@ -1297,10 +1297,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const response = await fetch('<?= url('/admin/products/import/process') ?>', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
                 });
 
-                const result = await response.json();
+                // Check if response is OK
+                if (!response.ok) {
+                    const text = await response.text();
+                    console.error('Server response:', text);
+                    errors.push('Server error: ' + response.status);
+                    continue;
+                }
+
+                const text = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (e) {
+                    console.error('Invalid JSON response:', text);
+                    errors.push('Invalid server response');
+                    continue;
+                }
 
                 if (result.success) {
                     created += result.created || 0;

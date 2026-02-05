@@ -1389,26 +1389,28 @@ class ProductController extends Controller
      */
     public function importProcess(): void
     {
+        // Ensure JSON response
         header('Content-Type: application/json');
 
-        if (!$this->validateCsrf()) {
-            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
-            exit;
-        }
+        try {
+            if (!$this->validateCsrf()) {
+                echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+                exit;
+            }
 
-        $data = json_decode($_POST['data'] ?? '[]', true);
-        if (empty($data)) {
-            echo json_encode(['success' => false, 'error' => 'No data provided']);
-            exit;
-        }
+            $data = json_decode($_POST['data'] ?? '[]', true);
+            if (empty($data)) {
+                echo json_encode(['success' => false, 'error' => 'No data provided']);
+                exit;
+            }
 
-        $updateExisting = ($_POST['update_existing'] ?? '1') === '1';
-        $createNew = ($_POST['create_new'] ?? '1') === '1';
-        $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
-        $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
-        $aiFields = json_decode($_POST['ai_fields'] ?? '[]', true);
+            $updateExisting = ($_POST['update_existing'] ?? '1') === '1';
+            $createNew = ($_POST['create_new'] ?? '1') === '1';
+            $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
+            $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
+            $aiFields = json_decode($_POST['ai_fields'] ?? '[]', true);
 
-        $db = Database::getInstance();
+            $db = Database::getInstance();
         $created = 0;
         $updated = 0;
         $errors = [];
@@ -1556,12 +1558,18 @@ class ProductController extends Controller
             }
         }
 
-        echo json_encode([
-            'success' => true,
-            'created' => $created,
-            'updated' => $updated,
-            'errors' => $errors
-        ]);
+            echo json_encode([
+                'success' => true,
+                'created' => $created,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Server error: ' . $e->getMessage()
+            ]);
+        }
         exit;
     }
 

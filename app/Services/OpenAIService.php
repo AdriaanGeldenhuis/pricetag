@@ -353,6 +353,181 @@ class OpenAIService
     }
 
     /**
+     * Generate product name and description from SKU
+     */
+    public function generateFromSku(string $sku, array $additionalInfo = []): array
+    {
+        if (empty($this->apiKey)) {
+            // Return basic fallback based on SKU pattern analysis
+            return $this->generateFallbackFromSku($sku, $additionalInfo);
+        }
+
+        $prompt = "You are a product database assistant. Based on the following product SKU/code, determine what the product is and generate product information.\n\n";
+        $prompt .= "SKU/Product Code: {$sku}\n";
+
+        if (!empty($additionalInfo['brand'])) {
+            $prompt .= "Brand: {$additionalInfo['brand']}\n";
+        }
+        if (!empty($additionalInfo['category'])) {
+            $prompt .= "Category hint: {$additionalInfo['category']}\n";
+        }
+        if (!empty($additionalInfo['price'])) {
+            $prompt .= "Price: R{$additionalInfo['price']}\n";
+        }
+
+        $prompt .= "\nAnalyze the SKU pattern and generate:\n";
+        $prompt .= "1. name: A proper product name (e.g., 'Intel Core i7-12700K Processor' or 'Samsung Galaxy S24 Ultra')\n";
+        $prompt .= "2. short_description: Brief product summary (1-2 sentences, max 160 chars)\n";
+        $prompt .= "3. description: Detailed product description with key features (2-3 paragraphs)\n";
+        $prompt .= "4. suggested_category: Product category\n";
+        $prompt .= "5. brand: Brand name if identifiable from SKU\n";
+        $prompt .= "\nIMPORTANT: Analyze the SKU pattern. Common patterns:\n";
+        $prompt .= "- 'BX' prefix often indicates Intel boxed processors\n";
+        $prompt .= "- Numbers like '12700', '13900' indicate Intel Core generation and model\n";
+        $prompt .= "- 'K' suffix means unlocked, 'F' means no integrated graphics\n";
+        $prompt .= "\nRespond ONLY with valid JSON.";
+
+        try {
+            $response = $this->makeRequest('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a product identification expert. Analyze SKU codes to identify products. Always respond with valid JSON only, no markdown.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 800,
+                'temperature' => 0.3,
+            ]);
+
+            $content = $response['choices'][0]['message']['content'] ?? '';
+
+            // Clean up potential markdown code blocks
+            $content = preg_replace('/^```json\s*/i', '', $content);
+            $content = preg_replace('/^```\s*/i', '', $content);
+            $content = preg_replace('/\s*```$/i', '', $content);
+            $content = trim($content);
+
+            $data = json_decode($content, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && !empty($data['name'])) {
+                return $data;
+            }
+
+            // Fallback if JSON parsing fails
+            return $this->generateFallbackFromSku($sku, $additionalInfo);
+
+        } catch (\Exception $e) {
+            error_log('OpenAI SKU Generation Error: ' . $e->getMessage());
+            return $this->generateFallbackFromSku($sku, $additionalInfo);
+        }
+    }
+
+    /**
+     * Generate fallback product info from SKU pattern analysis
+     */
+    private function generateFallbackFromSku(string $sku, array $additionalInfo = []): array
+    {
+        $name = $sku;
+        $brand = $additionalInfo['brand'] ?? '';
+        $category = $additionalInfo['category'] ?? 'Electronics';
+
+        // Intel boxed processor detection (BX80... format)
+        // Examples: BX8071512400F, BX8071512700K, BX80768245KF
+        if (preg_match('/^BX80\d{2}(\d{4,5})([A-Z]*)$/i', $sku, $matches)) {
+            $brand = 'Intel';
+            $modelNum = $matches[1];  // e.g., "12400" or "8245"
+            $suffix = strtoupper($matches[2] ?? '');  // e.g., "K", "KF", "F"
+
+            // Parse model number to determine generation and tier
+            // Modern Intel: 12400 = 12th gen i5-12400, 13900 = 13th gen i9-13900
+            // Older: 8700 = 8th gen i7-8700, 9900 = 9th gen i9-9900
+            $modelLen = strlen($modelNum);
+
+            if ($modelLen === 5) {
+                // 5-digit model: 12400, 12700, 13900, etc.
+                $gen = substr($modelNum, 0, 2);  // "12", "13", "14"
+                $tierDigit = substr($modelNum, 2, 1);  // "4", "7", "9"
+            } else {
+                // 4-digit model: 8700, 9900, etc.
+                $gen = substr($modelNum, 0, 1);  // "8", "9"
+                $tierDigit = substr($modelNum, 1, 1);  // "7", "9", "4", "6"
+            }
+
+            // Determine processor tier from the tier digit
+            $tierName = match($tierDigit) {
+                '1', '2', '3' => 'Core i3',
+                '4', '5', '6' => 'Core i5',
+                '7', '8' => 'Core i7',
+                '9' => 'Core i9',
+                default => 'Core i5'
+            };
+
+            // Build the proper product name
+            $name = "Intel {$tierName}-{$modelNum}";
+            if ($suffix) {
+                $name .= $suffix;
+            }
+            $name .= ' Processor';
+            $category = 'Computer Components';
+        }
+        // Alternative Intel format with I in SKU (e.g., BX80684I99900K)
+        elseif (preg_match('/^BX\d+I(\d)(\d{4})([A-Z]*)$/i', $sku, $matches)) {
+            $brand = 'Intel';
+            $tier = $matches[1];  // 3, 5, 7, 9
+            $modelNum = $matches[2];  // 9900, 8700, etc.
+            $suffix = strtoupper($matches[3] ?? '');
+
+            $tierName = match($tier) {
+                '3' => 'Core i3',
+                '5' => 'Core i5',
+                '7' => 'Core i7',
+                '9' => 'Core i9',
+                default => 'Core i5'
+            };
+
+            $name = "Intel {$tierName}-{$modelNum}";
+            if ($suffix) $name .= $suffix;
+            $name .= ' Processor';
+            $category = 'Computer Components';
+        }
+        // Generic Intel BX pattern
+        elseif (preg_match('/^BX\d+/i', $sku)) {
+            $brand = 'Intel';
+            $name = "Intel Processor ({$sku})";
+            $category = 'Computer Components';
+        }
+        // AMD processor detection
+        elseif (preg_match('/ryzen/i', $sku) || preg_match('/^100-/i', $sku)) {
+            $brand = 'AMD';
+            $name = "AMD Ryzen Processor ({$sku})";
+            $category = 'Computer Components';
+        }
+        // Graphics card detection
+        elseif (preg_match('/RTX|GTX|RX\s?\d{4}/i', $sku)) {
+            if (preg_match('/RTX/i', $sku)) {
+                $brand = 'NVIDIA';
+                $name = "NVIDIA GeForce {$sku}";
+            } elseif (preg_match('/RX/i', $sku)) {
+                $brand = 'AMD';
+                $name = "AMD Radeon {$sku}";
+            }
+            $category = 'Graphics Cards';
+        }
+
+        // Use provided brand if available
+        if (!empty($additionalInfo['brand'])) {
+            $brand = $additionalInfo['brand'];
+        }
+
+        return [
+            'name' => $name,
+            'brand' => $brand,
+            'short_description' => "High-quality {$name} from {$brand}.",
+            'description' => "The {$name} is a premium product from {$brand}. Known for quality and reliability, this product offers excellent performance and value.",
+            'suggested_category' => $category
+        ];
+    }
+
+    /**
      * Fallback response when API is unavailable
      */
     private function getFallbackResponse(string $message, array $context): array

@@ -1038,10 +1038,13 @@ class ProductController extends Controller
      */
     public function importForm(): void
     {
+        $categories = Category::getTree();
+
         $this->layout('admin');
         $this->view('pages/products/import', [
-            'page_title' => 'Import Products',
+            'page_title' => 'Import / Export Products',
             'active_page' => 'products',
+            'categories' => $categories,
         ]);
     }
 
@@ -1379,6 +1382,279 @@ class ProductController extends Controller
 
         flash('success', implode(', ', $messages));
         $this->redirect('/admin/products/import');
+    }
+
+    /**
+     * Process AJAX import (for drag & drop column mapping)
+     */
+    public function importProcess(): void
+    {
+        // Ensure JSON response
+        header('Content-Type: application/json');
+
+        try {
+            if (!$this->validateCsrf()) {
+                echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+                exit;
+            }
+
+            $data = json_decode($_POST['data'] ?? '[]', true);
+            if (empty($data)) {
+                echo json_encode(['success' => false, 'error' => 'No data provided']);
+                exit;
+            }
+
+            $updateExisting = ($_POST['update_existing'] ?? '1') === '1';
+            $createNew = ($_POST['create_new'] ?? '1') === '1';
+            $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
+            $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
+            $aiFields = json_decode($_POST['ai_fields'] ?? '[]', true);
+
+            $db = Database::getInstance();
+        $created = 0;
+        $updated = 0;
+        $errors = [];
+
+        // Get vendor lookup
+        $stmt = $db->query("SELECT id, name FROM vendors");
+        $vendorLookup = [];
+        while ($row = $stmt->fetch()) {
+            $vendorLookup[strtolower($row['name'])] = $row['id'];
+        }
+
+        // Get category lookup
+        $stmt = $db->query("SELECT id, name FROM categories");
+        $categoryLookup = [];
+        while ($row = $stmt->fetch()) {
+            $categoryLookup[strtolower($row['name'])] = $row['id'];
+        }
+
+        foreach ($data as $idx => $row) {
+            try {
+                $sku = trim($row['sku'] ?? '');
+                $name = trim($row['name'] ?? '');
+                $price = (float) ($row['price'] ?? 0);
+
+                if (empty($sku)) {
+                    if (!$skipErrors) {
+                        $errors[] = "Row " . ($idx + 1) . ": Missing SKU";
+                    }
+                    continue;
+                }
+
+                // Check if product exists
+                $stmt = $db->prepare("SELECT id FROM products WHERE sku = ?");
+                $stmt->execute([$sku]);
+                $existingId = $stmt->fetchColumn();
+
+                if ($existingId && !$updateExisting) {
+                    continue; // Skip existing
+                }
+
+                if (!$existingId && !$createNew) {
+                    continue; // Skip new
+                }
+
+                // Generate slug
+                $slug = slugify($name ?: $sku);
+                $baseSlug = $slug;
+                $counter = 1;
+                while (true) {
+                    $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? AND id != ?");
+                    $stmt->execute([$slug, $existingId ?: 0]);
+                    if (!$stmt->fetch()) break;
+                    $slug = $baseSlug . '-' . (++$counter);
+                    if ($counter > 100) {
+                        $slug = $baseSlug . '-' . uniqid();
+                        break;
+                    }
+                }
+
+                // Get vendor ID
+                $vendorId = null;
+                if (!empty($row['vendor'])) {
+                    $vendorId = $vendorLookup[strtolower(trim($row['vendor']))] ?? null;
+                }
+
+                // Prepare product data
+                $productData = [
+                    'sku' => $sku,
+                    'name' => $name,
+                    'slug' => $slug,
+                    'description' => $row['description'] ?? '',
+                    'short_description' => $row['short_description'] ?? '',
+                    'price' => $price,
+                    'compare_price' => !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
+                    'cost_price' => !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
+                    'stock_quantity' => (int) ($row['stock'] ?? 0),
+                    'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
+                    'vendor_id' => $vendorId,
+                    'status' => $row['status'] ?? 'active',
+                ];
+
+                // Store brand for attribute handling
+                $brandValue = $row['brand'] ?? null;
+
+                // AI Generate if enabled - use OpenAI for proper product identification from SKU
+                if ($aiGenerate) {
+                    $openai = new OpenAIService();
+                    $aiResult = $openai->generateFromSku($sku, [
+                        'brand' => $brandValue,
+                        'category' => $row['category'] ?? '',
+                        'price' => $price
+                    ]);
+
+                    // ALWAYS use AI-generated name from SKU when AI is enabled
+                    // The whole point is to generate proper names from SKU codes
+                    if (!empty($aiResult['name']) && $aiResult['name'] !== $sku) {
+                        $productData['name'] = $aiResult['name'];
+                    }
+
+                    // Apply AI values for description fields if empty or requested
+                    if (empty($productData['description']) || in_array('description', $aiFields)) {
+                        $productData['description'] = $aiResult['description'] ?? '';
+                    }
+                    if (empty($productData['short_description']) || in_array('short_description', $aiFields)) {
+                        $productData['short_description'] = $aiResult['short_description'] ?? substr($productData['description'], 0, 150);
+                    }
+
+                    // Auto-set brand if detected by AI
+                    if (empty($brandValue) && !empty($aiResult['brand'])) {
+                        $brandValue = $aiResult['brand'];
+                    }
+
+                    // Update slug based on new AI-generated name
+                    $productData['slug'] = slugify($productData['name']);
+                }
+
+                if ($existingId) {
+                    // Update
+                    $setClauses = [];
+                    $params = [];
+                    foreach ($productData as $col => $val) {
+                        if ($col !== 'sku') {
+                            $setClauses[] = "`$col` = ?";
+                            $params[] = $val;
+                        }
+                    }
+                    $params[] = $existingId;
+                    $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . " WHERE id = ?");
+                    $stmt->execute($params);
+                    $updated++;
+                } else {
+                    // Insert
+                    $columns = array_keys($productData);
+                    $placeholders = array_fill(0, count($columns), '?');
+                    $stmt = $db->prepare("INSERT INTO products (" . implode(', ', array_map(fn($c) => "`$c`", $columns)) . ") VALUES (" . implode(', ', $placeholders) . ")");
+                    $stmt->execute(array_values($productData));
+                    $productId = $db->lastInsertId();
+                    $created++;
+
+                    // Handle category
+                    if (!empty($row['category'])) {
+                        $catId = $categoryLookup[strtolower(trim($row['category']))] ?? null;
+                        if ($catId) {
+                            $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)");
+                            $stmt->execute([$productId, $catId]);
+                        }
+                    }
+
+                    // Handle brand as attribute
+                    if (!empty($brandValue)) {
+                        $this->handleBrandAttribute($db, $productId, trim($brandValue));
+                    }
+                }
+
+                // Also update brand for existing products
+                if ($existingId && !empty($brandValue)) {
+                    $this->handleBrandAttribute($db, $existingId, trim($brandValue));
+                }
+            } catch (\Throwable $e) {
+                $errors[] = "Row " . ($idx + 1) . ": " . $e->getMessage();
+                if (!$skipErrors) {
+                    break;
+                }
+            }
+        }
+
+            echo json_encode([
+                'success' => true,
+                'created' => $created,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Server error: ' . $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+    /**
+     * Generate product name using AI (simple template)
+     */
+    private function aiGenerateName(string $sku, array $row): string
+    {
+        // Simple name generation based on available data
+        $parts = [];
+        if (!empty($row['vendor'])) $parts[] = $row['vendor'];
+        if (!empty($row['category'])) $parts[] = $row['category'];
+        $parts[] = $sku;
+        return implode(' ', $parts);
+    }
+
+    /**
+     * Generate product description using AI (simple template)
+     */
+    private function aiGenerateDescription(string $name, array $row): string
+    {
+        $desc = "Introducing the $name. ";
+        if (!empty($row['vendor'])) {
+            $desc .= "Manufactured by {$row['vendor']}. ";
+        }
+        $desc .= "High quality product available at competitive prices. Order now for fast delivery.";
+        return $desc;
+    }
+
+    /**
+     * Handle brand attribute - create if not exists and associate with product
+     */
+    private function handleBrandAttribute($db, int $productId, string $brandValue): void
+    {
+        // Find or create the "Brand" attribute
+        $stmt = $db->prepare("SELECT id FROM attributes WHERE LOWER(name) = 'brand' LIMIT 1");
+        $stmt->execute();
+        $attributeId = $stmt->fetchColumn();
+
+        if (!$attributeId) {
+            // Create Brand attribute
+            $stmt = $db->prepare("INSERT INTO attributes (name, slug, type, is_filterable, is_visible) VALUES ('Brand', 'brand', 'select', 1, 1)");
+            $stmt->execute();
+            $attributeId = $db->lastInsertId();
+        }
+
+        // Find or create the attribute value
+        $stmt = $db->prepare("SELECT id FROM attribute_values WHERE attribute_id = ? AND LOWER(value) = LOWER(?) LIMIT 1");
+        $stmt->execute([$attributeId, $brandValue]);
+        $valueId = $stmt->fetchColumn();
+
+        if (!$valueId) {
+            // Create the attribute value
+            $slug = slugify($brandValue);
+            $stmt = $db->prepare("INSERT INTO attribute_values (attribute_id, value, slug) VALUES (?, ?, ?)");
+            $stmt->execute([$attributeId, $brandValue, $slug]);
+            $valueId = $db->lastInsertId();
+        }
+
+        // Remove existing brand association for this product
+        $stmt = $db->prepare("DELETE FROM product_attributes WHERE product_id = ? AND attribute_id = ?");
+        $stmt->execute([$productId, $attributeId]);
+
+        // Associate attribute value with product
+        $stmt = $db->prepare("INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)");
+        $stmt->execute([$productId, $attributeId, $valueId]);
     }
 
     /**

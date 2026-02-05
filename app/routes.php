@@ -144,6 +144,8 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->get('/products/export', 'Admin\Controllers\ProductController@export', 'admin.products.export');
     $router->get('/products/import', 'Admin\Controllers\ProductController@importForm', 'admin.products.import.form');
     $router->post('/products/import', 'Admin\Controllers\ProductController@import', 'admin.products.import');
+    $router->get('/products/import/template', 'Admin\Controllers\ProductController@importTemplate', 'admin.products.import.template');
+    $router->post('/products/import/process', 'Admin\Controllers\ProductController@importProcess', 'admin.products.import.process');
     $router->post('/products', 'Admin\Controllers\ProductController@store', 'admin.products.store');
     $router->get('/products/{id}/edit', 'Admin\Controllers\ProductController@edit', 'admin.products.edit');
     $router->put('/products/{id}', 'Admin\Controllers\ProductController@update', 'admin.products.update');

@@ -901,6 +901,29 @@ CREATE TABLE IF NOT EXISTS `contact_submissions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
+-- PRODUCT IMPORT/EXPORT
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `product_import_logs` (
+    `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `type` ENUM('import', 'export') NOT NULL,
+    `filename` VARCHAR(255) DEFAULT NULL,
+    `status` ENUM('pending', 'running', 'completed', 'failed') NOT NULL DEFAULT 'pending',
+    `total_products` INT UNSIGNED DEFAULT 0,
+    `created_products` INT UNSIGNED DEFAULT 0,
+    `updated_products` INT UNSIGNED DEFAULT 0,
+    `failed_products` INT UNSIGNED DEFAULT 0,
+    `errors` JSON DEFAULT NULL,
+    `download_url` VARCHAR(255) DEFAULT NULL,
+    `completed_at` DATETIME DEFAULT NULL,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `product_import_logs_type_idx` (`type`),
+    KEY `product_import_logs_status_idx` (`status`),
+    KEY `product_import_logs_created_idx` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
 -- INITIAL DATA
 -- ============================================================================
 

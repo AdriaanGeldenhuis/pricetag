@@ -1477,6 +1477,9 @@ class ProductController extends Controller
             $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
             $aiFields = json_decode($_POST['ai_fields'] ?? '[]', true);
 
+            // Debug: Log import settings
+            error_log("Import started - AI Generate: " . ($aiGenerate ? 'YES' : 'NO') . ", Products: " . count($data));
+
             $db = Database::getInstance();
         $created = 0;
         $updated = 0;
@@ -1571,10 +1574,16 @@ class ProductController extends Controller
                         'price' => $price
                     ]);
 
+                    // Log AI result for debugging
+                    error_log("AI Import for SKU {$sku}: " . json_encode($aiResult));
+
                     // ALWAYS use AI-generated name from SKU when AI is enabled
                     // The whole point is to generate proper names from SKU codes
                     if (!empty($aiResult['name']) && strcasecmp($aiResult['name'], $sku) !== 0) {
                         $productData['name'] = $aiResult['name'];
+                        error_log("AI Import: Set name to '{$aiResult['name']}' for SKU {$sku}");
+                    } else {
+                        error_log("AI Import: Name not set - AI returned: " . ($aiResult['name'] ?? 'null') . " for SKU {$sku}");
                     }
 
                     // ALWAYS apply AI values for description and short_description when AI is enabled

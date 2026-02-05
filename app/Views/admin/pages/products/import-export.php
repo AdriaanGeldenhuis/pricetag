@@ -263,7 +263,7 @@
                 <label class="option-checkbox">
                     <input type="checkbox" id="aiGenerateAll">
                     <span class="checkmark"></span>
-                    AI Generate missing names/descriptions
+                    <strong>AI Generate from SKU</strong> - Replace names with proper product names (e.g., BX8071514600K → Intel Core i5-14600K)
                 </label>
             </div>
 

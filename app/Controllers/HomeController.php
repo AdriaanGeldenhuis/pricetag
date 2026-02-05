@@ -44,6 +44,9 @@ class HomeController extends Controller
         // Get featured categories
         $featuredCategories = Category::featured(6);
 
+        // Get ALL categories for the quick category bar
+        $categories = Category::all();
+
         // Get trending products
         $trendingProducts = Product::trending(8);
 
@@ -68,6 +71,7 @@ class HomeController extends Controller
             'meta_description' => config('seo.defaults.description'),
             'sections' => $sections,
             'heroBanners' => $heroBanners,
+            'categories' => $categories,
             'featuredCategories' => $featuredCategories,
             'trendingProducts' => $trendingProducts,
             'newArrivals' => $newArrivals,

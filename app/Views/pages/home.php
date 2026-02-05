@@ -72,28 +72,29 @@
 </section>
 <?php endif; ?>
 
-<!-- Quick Category Bar -->
-<section class="quick-categories-bar">
-    <div class="quick-categories-container">
-        <div class="quick-categories-scroll">
-            <?php
-            $allCategories = $categories ?? $featuredCategories ?? [];
-            if (!empty($allCategories)):
-                foreach ($allCategories as $category):
-                    $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
-                    $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
-                    $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
-                    $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
+<!-- Category Cards Bar -->
+<?php
+$allCategories = $categories ?? $featuredCategories ?? [];
+if (!empty($allCategories)):
+?>
+<section class="category-cards-bar">
+    <div class="category-cards-container">
+        <div class="category-cards-scroll">
+            <?php foreach ($allCategories as $category):
+                $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
+                $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
+                $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
+                $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
             ?>
-            <a href="<?= url('/categories/' . $catSlug) ?>" class="quick-category-item">
-                <div class="quick-category-image">
+            <a href="<?= url('/categories/' . $catSlug) ?>" class="category-card-item">
+                <div class="category-card-image">
                     <?php if (!empty($catImage)): ?>
                     <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="<?= e($catName) ?>" loading="lazy">
                     <?php elseif (!empty($catIcon)): ?>
                     <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="<?= e($catName) ?>" loading="lazy">
                     <?php else: ?>
-                    <div class="quick-category-placeholder">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <div class="category-card-placeholder">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <rect x="3" y="3" width="7" height="7"></rect>
                             <rect x="14" y="3" width="7" height="7"></rect>
                             <rect x="14" y="14" width="7" height="7"></rect>
@@ -101,26 +102,44 @@
                         </svg>
                     </div>
                     <?php endif; ?>
+                    <div class="category-card-overlay"></div>
                 </div>
-                <span class="quick-category-name"><?= e($catName) ?></span>
+                <div class="category-card-content">
+                    <span class="category-card-name"><?= e($catName) ?></span>
+                </div>
             </a>
-            <?php
-                endforeach;
-            endif;
-            ?>
-            <!-- View All Link -->
-            <a href="<?= url('/categories') ?>" class="quick-category-item quick-category-view-all">
-                <div class="quick-category-image">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                        <polyline points="12 5 19 12 12 19"></polyline>
-                    </svg>
+            <?php endforeach; ?>
+            <!-- View All Card -->
+            <a href="<?= url('/categories') ?>" class="category-card-item category-card-view-all">
+                <div class="category-card-image">
+                    <div class="category-card-view-all-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                    </div>
                 </div>
-                <span class="quick-category-name">View All</span>
+                <div class="category-card-content">
+                    <span class="category-card-name">View All Categories</span>
+                </div>
             </a>
         </div>
+        <!-- Scroll Buttons -->
+        <button class="category-scroll-btn category-scroll-prev" aria-label="Previous">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </button>
+        <button class="category-scroll-btn category-scroll-next" aria-label="Next">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        </button>
     </div>
 </section>
+<?php endif; ?>
 
 <?php if (!empty($featuredCategories)): ?>
 <!-- Category Spotlight -->
@@ -545,138 +564,199 @@
     transform: scale(1.2);
 }
 
-/* Quick Categories Bar */
-.quick-categories-bar {
+/* Category Cards Bar */
+.category-cards-bar {
     background-color: var(--color-background-secondary);
     border-bottom: var(--border-1) solid var(--color-border);
     position: relative;
+    padding: var(--space-6) 0;
 }
 
-.quick-categories-container {
+.category-cards-container {
     max-width: 1920px;
     margin: 0 auto;
-    padding: 0;
+    padding: 0 var(--space-4);
+    position: relative;
 }
 
-.quick-categories-scroll {
+@media (min-width: 768px) {
+    .category-cards-container {
+        padding: 0 var(--space-8);
+    }
+}
+
+.category-cards-scroll {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--space-4);
     overflow-x: auto;
-    padding: var(--space-4) var(--space-4);
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    padding: var(--space-2) 0;
 }
 
-.quick-categories-scroll::-webkit-scrollbar {
+.category-cards-scroll::-webkit-scrollbar {
     display: none;
 }
 
-@media (min-width: 768px) {
-    .quick-categories-scroll {
-        gap: var(--space-3);
-        padding: var(--space-5) var(--space-8);
-        justify-content: center;
-    }
-}
-
-.quick-category-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    min-width: 90px;
-    text-align: center;
-    border-radius: var(--radius-xl);
-    transition: var(--transition-all);
+.category-card-item {
+    flex: 0 0 180px;
     scroll-snap-align: start;
-    flex-shrink: 0;
-}
-
-@media (min-width: 768px) {
-    .quick-category-item {
-        min-width: 110px;
-        padding: var(--space-3) var(--space-4);
-    }
-}
-
-.quick-category-item:hover {
-    background-color: var(--color-background-hover);
-    transform: translateY(-2px);
-}
-
-.quick-category-image {
-    width: 60px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(145deg, var(--color-background-elevated) 0%, var(--color-background-alt) 100%);
-    border: var(--border-2) solid var(--color-border);
-    border-radius: var(--radius-xl);
+    position: relative;
+    border-radius: var(--radius-2xl);
     overflow: hidden;
     transition: var(--transition-all);
+    background: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
 }
 
-@media (min-width: 768px) {
-    .quick-category-image {
-        width: 70px;
-        height: 70px;
+@media (min-width: 640px) {
+    .category-card-item {
+        flex: 0 0 200px;
     }
 }
 
-.quick-category-item:hover .quick-category-image {
-    border-color: var(--color-primary);
-    box-shadow: 0 4px 15px rgba(139, 43, 43, 0.3);
-    transform: scale(1.05);
+@media (min-width: 1024px) {
+    .category-card-item {
+        flex: 0 0 220px;
+    }
 }
 
-.quick-category-image img {
+.category-card-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    border-color: var(--color-primary);
+}
+
+.category-card-image {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    overflow: hidden;
+    background: linear-gradient(145deg, var(--color-background-alt) 0%, var(--color-background) 100%);
+}
+
+.category-card-image img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform var(--duration-500) var(--ease-out);
 }
 
-.quick-category-placeholder {
+.category-card-item:hover .category-card-image img {
+    transform: scale(1.1);
+}
+
+.category-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.category-card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--color-text-muted);
 }
 
-.quick-category-name {
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
+.category-card-content {
+    padding: var(--space-4);
+    text-align: center;
+}
+
+.category-card-name {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
     color: var(--color-text);
+    display: block;
     white-space: nowrap;
-    max-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 @media (min-width: 768px) {
-    .quick-category-name {
-        font-size: var(--text-sm);
-        max-width: 100px;
+    .category-card-name {
+        font-size: var(--text-base);
     }
 }
 
-.quick-category-item:hover .quick-category-name {
+.category-card-item:hover .category-card-name {
     color: var(--color-primary);
 }
 
-/* View All Link */
-.quick-category-view-all .quick-category-image {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
-    border-color: var(--color-primary);
+/* View All Card */
+.category-card-view-all .category-card-image {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-700) 100%);
+}
+
+.category-card-view-all-icon {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--color-text);
 }
 
-.quick-category-view-all:hover .quick-category-image {
-    background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-700) 100%);
+.category-card-view-all:hover .category-card-image {
+    background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-800) 100%);
 }
 
-.quick-category-view-all .quick-category-name {
+.category-card-view-all .category-card-name {
     color: var(--color-primary);
-    font-weight: var(--font-semibold);
+}
+
+/* Scroll Buttons */
+.category-scroll-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-full);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: var(--transition-all);
+    opacity: 0;
+}
+
+.category-cards-container:hover .category-scroll-btn {
+    opacity: 1;
+}
+
+.category-scroll-btn:hover {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.category-scroll-prev {
+    left: var(--space-2);
+}
+
+.category-scroll-next {
+    right: var(--space-2);
+}
+
+@media (min-width: 768px) {
+    .category-scroll-prev {
+        left: var(--space-4);
+    }
+
+    .category-scroll-next {
+        right: var(--space-4);
+    }
 }
 
 /* Section Headers */
@@ -1080,6 +1160,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Hero Slider
     initHeroSlider();
 
+    // Category Cards Scroll
+    initCategoryCardsScroll();
+
     // Product Carousels
     initProductCarousels();
 
@@ -1167,6 +1250,32 @@ function initHeroSlider() {
     // Pause on hover
     slider.addEventListener('mouseenter', stopAutoplay);
     slider.addEventListener('mouseleave', startAutoplay);
+}
+
+// Category Cards Scroll
+function initCategoryCardsScroll() {
+    const container = document.querySelector('.category-cards-container');
+    if (!container) return;
+
+    const scroll = container.querySelector('.category-cards-scroll');
+    const prevBtn = container.querySelector('.category-scroll-prev');
+    const nextBtn = container.querySelector('.category-scroll-next');
+
+    if (!scroll) return;
+
+    const scrollAmount = 250;
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            scroll.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+        });
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            scroll.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+        });
+    }
 }
 
 // Product Carousels

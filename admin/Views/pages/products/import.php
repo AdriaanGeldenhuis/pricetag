@@ -1293,7 +1293,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('skip_errors', options.skipErrors ? '1' : '0');
                 formData.append('ai_generate', options.aiGenerate ? '1' : '0');
                 formData.append('ai_fields', JSON.stringify(options.aiFields));
-                formData.append('csrf_token', '<?= csrf_token() ?>');
+                formData.append('_token', '<?= csrf_token() ?>');
 
                 const response = await fetch('<?= url('/admin/products/import/process') ?>', {
                     method: 'POST',

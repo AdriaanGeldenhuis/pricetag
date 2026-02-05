@@ -59,6 +59,16 @@
                         </a>
                     </li>
                     <li class="admin-nav-item">
+                        <a href="<?= url('/admin/products/import') ?>" class="admin-nav-link <?= isCurrentPath('/admin/products/import') ? 'active' : '' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <span>Import / Export</span>
+                        </a>
+                    </li>
+                    <li class="admin-nav-item">
                         <a href="<?= url('/admin/categories') ?>" class="admin-nav-link <?= isCurrentPath('/admin/categories') ? 'active' : '' ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="3" y="3" width="7" height="7"></rect>
@@ -85,6 +95,15 @@
                             <span>Attributes</span>
                         </a>
                     </li>
+                    <li class="admin-nav-item">
+                        <a href="<?= url('/admin/vendors') ?>" class="admin-nav-link <?= isCurrentPath('/admin/vendors') ? 'active' : '' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                            </svg>
+                            <span>Vendors</span>
+                        </a>
+                    </li>
 
                     <li class="admin-nav-group">
                         <span class="admin-nav-group-title">Sales</span>
@@ -105,6 +124,20 @@
                         </a>
                     </li>
                     <li class="admin-nav-item">
+                        <a href="<?= url('/admin/coupons') ?>" class="admin-nav-link <?= isCurrentPath('/admin/coupons') ? 'active' : '' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"></path>
+                                <rect x="2" y="6" width="20" height="6" rx="2"></rect>
+                                <line x1="12" y1="12" x2="12" y2="20"></line>
+                            </svg>
+                            <span>Coupons</span>
+                        </a>
+                    </li>
+
+                    <li class="admin-nav-group">
+                        <span class="admin-nav-group-title">Customers</span>
+                    </li>
+                    <li class="admin-nav-item">
                         <a href="<?= url('/admin/customers') ?>" class="admin-nav-link <?= isCurrentPath('/admin/customers') ? 'active' : '' ?>">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -113,6 +146,31 @@
                                 <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                             </svg>
                             <span>Customers</span>
+                        </a>
+                    </li>
+                    <li class="admin-nav-item">
+                        <a href="<?= url('/admin/newsletter') ?>" class="admin-nav-link <?= isCurrentPath('/admin/newsletter') ? 'active' : '' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                                <polyline points="22,6 12,13 2,6"></polyline>
+                            </svg>
+                            <span>Newsletter</span>
+                        </a>
+                    </li>
+                    <li class="admin-nav-item">
+                        <a href="<?= url('/admin/reviews') ?>" class="admin-nav-link <?= isCurrentPath('/admin/reviews') ? 'active' : '' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                            </svg>
+                            <span>Reviews</span>
+                        </a>
+                    </li>
+                    <li class="admin-nav-item">
+                        <a href="<?= url('/admin/contact-messages') ?>" class="admin-nav-link <?= isCurrentPath('/admin/contact-messages') ? 'active' : '' ?>">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            <span>Contact Messages</span>
                         </a>
                     </li>
 

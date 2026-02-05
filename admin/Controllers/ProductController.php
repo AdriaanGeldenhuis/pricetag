@@ -1495,17 +1495,32 @@ class ProductController extends Controller
                 // Store brand for attribute handling
                 $brandValue = $row['brand'] ?? null;
 
-                // AI Generate if enabled
-                if ($aiGenerate && !empty($aiFields)) {
-                    if (in_array('name', $aiFields) && empty($productData['name'])) {
-                        $productData['name'] = $this->aiGenerateName($sku, $row);
+                // AI Generate if enabled - use OpenAI for proper product identification
+                if ($aiGenerate) {
+                    $openai = new OpenAIService();
+                    $aiResult = $openai->generateFromSku($sku, [
+                        'brand' => $brandValue,
+                        'category' => $row['category'] ?? '',
+                        'price' => $price
+                    ]);
+
+                    // Apply AI generated values for empty fields
+                    if (empty($productData['name']) || in_array('name', $aiFields)) {
+                        $productData['name'] = $aiResult['name'] ?? $sku;
                     }
-                    if (in_array('description', $aiFields) && empty($productData['description'])) {
-                        $productData['description'] = $this->aiGenerateDescription($productData['name'], $row);
+                    if (empty($productData['description']) || in_array('description', $aiFields)) {
+                        $productData['description'] = $aiResult['description'] ?? '';
                     }
-                    if (in_array('short_description', $aiFields) && empty($productData['short_description'])) {
-                        $productData['short_description'] = substr($productData['description'], 0, 150);
+                    if (empty($productData['short_description']) || in_array('short_description', $aiFields)) {
+                        $productData['short_description'] = $aiResult['short_description'] ?? substr($productData['description'], 0, 150);
                     }
+                    // Auto-set brand if detected by AI
+                    if (empty($brandValue) && !empty($aiResult['brand'])) {
+                        $brandValue = $aiResult['brand'];
+                    }
+
+                    // Update slug based on new name
+                    $productData['slug'] = slugify($productData['name']);
                 }
 
                 if ($existingId) {

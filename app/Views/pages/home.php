@@ -72,62 +72,74 @@
 </section>
 <?php endif; ?>
 
-<!-- Trust Badges -->
-<section class="trust-badges py-8 bg-background-alt">
-    <div class="container">
-        <div class="trust-badges-grid">
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="1" y="3" width="15" height="13"/>
-                        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
-                        <circle cx="5.5" cy="18.5" r="2.5"/>
-                        <circle cx="18.5" cy="18.5" r="2.5"/>
-                    </svg>
+<!-- Category Cards Bar -->
+<?php
+$allCategories = $categories ?? $featuredCategories ?? [];
+if (!empty($allCategories)):
+?>
+<section class="category-cards-bar">
+    <div class="category-cards-container">
+        <div class="category-cards-scroll">
+            <?php foreach ($allCategories as $category):
+                $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
+                $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
+                $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
+                $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
+            ?>
+            <a href="<?= url('/categories/' . $catSlug) ?>" class="category-card-item">
+                <div class="category-card-image">
+                    <?php if (!empty($catImage)): ?>
+                    <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="<?= e($catName) ?>" loading="lazy">
+                    <?php elseif (!empty($catIcon)): ?>
+                    <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="<?= e($catName) ?>" loading="lazy">
+                    <?php else: ?>
+                    <div class="category-card-placeholder">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                    </div>
+                    <?php endif; ?>
+                    <div class="category-card-overlay"></div>
                 </div>
-                <div class="trust-badge-content">
-                    <h3>Free Delivery</h3>
-                    <p>Orders over R500</p>
+                <div class="category-card-content">
+                    <span class="category-card-name"><?= e($catName) ?></span>
                 </div>
-            </div>
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        <path d="M9 12l2 2 4-4"/>
-                    </svg>
+            </a>
+            <?php endforeach; ?>
+            <!-- View All Card -->
+            <a href="<?= url('/categories') ?>" class="category-card-item category-card-view-all">
+                <div class="category-card-image">
+                    <div class="category-card-view-all-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                    </div>
                 </div>
-                <div class="trust-badge-content">
-                    <h3>Secure Payment</h3>
-                    <p>100% Protected</p>
+                <div class="category-card-content">
+                    <span class="category-card-name">View All Categories</span>
                 </div>
-            </div>
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                    </svg>
-                </div>
-                <div class="trust-badge-content">
-                    <h3>Quality Products</h3>
-                    <p>Best brands only</p>
-                </div>
-            </div>
-            <div class="trust-badge">
-                <div class="trust-badge-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                </div>
-                <div class="trust-badge-content">
-                    <h3>24/7 Support</h3>
-                    <p>Always here to help</p>
-                </div>
-            </div>
+            </a>
         </div>
+        <!-- Scroll Buttons -->
+        <button class="category-scroll-btn category-scroll-prev" aria-label="Previous">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </button>
+        <button class="category-scroll-btn category-scroll-next" aria-label="Next">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+        </button>
     </div>
 </section>
+<?php endif; ?>
 
 <?php if (!empty($featuredCategories)): ?>
 <!-- Category Spotlight -->
@@ -552,62 +564,199 @@
     transform: scale(1.2);
 }
 
-/* Trust Badges - Dark Theme */
-.trust-badges {
-    background-color: var(--color-background-secondary) !important;
+/* Category Cards Bar */
+.category-cards-bar {
+    background-color: var(--color-background-secondary);
+    border-bottom: var(--border-1) solid var(--color-border);
+    position: relative;
+    padding: var(--space-6) 0;
 }
 
-.trust-badges-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-4);
+.category-cards-container {
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 0 var(--space-4);
+    position: relative;
 }
 
 @media (min-width: 768px) {
-    .trust-badges-grid {
-        grid-template-columns: repeat(4, 1fr);
+    .category-cards-container {
+        padding: 0 var(--space-8);
     }
 }
 
-.trust-badge {
+.category-cards-scroll {
     display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    background: var(--color-background-elevated);
-    border: var(--border-1) solid var(--color-border);
-    border-radius: var(--radius-xl);
-    transition: var(--transition-all);
+    gap: var(--space-4);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding: var(--space-2) 0;
 }
 
-.trust-badge:hover {
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    transform: translateY(-2px);
+.category-cards-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.category-card-item {
+    flex: 0 0 180px;
+    scroll-snap-align: start;
+    position: relative;
+    border-radius: var(--radius-2xl);
+    overflow: hidden;
+    transition: var(--transition-all);
+    background: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
+}
+
+@media (min-width: 640px) {
+    .category-card-item {
+        flex: 0 0 200px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .category-card-item {
+        flex: 0 0 220px;
+    }
+}
+
+.category-card-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
     border-color: var(--color-primary);
 }
 
-.trust-badge-icon {
-    width: 48px;
-    height: 48px;
+.category-card-image {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    overflow: hidden;
+    background: linear-gradient(145deg, var(--color-background-alt) 0%, var(--color-background) 100%);
+}
+
+.category-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--duration-500) var(--ease-out);
+}
+
+.category-card-item:hover .category-card-image img {
+    transform: scale(1.1);
+}
+
+.category-card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.category-card-placeholder {
+    width: 100%;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-primary);
-    color: var(--color-text);
-    border-radius: var(--radius-lg);
-    flex-shrink: 0;
+    color: var(--color-text-muted);
 }
 
-.trust-badge-content h3 {
+.category-card-content {
+    padding: var(--space-4);
+    text-align: center;
+}
+
+.category-card-name {
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    margin-bottom: 2px;
+    color: var(--color-text);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (min-width: 768px) {
+    .category-card-name {
+        font-size: var(--text-base);
+    }
+}
+
+.category-card-item:hover .category-card-name {
+    color: var(--color-primary);
+}
+
+/* View All Card */
+.category-card-view-all .category-card-image {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-700) 100%);
+}
+
+.category-card-view-all-icon {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: var(--color-text);
 }
 
-.trust-badge-content p {
-    font-size: var(--text-xs);
-    color: var(--color-text-muted);
+.category-card-view-all:hover .category-card-image {
+    background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-800) 100%);
+}
+
+.category-card-view-all .category-card-name {
+    color: var(--color-primary);
+}
+
+/* Scroll Buttons */
+.category-scroll-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-full);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: var(--transition-all);
+    opacity: 0;
+}
+
+.category-cards-container:hover .category-scroll-btn {
+    opacity: 1;
+}
+
+.category-scroll-btn:hover {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.category-scroll-prev {
+    left: var(--space-2);
+}
+
+.category-scroll-next {
+    right: var(--space-2);
+}
+
+@media (min-width: 768px) {
+    .category-scroll-prev {
+        left: var(--space-4);
+    }
+
+    .category-scroll-next {
+        right: var(--space-4);
+    }
 }
 
 /* Section Headers */
@@ -1011,6 +1160,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Hero Slider
     initHeroSlider();
 
+    // Category Cards Scroll
+    initCategoryCardsScroll();
+
     // Product Carousels
     initProductCarousels();
 
@@ -1098,6 +1250,32 @@ function initHeroSlider() {
     // Pause on hover
     slider.addEventListener('mouseenter', stopAutoplay);
     slider.addEventListener('mouseleave', startAutoplay);
+}
+
+// Category Cards Scroll
+function initCategoryCardsScroll() {
+    const container = document.querySelector('.category-cards-container');
+    if (!container) return;
+
+    const scroll = container.querySelector('.category-cards-scroll');
+    const prevBtn = container.querySelector('.category-scroll-prev');
+    const nextBtn = container.querySelector('.category-scroll-next');
+
+    if (!scroll) return;
+
+    const scrollAmount = 250;
+
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            scroll.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+        });
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            scroll.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+        });
+    }
 }
 
 // Product Carousels

@@ -56,6 +56,18 @@ class Category extends Model
     }
 
     /**
+     * Get categories that should show in menu
+     */
+    public static function forMenu(): array
+    {
+        return self::where('is_active', 1)
+            ->where('show_in_menu', 1)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
      * Get categories with hierarchy
      */
     public static function getTree(): array

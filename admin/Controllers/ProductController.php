@@ -1495,7 +1495,7 @@ class ProductController extends Controller
                 // Store brand for attribute handling
                 $brandValue = $row['brand'] ?? null;
 
-                // AI Generate if enabled - use OpenAI for proper product identification
+                // AI Generate if enabled - use OpenAI for proper product identification from SKU
                 if ($aiGenerate) {
                     $openai = new OpenAIService();
                     $aiResult = $openai->generateFromSku($sku, [
@@ -1504,22 +1504,26 @@ class ProductController extends Controller
                         'price' => $price
                     ]);
 
-                    // Apply AI generated values for empty fields
-                    if (empty($productData['name']) || in_array('name', $aiFields)) {
-                        $productData['name'] = $aiResult['name'] ?? $sku;
+                    // ALWAYS use AI-generated name from SKU when AI is enabled
+                    // The whole point is to generate proper names from SKU codes
+                    if (!empty($aiResult['name']) && $aiResult['name'] !== $sku) {
+                        $productData['name'] = $aiResult['name'];
                     }
+
+                    // Apply AI values for description fields if empty or requested
                     if (empty($productData['description']) || in_array('description', $aiFields)) {
                         $productData['description'] = $aiResult['description'] ?? '';
                     }
                     if (empty($productData['short_description']) || in_array('short_description', $aiFields)) {
                         $productData['short_description'] = $aiResult['short_description'] ?? substr($productData['description'], 0, 150);
                     }
+
                     // Auto-set brand if detected by AI
                     if (empty($brandValue) && !empty($aiResult['brand'])) {
                         $brandValue = $aiResult['brand'];
                     }
 
-                    // Update slug based on new name
+                    // Update slug based on new AI-generated name
                     $productData['slug'] = slugify($productData['name']);
                 }
 

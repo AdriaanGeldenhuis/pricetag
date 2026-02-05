@@ -430,44 +430,70 @@ class OpenAIService
         $brand = $additionalInfo['brand'] ?? '';
         $category = $additionalInfo['category'] ?? 'Electronics';
 
-        // Intel processor detection
-        if (preg_match('/^BX\d+/i', $sku)) {
+        // Intel boxed processor detection (BX80... format)
+        // Examples: BX8071512400F, BX8071512700K, BX80768245KF
+        if (preg_match('/^BX80\d{2}(\d{4,5})([A-Z]*)$/i', $sku, $matches)) {
             $brand = 'Intel';
-            if (preg_match('/i(\d)-(\d+)(\d{2})(\d?)([A-Z]*)/i', $sku, $matches)) {
-                $tier = $matches[1]; // 3, 5, 7, 9
-                $gen = $matches[2];  // Generation
-                $model = $matches[3];
-                $suffix = $matches[5] ?? '';
+            $modelNum = $matches[1];  // e.g., "12400" or "8245"
+            $suffix = strtoupper($matches[2] ?? '');  // e.g., "K", "KF", "F"
 
-                $tierName = match($tier) {
-                    '3' => 'Core i3',
-                    '5' => 'Core i5',
-                    '7' => 'Core i7',
-                    '9' => 'Core i9',
-                    default => 'Core'
-                };
+            // Parse model number to determine generation and tier
+            // Modern Intel: 12400 = 12th gen i5-12400, 13900 = 13th gen i9-13900
+            // Older: 8700 = 8th gen i7-8700, 9900 = 9th gen i9-9900
+            $modelLen = strlen($modelNum);
 
-                $name = "Intel {$tierName}-{$gen}{$model}";
-                if ($suffix) $name .= $suffix;
-                $name .= ' Processor';
-                $category = 'Computer Components';
-            } elseif (preg_match('/(\d{4,5})([A-Z]*)/i', $sku, $matches)) {
-                $modelNum = $matches[1];
-                $suffix = $matches[2] ?? '';
-
-                // Determine tier from model number
-                $firstDigit = substr($modelNum, 0, 1);
-                $tierName = match(true) {
-                    $firstDigit >= '1' && strlen($modelNum) == 5 => 'Core i9',
-                    $firstDigit >= '1' && strlen($modelNum) == 4 => 'Core i7',
-                    default => 'Core i5'
-                };
-
-                $name = "Intel {$tierName}-{$modelNum}";
-                if ($suffix) $name .= $suffix;
-                $name .= ' Processor';
-                $category = 'Computer Components';
+            if ($modelLen === 5) {
+                // 5-digit model: 12400, 12700, 13900, etc.
+                $gen = substr($modelNum, 0, 2);  // "12", "13", "14"
+                $tierDigit = substr($modelNum, 2, 1);  // "4", "7", "9"
+            } else {
+                // 4-digit model: 8700, 9900, etc.
+                $gen = substr($modelNum, 0, 1);  // "8", "9"
+                $tierDigit = substr($modelNum, 1, 1);  // "7", "9", "4", "6"
             }
+
+            // Determine processor tier from the tier digit
+            $tierName = match($tierDigit) {
+                '1', '2', '3' => 'Core i3',
+                '4', '5', '6' => 'Core i5',
+                '7', '8' => 'Core i7',
+                '9' => 'Core i9',
+                default => 'Core i5'
+            };
+
+            // Build the proper product name
+            $name = "Intel {$tierName}-{$modelNum}";
+            if ($suffix) {
+                $name .= $suffix;
+            }
+            $name .= ' Processor';
+            $category = 'Computer Components';
+        }
+        // Alternative Intel format with I in SKU (e.g., BX80684I99900K)
+        elseif (preg_match('/^BX\d+I(\d)(\d{4})([A-Z]*)$/i', $sku, $matches)) {
+            $brand = 'Intel';
+            $tier = $matches[1];  // 3, 5, 7, 9
+            $modelNum = $matches[2];  // 9900, 8700, etc.
+            $suffix = strtoupper($matches[3] ?? '');
+
+            $tierName = match($tier) {
+                '3' => 'Core i3',
+                '5' => 'Core i5',
+                '7' => 'Core i7',
+                '9' => 'Core i9',
+                default => 'Core i5'
+            };
+
+            $name = "Intel {$tierName}-{$modelNum}";
+            if ($suffix) $name .= $suffix;
+            $name .= ' Processor';
+            $category = 'Computer Components';
+        }
+        // Generic Intel BX pattern
+        elseif (preg_match('/^BX\d+/i', $sku)) {
+            $brand = 'Intel';
+            $name = "Intel Processor ({$sku})";
+            $category = 'Computer Components';
         }
         // AMD processor detection
         elseif (preg_match('/ryzen/i', $sku) || preg_match('/^100-/i', $sku)) {

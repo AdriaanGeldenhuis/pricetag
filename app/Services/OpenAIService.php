@@ -394,7 +394,7 @@ class OpenAIService
             $response = $this->makeRequest('/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'You are a product identification expert. Analyze SKU codes to identify products. Always respond with valid JSON only, no markdown.'],
+                    ['role' => 'system', 'content' => 'You are a product identification expert. Analyze SKU codes to identify products. NEVER use the raw SKU as the product name - always identify the actual product. Always respond with valid JSON only, no markdown.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
                 'max_tokens' => 800,
@@ -412,6 +412,26 @@ class OpenAIService
             $data = json_decode($content, true);
 
             if (json_last_error() === JSON_ERROR_NONE && !empty($data['name'])) {
+                // Validate: If AI returned the raw SKU as name, use fallback for name
+                $aiName = trim($data['name']);
+                $isNameJustSku = (strcasecmp($aiName, $sku) === 0) ||
+                                 (stripos($aiName, $sku) === 0 && strlen($aiName) < strlen($sku) + 10);
+
+                if ($isNameJustSku) {
+                    // AI failed to generate a proper name - use fallback for name
+                    $fallback = $this->generateFallbackFromSku($sku, $additionalInfo);
+                    $data['name'] = $fallback['name'];
+                    // Keep AI descriptions if they're better (longer), otherwise use fallback
+                    if (empty($data['short_description']) || strlen($data['short_description']) < 20) {
+                        $data['short_description'] = $fallback['short_description'];
+                    }
+                    if (empty($data['description']) || strlen($data['description']) < 50) {
+                        $data['description'] = $fallback['description'];
+                    }
+                    if (empty($data['brand'])) {
+                        $data['brand'] = $fallback['brand'];
+                    }
+                }
                 return $data;
             }
 

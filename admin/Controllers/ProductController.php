@@ -1573,16 +1573,19 @@ class ProductController extends Controller
 
                     // ALWAYS use AI-generated name from SKU when AI is enabled
                     // The whole point is to generate proper names from SKU codes
-                    if (!empty($aiResult['name']) && $aiResult['name'] !== $sku) {
+                    if (!empty($aiResult['name']) && strcasecmp($aiResult['name'], $sku) !== 0) {
                         $productData['name'] = $aiResult['name'];
                     }
 
-                    // Apply AI values for description fields if empty or requested
-                    if (empty($productData['description']) || in_array('description', $aiFields)) {
-                        $productData['description'] = $aiResult['description'] ?? '';
+                    // ALWAYS apply AI values for description and short_description when AI is enabled
+                    if (!empty($aiResult['description'])) {
+                        $productData['description'] = $aiResult['description'];
                     }
-                    if (empty($productData['short_description']) || in_array('short_description', $aiFields)) {
-                        $productData['short_description'] = $aiResult['short_description'] ?? substr($productData['description'], 0, 150);
+                    if (!empty($aiResult['short_description'])) {
+                        $productData['short_description'] = $aiResult['short_description'];
+                    } elseif (!empty($productData['description'])) {
+                        // Generate short description from description if not provided
+                        $productData['short_description'] = substr(strip_tags($productData['description']), 0, 150);
                     }
 
                     // Auto-set brand if detected by AI

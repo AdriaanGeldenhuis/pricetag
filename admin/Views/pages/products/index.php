@@ -2,13 +2,13 @@
 <div class="flex justify-between items-center mb-6">
     <h1 class="admin-page-title mb-0">Products</h1>
     <div class="flex gap-2">
-        <a href="<?= url('/admin/products/export') ?>" class="btn btn-outline">
+        <a href="<?= url('/admin/products/import') ?>" class="btn btn-outline">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            Export
+            Import / Export
         </a>
         <a href="<?= url('/admin/products/create') ?>" class="btn btn-primary">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

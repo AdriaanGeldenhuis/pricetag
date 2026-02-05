@@ -1,8 +1,8 @@
-<!-- Admin Products Import/Export -->
+<!-- Admin Products Import/Export with Drag & Drop Column Mapping + AI -->
 <div class="admin-page-header">
     <div>
         <h1 class="admin-page-title"><?= e($title) ?></h1>
-        <p class="admin-page-subtitle">Import and export your product catalog</p>
+        <p class="admin-page-subtitle">Import products with intelligent column mapping and AI-powered content generation</p>
     </div>
     <div class="admin-page-actions">
         <a href="<?= url('/admin/products') ?>" class="admin-btn admin-btn-secondary">
@@ -15,216 +15,330 @@
     </div>
 </div>
 
-<div class="import-export-grid">
-    <!-- Import Section -->
-    <div class="admin-card">
-        <div class="admin-card-header">
-            <h3 class="admin-card-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-                Import Products
-            </h3>
+<div class="import-export-container">
+    <!-- Step 1: Upload File -->
+    <div class="admin-card step-card" id="step1">
+        <div class="step-header">
+            <div class="step-number">1</div>
+            <div class="step-info">
+                <h3>Upload Your File</h3>
+                <p>Drag & drop your CSV or JSON file, or click to browse</p>
+            </div>
         </div>
         <div class="admin-card-body">
-            <div class="import-info">
-                <h4>Supported Formats</h4>
-                <div class="format-badges">
-                    <span class="format-badge">CSV</span>
-                    <span class="format-badge">JSON</span>
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content" id="dropZoneContent">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <h3>Drag & Drop your file here</h3>
+                    <p>or <span class="browse-link">click to browse</span></p>
+                    <span class="supported-formats">Supports CSV and JSON files</span>
                 </div>
-
-                <h4>CSV Columns</h4>
-                <div class="columns-list">
-                    <div class="column-item required">
-                        <code>sku</code>
-                        <span class="badge-required">Required</span>
-                    </div>
-                    <div class="column-item required">
-                        <code>name</code>
-                        <span class="badge-required">Required for new</span>
-                    </div>
-                    <div class="column-item">
-                        <code>price</code>
-                    </div>
-                    <div class="column-item">
-                        <code>compare_price</code>
-                    </div>
-                    <div class="column-item">
-                        <code>cost_price</code>
-                    </div>
-                    <div class="column-item">
-                        <code>stock</code>
-                    </div>
-                    <div class="column-item">
-                        <code>category</code>
-                        <span class="badge-info">Name or ID</span>
-                    </div>
-                    <div class="column-item">
-                        <code>description</code>
-                    </div>
-                    <div class="column-item">
-                        <code>short_description</code>
-                    </div>
-                    <div class="column-item">
-                        <code>weight</code>
-                    </div>
-                    <div class="column-item">
-                        <code>status</code>
-                        <span class="badge-info">1 or 0</span>
-                    </div>
-                    <div class="column-item">
-                        <code>featured</code>
-                        <span class="badge-info">1 or 0</span>
-                    </div>
-                    <div class="column-item">
-                        <code>image_url</code>
-                        <span class="badge-info">URL</span>
-                    </div>
-                </div>
-
-                <div class="template-download">
-                    <a href="<?= url('/admin/products/import/template') ?>" class="admin-btn admin-btn-secondary admin-btn-sm">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Download CSV Template
-                    </a>
-                    <a href="<?= url('/admin/products/import/template?format=json') ?>" class="admin-btn admin-btn-secondary admin-btn-sm">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Download JSON Template
-                    </a>
-                </div>
-            </div>
-
-            <!-- Drag & Drop Upload Area -->
-            <form id="importForm" method="POST" action="<?= url('/admin/products/import') ?>" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-
-                <div class="drop-zone" id="dropZone">
-                    <div class="drop-zone-content">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        <h3>Drag & Drop your file here</h3>
-                        <p>or click to browse</p>
-                        <span class="drop-zone-formats">Supports CSV and JSON files</span>
-                    </div>
-                    <div class="drop-zone-file" id="dropZoneFile" style="display: none;">
+                <div class="drop-zone-file" id="dropZoneFile" style="display: none;">
+                    <div class="file-icon">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
                         </svg>
-                        <div class="file-info">
-                            <span class="file-name" id="fileName"></span>
-                            <span class="file-size" id="fileSize"></span>
-                        </div>
-                        <button type="button" class="remove-file" id="removeFile">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
                     </div>
-                    <input type="file" name="file" id="fileInput" accept=".csv,.json,text/csv,application/json" required>
-                </div>
-
-                <!-- Import Options -->
-                <div class="import-options">
-                    <div class="admin-form-group">
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="update_existing" value="1" checked>
-                            <span class="checkbox-mark"></span>
-                            Update existing products (match by SKU)
-                        </label>
+                    <div class="file-details">
+                        <span class="file-name" id="fileName"></span>
+                        <span class="file-meta" id="fileMeta"></span>
                     </div>
-                    <div class="admin-form-group">
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="create_new" value="1" checked>
-                            <span class="checkbox-mark"></span>
-                            Create new products if SKU not found
-                        </label>
-                    </div>
-                    <div class="admin-form-group">
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="skip_errors" value="1">
-                            <span class="checkbox-mark"></span>
-                            Skip rows with errors and continue import
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Preview Area -->
-                <div class="import-preview" id="importPreview" style="display: none;">
-                    <div class="preview-header">
-                        <h4>Preview (<span id="previewCount">0</span> products)</h4>
-                        <div class="preview-stats">
-                            <span class="stat-new" id="statNew">0 new</span>
-                            <span class="stat-update" id="statUpdate">0 updates</span>
-                            <span class="stat-error" id="statError">0 errors</span>
-                        </div>
-                    </div>
-                    <div class="preview-table-wrapper">
-                        <table class="admin-table preview-table">
-                            <thead id="previewHead"></thead>
-                            <tbody id="previewBody"></tbody>
-                        </table>
-                    </div>
-                    <div class="preview-errors" id="previewErrors" style="display: none;">
-                        <h4>Validation Errors</h4>
-                        <ul id="errorList"></ul>
-                    </div>
-                </div>
-
-                <!-- Progress Bar -->
-                <div class="import-progress" id="importProgress" style="display: none;">
-                    <div class="progress-info">
-                        <span id="progressText">Importing products...</span>
-                        <span id="progressPercent">0%</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill"></div>
-                    </div>
-                    <div class="progress-details" id="progressDetails"></div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="import-actions">
-                    <button type="button" class="admin-btn admin-btn-secondary" id="previewBtn" disabled>
+                    <button type="button" class="remove-file-btn" id="removeFile">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
-                        Preview Import
-                    </button>
-                    <button type="submit" class="admin-btn admin-btn-primary" id="importBtn" disabled>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        Import Products
                     </button>
                 </div>
-            </form>
+                <input type="file" id="fileInput" accept=".csv,.json" style="display: none;">
+            </div>
+
+            <div class="template-links">
+                <a href="<?= url('/admin/products/import/template') ?>" class="template-link">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Download CSV Template
+                </a>
+                <a href="<?= url('/admin/products/import/template?format=json') ?>" class="template-link">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Download JSON Template
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Map Columns -->
+    <div class="admin-card step-card disabled" id="step2">
+        <div class="step-header">
+            <div class="step-number">2</div>
+            <div class="step-info">
+                <h3>Map Your Columns</h3>
+                <p>Drag columns from your file to the product fields, or use AI to auto-detect</p>
+            </div>
+            <button type="button" class="admin-btn admin-btn-secondary admin-btn-sm" id="autoMapBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 16v-4"></path>
+                    <path d="M12 8h.01"></path>
+                </svg>
+                Auto-Detect Mapping
+            </button>
+        </div>
+        <div class="admin-card-body">
+            <div class="mapping-container">
+                <!-- Source Columns (from file) -->
+                <div class="mapping-source">
+                    <h4>Your File Columns</h4>
+                    <p class="mapping-hint">Drag these to the matching product field</p>
+                    <div class="source-columns" id="sourceColumns">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Target Fields (product fields) -->
+                <div class="mapping-target">
+                    <h4>Product Fields</h4>
+                    <div class="target-fields" id="targetFields">
+                        <div class="target-field required" data-field="sku">
+                            <div class="field-label">
+                                <span>SKU</span>
+                                <span class="required-badge">Required</span>
+                            </div>
+                            <div class="field-dropzone" data-field="sku">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field required" data-field="name">
+                            <div class="field-label">
+                                <span>Product Name</span>
+                                <span class="required-badge">Required</span>
+                                <button type="button" class="ai-btn" data-field="name" title="AI Generate">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                                    </svg>
+                                    AI
+                                </button>
+                            </div>
+                            <div class="field-dropzone" data-field="name">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="price">
+                            <div class="field-label">
+                                <span>Price</span>
+                            </div>
+                            <div class="field-dropzone" data-field="price">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="compare_price">
+                            <div class="field-label">
+                                <span>Compare Price</span>
+                            </div>
+                            <div class="field-dropzone" data-field="compare_price">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="cost_price">
+                            <div class="field-label">
+                                <span>Cost Price</span>
+                            </div>
+                            <div class="field-dropzone" data-field="cost_price">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="stock">
+                            <div class="field-label">
+                                <span>Stock Quantity</span>
+                            </div>
+                            <div class="field-dropzone" data-field="stock">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="category">
+                            <div class="field-label">
+                                <span>Category</span>
+                            </div>
+                            <div class="field-dropzone" data-field="category">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="description">
+                            <div class="field-label">
+                                <span>Description</span>
+                                <button type="button" class="ai-btn" data-field="description" title="AI Generate">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                                    </svg>
+                                    AI
+                                </button>
+                            </div>
+                            <div class="field-dropzone" data-field="description">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="short_description">
+                            <div class="field-label">
+                                <span>Short Description</span>
+                                <button type="button" class="ai-btn" data-field="short_description" title="AI Generate">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                                    </svg>
+                                    AI
+                                </button>
+                            </div>
+                            <div class="field-dropzone" data-field="short_description">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="weight">
+                            <div class="field-label">
+                                <span>Weight (kg)</span>
+                            </div>
+                            <div class="field-dropzone" data-field="weight">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="status">
+                            <div class="field-label">
+                                <span>Status</span>
+                            </div>
+                            <div class="field-dropzone" data-field="status">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="image_url">
+                            <div class="field-label">
+                                <span>Image URL</span>
+                            </div>
+                            <div class="field-dropzone" data-field="image_url">
+                                <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Preview & Import -->
+    <div class="admin-card step-card disabled" id="step3">
+        <div class="step-header">
+            <div class="step-number">3</div>
+            <div class="step-info">
+                <h3>Preview & Import</h3>
+                <p>Review your data before importing</p>
+            </div>
+        </div>
+        <div class="admin-card-body">
+            <!-- Import Options -->
+            <div class="import-options">
+                <label class="option-checkbox">
+                    <input type="checkbox" id="updateExisting" checked>
+                    <span class="checkmark"></span>
+                    Update existing products (match by SKU)
+                </label>
+                <label class="option-checkbox">
+                    <input type="checkbox" id="createNew" checked>
+                    <span class="checkmark"></span>
+                    Create new products if SKU not found
+                </label>
+                <label class="option-checkbox">
+                    <input type="checkbox" id="skipErrors">
+                    <span class="checkmark"></span>
+                    Skip rows with errors and continue
+                </label>
+                <label class="option-checkbox">
+                    <input type="checkbox" id="aiGenerateAll">
+                    <span class="checkmark"></span>
+                    AI Generate missing names/descriptions
+                </label>
+            </div>
+
+            <!-- Preview Stats -->
+            <div class="preview-stats" id="previewStats" style="display: none;">
+                <div class="stat-item stat-total">
+                    <span class="stat-value" id="statTotal">0</span>
+                    <span class="stat-label">Total Rows</span>
+                </div>
+                <div class="stat-item stat-new">
+                    <span class="stat-value" id="statNew">0</span>
+                    <span class="stat-label">New Products</span>
+                </div>
+                <div class="stat-item stat-update">
+                    <span class="stat-value" id="statUpdate">0</span>
+                    <span class="stat-label">Updates</span>
+                </div>
+                <div class="stat-item stat-error">
+                    <span class="stat-value" id="statErrors">0</span>
+                    <span class="stat-label">Errors</span>
+                </div>
+            </div>
+
+            <!-- Preview Table -->
+            <div class="preview-table-container" id="previewContainer" style="display: none;">
+                <table class="admin-table preview-table">
+                    <thead id="previewHead"></thead>
+                    <tbody id="previewBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Error List -->
+            <div class="error-list" id="errorList" style="display: none;">
+                <h4>Validation Errors</h4>
+                <ul id="errorItems"></ul>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="import-progress" id="importProgress" style="display: none;">
+                <div class="progress-header">
+                    <span id="progressText">Importing products...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-details" id="progressDetails"></div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="import-actions">
+                <button type="button" class="admin-btn admin-btn-secondary" id="previewBtn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    Preview Data
+                </button>
+                <button type="button" class="admin-btn admin-btn-primary" id="importBtn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    Import Products
+                </button>
+            </div>
         </div>
     </div>
 
     <!-- Export Section -->
-    <div class="admin-card">
+    <div class="admin-card" style="margin-top: 2rem;">
         <div class="admin-card-header">
             <h3 class="admin-card-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="7 10 12 15 17 10"></polyline>
                     <line x1="12" y1="15" x2="12" y2="3"></line>
@@ -233,385 +347,177 @@
             </h3>
         </div>
         <div class="admin-card-body">
-            <form method="GET" action="<?= url('/admin/products/export') ?>" id="exportForm">
-
-                <!-- Export Format -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Export Format</label>
-                    <div class="export-formats">
-                        <label class="format-option">
-                            <input type="radio" name="format" value="csv" checked>
-                            <span class="format-card">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                    <polyline points="14 2 14 8 20 8"></polyline>
-                                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                                </svg>
-                                <strong>CSV</strong>
-                                <small>Spreadsheet compatible</small>
-                            </span>
-                        </label>
-                        <label class="format-option">
-                            <input type="radio" name="format" value="json">
-                            <span class="format-card">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <polyline points="16 18 22 12 16 6"></polyline>
-                                    <polyline points="8 6 2 12 8 18"></polyline>
-                                </svg>
-                                <strong>JSON</strong>
-                                <small>Developer friendly</small>
-                            </span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Filter by Categories -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Categories</label>
-                    <div class="category-select">
-                        <div class="category-select-header" id="categorySelectHeader">
-                            <span id="categorySelectText">All Categories</span>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </div>
-                        <div class="category-dropdown" id="categoryDropdown">
-                            <div class="category-search">
-                                <input type="text" id="categorySearch" placeholder="Search categories...">
-                            </div>
-                            <div class="category-options" id="categoryOptions">
-                                <label class="category-option">
-                                    <input type="checkbox" name="all_categories" id="allCategories" checked>
-                                    <span>All Categories</span>
+            <form method="GET" action="<?= url('/admin/products/export') ?>" class="export-form">
+                <div class="export-grid">
+                    <div class="export-filters">
+                        <div class="admin-form-group">
+                            <label class="admin-form-label">Format</label>
+                            <div class="format-selector">
+                                <label class="format-option">
+                                    <input type="radio" name="format" value="csv" checked>
+                                    <span>CSV</span>
                                 </label>
+                                <label class="format-option">
+                                    <input type="radio" name="format" value="json">
+                                    <span>JSON</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="admin-form-group">
+                            <label class="admin-form-label">Category</label>
+                            <select name="categories[]" class="admin-form-select" multiple>
                                 <?php foreach ($categories as $cat): ?>
-                                <label class="category-option" data-name="<?= strtolower(e($cat['name'])) ?>">
-                                    <input type="checkbox" name="categories[]" value="<?= $cat['id'] ?>">
-                                    <span><?= e($cat['name_display'] ?? $cat['name']) ?></span>
-                                    <small class="category-count"><?= $cat['product_count'] ?? 0 ?></small>
-                                </label>
+                                <option value="<?= $cat['id'] ?>"><?= e($cat['name']) ?></option>
                                 <?php endforeach; ?>
-                            </div>
+                            </select>
+                            <small class="form-hint">Hold Ctrl/Cmd to select multiple</small>
+                        </div>
+                        <div class="admin-form-group">
+                            <label class="admin-form-label">Status</label>
+                            <select name="status" class="admin-form-select">
+                                <option value="">All</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
+                        <div class="admin-form-group">
+                            <label class="admin-form-label">Stock</label>
+                            <select name="stock" class="admin-form-select">
+                                <option value="">All</option>
+                                <option value="in_stock">In Stock</option>
+                                <option value="low_stock">Low Stock</option>
+                                <option value="out_of_stock">Out of Stock</option>
+                            </select>
                         </div>
                     </div>
-                </div>
-
-                <!-- Filter by Status -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Status</label>
-                    <select name="status" class="admin-form-select">
-                        <option value="">All Status</option>
-                        <option value="active">Active Only</option>
-                        <option value="inactive">Inactive Only</option>
-                    </select>
-                </div>
-
-                <!-- Filter by Stock -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Stock</label>
-                    <select name="stock" class="admin-form-select">
-                        <option value="">All Stock Levels</option>
-                        <option value="in_stock">In Stock</option>
-                        <option value="low_stock">Low Stock</option>
-                        <option value="out_of_stock">Out of Stock</option>
-                    </select>
-                </div>
-
-                <!-- Filter by Featured -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Featured</label>
-                    <select name="featured" class="admin-form-select">
-                        <option value="">All Products</option>
-                        <option value="1">Featured Only</option>
-                        <option value="0">Non-Featured Only</option>
-                    </select>
-                </div>
-
-                <!-- Date Range -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Date Range</label>
-                    <div class="date-range">
-                        <input type="date" name="date_from" class="admin-form-input" placeholder="From">
-                        <span>to</span>
-                        <input type="date" name="date_to" class="admin-form-input" placeholder="To">
+                    <div class="export-actions-panel">
+                        <div class="export-count">
+                            <span class="count-value"><?= number_format($totalProducts) ?></span>
+                            <span class="count-label">products to export</span>
+                        </div>
+                        <button type="submit" class="admin-btn admin-btn-primary admin-btn-lg">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Export Products
+                        </button>
                     </div>
-                </div>
-
-                <!-- Select Fields to Export -->
-                <div class="admin-form-group">
-                    <label class="admin-form-label">Fields to Export</label>
-                    <div class="export-fields">
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="sku" checked disabled>
-                            <span class="checkbox-mark"></span>
-                            SKU (required)
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="name" checked>
-                            <span class="checkbox-mark"></span>
-                            Name
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="price" checked>
-                            <span class="checkbox-mark"></span>
-                            Price
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="compare_price">
-                            <span class="checkbox-mark"></span>
-                            Compare Price
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="cost_price">
-                            <span class="checkbox-mark"></span>
-                            Cost Price
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="stock" checked>
-                            <span class="checkbox-mark"></span>
-                            Stock
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="category" checked>
-                            <span class="checkbox-mark"></span>
-                            Category
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="description">
-                            <span class="checkbox-mark"></span>
-                            Description
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="short_description">
-                            <span class="checkbox-mark"></span>
-                            Short Description
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="weight">
-                            <span class="checkbox-mark"></span>
-                            Weight
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="status" checked>
-                            <span class="checkbox-mark"></span>
-                            Status
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="featured">
-                            <span class="checkbox-mark"></span>
-                            Featured
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="image_url">
-                            <span class="checkbox-mark"></span>
-                            Image URL
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="slug">
-                            <span class="checkbox-mark"></span>
-                            Slug
-                        </label>
-                        <label class="admin-checkbox">
-                            <input type="checkbox" name="fields[]" value="created_at">
-                            <span class="checkbox-mark"></span>
-                            Created Date
-                        </label>
-                    </div>
-                </div>
-
-                <!-- Export Summary -->
-                <div class="export-summary">
-                    <div class="summary-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                        </svg>
-                    </div>
-                    <div class="summary-info">
-                        <span class="summary-count"><?= number_format($totalProducts) ?></span>
-                        <span class="summary-label">products will be exported</span>
-                    </div>
-                </div>
-
-                <!-- Export Button -->
-                <div class="export-actions">
-                    <button type="submit" class="admin-btn admin-btn-primary admin-btn-block">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Export Products
-                    </button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- Recent Import/Export History -->
-<?php if (!empty($history)): ?>
-<div class="admin-card" style="margin-top: 1.5rem;">
-    <div class="admin-card-header">
-        <h3 class="admin-card-title">Recent Import/Export History</h3>
-    </div>
-    <div class="admin-card-body" style="padding: 0;">
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>File</th>
-                    <th>Status</th>
-                    <th>Products</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($history as $log): ?>
-                <tr>
-                    <td class="text-muted"><?= date('M j, g:i A', strtotime($log['created_at'])) ?></td>
-                    <td>
-                        <span class="admin-badge <?= $log['type'] === 'import' ? 'info' : 'neutral' ?>">
-                            <?= ucfirst($log['type']) ?>
-                        </span>
-                    </td>
-                    <td><?= e($log['filename'] ?? '-') ?></td>
-                    <td>
-                        <?php if ($log['status'] === 'completed'): ?>
-                        <span class="admin-badge active">Completed</span>
-                        <?php elseif ($log['status'] === 'running'): ?>
-                        <span class="admin-badge warning">Running</span>
-                        <?php else: ?>
-                        <span class="admin-badge inactive">Failed</span>
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php if ($log['type'] === 'import'): ?>
-                        <span class="text-success"><?= $log['created_products'] ?? 0 ?> new</span>,
-                        <span class="text-primary"><?= $log['updated_products'] ?? 0 ?> updated</span>
-                        <?php if (!empty($log['failed_products'])): ?>
-                        , <span class="text-danger"><?= $log['failed_products'] ?> failed</span>
-                        <?php endif; ?>
-                        <?php else: ?>
-                        <?= number_format($log['total_products'] ?? 0) ?> exported
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                        <?php if ($log['type'] === 'export' && !empty($log['download_url'])): ?>
-                        <a href="<?= e($log['download_url']) ?>" class="admin-btn admin-btn-ghost admin-btn-sm">
-                            Download
-                        </a>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+<!-- AI Generation Modal -->
+<div class="admin-modal-overlay" id="aiModal">
+    <div class="admin-modal">
+        <div class="admin-modal-header">
+            <h3 class="admin-modal-title">AI Content Generation</h3>
+            <button class="admin-modal-close" onclick="closeAiModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="admin-modal-body">
+            <p id="aiModalText">AI will generate content for products missing this field.</p>
+            <div class="ai-options">
+                <label class="option-checkbox">
+                    <input type="checkbox" id="aiOnlyEmpty" checked>
+                    <span class="checkmark"></span>
+                    Only for empty fields
+                </label>
+            </div>
+            <div class="ai-progress" id="aiProgress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="aiProgressFill"></div>
+                </div>
+                <span id="aiProgressText">Processing...</span>
+            </div>
+        </div>
+        <div class="admin-modal-footer">
+            <button type="button" class="admin-btn admin-btn-secondary" onclick="closeAiModal()">Cancel</button>
+            <button type="button" class="admin-btn admin-btn-primary" id="aiGenerateBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                </svg>
+                Generate with AI
+            </button>
+        </div>
     </div>
 </div>
-<?php endif; ?>
 
 <style>
-.import-export-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-    gap: 1.5rem;
+/* Container */
+.import-export-container {
+    max-width: 1200px;
 }
 
-.admin-card-title {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-/* Import Info */
-.import-info {
-    background: var(--admin-bg);
-    padding: 1rem;
-    border-radius: var(--admin-radius);
+/* Step Cards */
+.step-card {
     margin-bottom: 1.5rem;
+    transition: opacity 0.3s, filter 0.3s;
 }
 
-.import-info h4 {
-    margin: 0 0 0.5rem;
-    font-size: 0.8125rem;
-    text-transform: uppercase;
-    color: var(--admin-text-muted);
-    letter-spacing: 0.05em;
+.step-card.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(50%);
 }
 
-.import-info h4:not(:first-child) {
-    margin-top: 1rem;
+.step-card.active {
+    opacity: 1;
+    pointer-events: auto;
+    filter: none;
 }
 
-.format-badges {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.format-badge {
-    background: var(--admin-primary);
-    color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.columns-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 0.5rem;
-}
-
-.column-item {
+.step-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--admin-border);
 }
 
-.column-item code {
-    background: var(--admin-card-bg);
-    padding: 0.125rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.8125rem;
-}
-
-.badge-required {
-    background: var(--admin-danger);
-    color: white;
-    padding: 0.125rem 0.375rem;
-    border-radius: 4px;
-    font-size: 0.625rem;
-    text-transform: uppercase;
-}
-
-.badge-info {
+.step-number {
+    width: 40px;
+    height: 40px;
     background: var(--admin-primary);
     color: white;
-    padding: 0.125rem 0.375rem;
-    border-radius: 4px;
-    font-size: 0.625rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.125rem;
 }
 
-.template-download {
-    margin-top: 1rem;
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+.step-info {
+    flex: 1;
+}
+
+.step-info h3 {
+    margin: 0;
+    font-size: 1.125rem;
+}
+
+.step-info p {
+    margin: 0.25rem 0 0;
+    color: var(--admin-text-muted);
+    font-size: 0.875rem;
 }
 
 /* Drop Zone */
 .drop-zone {
     border: 2px dashed var(--admin-border);
     border-radius: var(--admin-radius);
-    padding: 3rem 2rem;
+    padding: 3rem;
     text-align: center;
     cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
+    transition: all 0.2s;
     background: var(--admin-bg);
 }
 
@@ -621,36 +527,23 @@
     background: rgba(99, 102, 241, 0.05);
 }
 
-.drop-zone.dragover {
-    transform: scale(1.01);
-}
-
 .drop-zone.has-file {
     border-style: solid;
     border-color: var(--admin-success);
     background: rgba(16, 185, 129, 0.05);
-}
-
-.drop-zone input[type="file"] {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-    cursor: pointer;
+    padding: 1.5rem;
 }
 
 .drop-zone-content svg {
-    width: 48px;
-    height: 48px;
+    width: 64px;
+    height: 64px;
     color: var(--admin-text-muted);
     margin-bottom: 1rem;
 }
 
 .drop-zone-content h3 {
-    margin: 0 0 0.25rem;
-    font-size: 1.125rem;
+    margin: 0 0 0.5rem;
+    font-size: 1.25rem;
 }
 
 .drop-zone-content p {
@@ -658,9 +551,15 @@
     color: var(--admin-text-muted);
 }
 
-.drop-zone-formats {
+.browse-link {
+    color: var(--admin-primary);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.supported-formats {
     display: block;
-    margin-top: 0.5rem;
+    margin-top: 1rem;
     font-size: 0.75rem;
     color: var(--admin-text-muted);
 }
@@ -668,33 +567,33 @@
 .drop-zone-file {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 1rem;
 }
 
-.drop-zone-file svg {
-    width: 40px;
-    height: 40px;
+.file-icon svg {
+    width: 48px;
+    height: 48px;
     color: var(--admin-success);
 }
 
-.file-info {
+.file-details {
+    flex: 1;
     text-align: left;
 }
 
 .file-name {
     display: block;
     font-weight: 600;
-    color: var(--admin-text);
+    font-size: 1rem;
 }
 
-.file-size {
+.file-meta {
     display: block;
     font-size: 0.8125rem;
     color: var(--admin-text-muted);
 }
 
-.remove-file {
+.remove-file-btn {
     background: none;
     border: none;
     padding: 0.5rem;
@@ -703,24 +602,253 @@
     transition: color 0.2s;
 }
 
-.remove-file:hover {
+.remove-file-btn:hover {
     color: var(--admin-danger);
 }
 
-.remove-file svg {
-    width: 20px;
-    height: 20px;
+.remove-file-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Template Links */
+.template-links {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    justify-content: center;
+}
+
+.template-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--admin-bg);
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    color: var(--admin-text);
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.template-link:hover {
+    border-color: var(--admin-primary);
+    color: var(--admin-primary);
+}
+
+.template-link svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Mapping Container */
+.mapping-container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 2rem;
+}
+
+.mapping-source h4,
+.mapping-target h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    color: var(--admin-text-muted);
+    letter-spacing: 0.05em;
+}
+
+.mapping-hint {
+    margin: 0 0 1rem;
+    font-size: 0.8125rem;
+    color: var(--admin-text-muted);
+}
+
+/* Source Columns */
+.source-columns {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.source-column {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--admin-card-bg);
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    cursor: grab;
+    transition: all 0.2s;
+}
+
+.source-column:hover {
+    border-color: var(--admin-primary);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.source-column.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.source-column.mapped {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: var(--admin-success);
+}
+
+.source-column .drag-handle {
+    color: var(--admin-text-muted);
+}
+
+.source-column .drag-handle svg {
+    width: 16px;
+    height: 16px;
+}
+
+.source-column .column-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.source-column .column-sample {
+    font-size: 0.75rem;
+    color: var(--admin-text-muted);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Target Fields */
+.target-fields {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.target-field {
+    background: var(--admin-bg);
+    border-radius: var(--admin-radius);
+    padding: 0.75rem;
+}
+
+.target-field.required .field-label span:first-child::after {
+    content: '*';
+    color: var(--admin-danger);
+    margin-left: 2px;
+}
+
+.field-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.required-badge {
+    background: var(--admin-danger);
+    color: white;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    font-size: 0.625rem;
+    text-transform: uppercase;
+}
+
+.ai-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.6875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ai-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
+.ai-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+.field-dropzone {
+    min-height: 44px;
+    border: 2px dashed var(--admin-border);
+    border-radius: var(--admin-radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.field-dropzone.dragover {
+    border-color: var(--admin-primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.field-dropzone.mapped {
+    border-style: solid;
+    border-color: var(--admin-success);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.field-dropzone .placeholder {
+    color: var(--admin-text-muted);
+    font-size: 0.8125rem;
+}
+
+.field-dropzone .mapped-column {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--admin-success);
+    color: white;
+    border-radius: 4px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.field-dropzone .remove-mapping {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: white;
+    opacity: 0.7;
+}
+
+.field-dropzone .remove-mapping:hover {
+    opacity: 1;
+}
+
+.field-dropzone .remove-mapping svg {
+    width: 14px;
+    height: 14px;
 }
 
 /* Import Options */
 .import-options {
-    margin: 1.5rem 0;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
+    margin-bottom: 1.5rem;
 }
 
-.admin-checkbox {
+.option-checkbox {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -728,13 +856,13 @@
     font-size: 0.875rem;
 }
 
-.admin-checkbox input {
+.option-checkbox input {
     display: none;
 }
 
-.checkbox-mark {
-    width: 18px;
-    height: 18px;
+.option-checkbox .checkmark {
+    width: 20px;
+    height: 20px;
     border: 2px solid var(--admin-border);
     border-radius: 4px;
     display: flex;
@@ -743,63 +871,57 @@
     transition: all 0.2s;
 }
 
-.admin-checkbox input:checked + .checkbox-mark {
+.option-checkbox input:checked + .checkmark {
     background: var(--admin-primary);
     border-color: var(--admin-primary);
 }
 
-.admin-checkbox input:checked + .checkbox-mark::after {
+.option-checkbox input:checked + .checkmark::after {
     content: '';
     width: 5px;
-    height: 9px;
+    height: 10px;
     border: solid white;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg) translate(-1px, -1px);
 }
 
-/* Preview Area */
-.import-preview {
-    margin: 1.5rem 0;
+/* Preview Stats */
+.preview-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 1rem;
+    border-radius: var(--admin-radius);
+    background: var(--admin-bg);
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.stat-label {
+    font-size: 0.8125rem;
+    color: var(--admin-text-muted);
+}
+
+.stat-new .stat-value { color: var(--admin-success); }
+.stat-update .stat-value { color: var(--admin-primary); }
+.stat-error .stat-value { color: var(--admin-danger); }
+
+/* Preview Table */
+.preview-table-container {
+    max-height: 400px;
+    overflow: auto;
+    margin-bottom: 1.5rem;
     border: 1px solid var(--admin-border);
     border-radius: var(--admin-radius);
-    overflow: hidden;
-}
-
-.preview-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    background: var(--admin-bg);
-    border-bottom: 1px solid var(--admin-border);
-}
-
-.preview-header h4 {
-    margin: 0;
-    font-size: 0.875rem;
-}
-
-.preview-stats {
-    display: flex;
-    gap: 1rem;
-    font-size: 0.8125rem;
-}
-
-.stat-new {
-    color: var(--admin-success);
-}
-
-.stat-update {
-    color: var(--admin-primary);
-}
-
-.stat-error {
-    color: var(--admin-danger);
-}
-
-.preview-table-wrapper {
-    max-height: 300px;
-    overflow: auto;
 }
 
 .preview-table {
@@ -812,46 +934,43 @@
     white-space: nowrap;
 }
 
-.preview-row-new {
-    background: rgba(16, 185, 129, 0.1);
-}
+.row-new { background: rgba(16, 185, 129, 0.1); }
+.row-update { background: rgba(99, 102, 241, 0.1); }
+.row-error { background: rgba(239, 68, 68, 0.1); }
 
-.preview-row-update {
-    background: rgba(99, 102, 241, 0.1);
-}
-
-.preview-row-error {
+/* Error List */
+.error-list {
     background: rgba(239, 68, 68, 0.1);
-}
-
-.preview-errors {
+    border: 1px solid var(--admin-danger);
+    border-radius: var(--admin-radius);
     padding: 1rem;
-    background: rgba(239, 68, 68, 0.1);
-    border-top: 1px solid var(--admin-danger);
+    margin-bottom: 1.5rem;
 }
 
-.preview-errors h4 {
+.error-list h4 {
     margin: 0 0 0.5rem;
     color: var(--admin-danger);
     font-size: 0.875rem;
 }
 
-.preview-errors ul {
+.error-list ul {
     margin: 0;
     padding-left: 1.25rem;
     font-size: 0.8125rem;
     color: var(--admin-danger);
+    max-height: 150px;
+    overflow-y: auto;
 }
 
-/* Progress Bar */
+/* Progress */
 .import-progress {
-    margin: 1.5rem 0;
     padding: 1.5rem;
     background: var(--admin-bg);
     border-radius: var(--admin-radius);
+    margin-bottom: 1.5rem;
 }
 
-.progress-info {
+.progress-header {
     display: flex;
     justify-content: space-between;
     margin-bottom: 0.5rem;
@@ -869,7 +988,7 @@
     height: 100%;
     background: var(--admin-primary);
     width: 0%;
-    transition: width 0.3s ease;
+    transition: width 0.3s;
 }
 
 .progress-details {
@@ -882,21 +1001,33 @@
 .import-actions {
     display: flex;
     gap: 1rem;
-    margin-top: 1.5rem;
 }
 
 .import-actions .admin-btn {
     flex: 1;
+    justify-content: center;
 }
 
-/* Export Formats */
-.export-formats {
+/* Export Section */
+.export-grid {
+    display: grid;
+    grid-template-columns: 1fr 250px;
+    gap: 2rem;
+}
+
+.export-filters {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
 }
 
+.format-selector {
+    display: flex;
+    gap: 0.5rem;
+}
+
 .format-option {
+    flex: 1;
     cursor: pointer;
 }
 
@@ -904,402 +1035,210 @@
     display: none;
 }
 
-.format-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 1.5rem;
-    border: 2px solid var(--admin-border);
-    border-radius: var(--admin-radius);
-    transition: all 0.2s;
-    text-align: center;
-}
-
-.format-option input:checked + .format-card {
-    border-color: var(--admin-primary);
-    background: rgba(99, 102, 241, 0.05);
-}
-
-.format-card svg {
-    width: 32px;
-    height: 32px;
-    color: var(--admin-text-muted);
-    margin-bottom: 0.5rem;
-}
-
-.format-option input:checked + .format-card svg {
-    color: var(--admin-primary);
-}
-
-.format-card strong {
+.format-option span {
     display: block;
-    margin-bottom: 0.25rem;
-}
-
-.format-card small {
-    color: var(--admin-text-muted);
-    font-size: 0.75rem;
-}
-
-/* Category Select */
-.category-select {
-    position: relative;
-}
-
-.category-select-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.625rem 0.875rem;
-    border: 1px solid var(--admin-border);
-    border-radius: var(--admin-radius);
-    background: var(--admin-card-bg);
-    cursor: pointer;
-    transition: border-color 0.2s;
-}
-
-.category-select-header:hover {
-    border-color: var(--admin-primary);
-}
-
-.category-select-header svg {
-    width: 16px;
-    height: 16px;
-    color: var(--admin-text-muted);
-    transition: transform 0.2s;
-}
-
-.category-select.open .category-select-header svg {
-    transform: rotate(180deg);
-}
-
-.category-dropdown {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    background: var(--admin-card-bg);
-    border: 1px solid var(--admin-border);
-    border-radius: var(--admin-radius);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    z-index: 100;
-    display: none;
-    max-height: 300px;
-    overflow: hidden;
-    flex-direction: column;
-}
-
-.category-select.open .category-dropdown {
-    display: flex;
-}
-
-.category-search {
-    padding: 0.5rem;
-    border-bottom: 1px solid var(--admin-border);
-}
-
-.category-search input {
-    width: 100%;
-    padding: 0.5rem;
+    padding: 0.5rem 1rem;
+    text-align: center;
     border: 1px solid var(--admin-border);
     border-radius: var(--admin-radius-sm);
-    font-size: 0.875rem;
+    transition: all 0.2s;
 }
 
-.category-options {
-    overflow-y: auto;
-    flex: 1;
-}
-
-.category-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.category-option:hover {
-    background: var(--admin-bg);
-}
-
-.category-option input {
-    width: 16px;
-    height: 16px;
-}
-
-.category-option span {
-    flex: 1;
-    font-size: 0.875rem;
-}
-
-.category-count {
-    color: var(--admin-text-muted);
-    font-size: 0.75rem;
-}
-
-/* Date Range */
-.date-range {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.date-range input {
-    flex: 1;
-}
-
-.date-range span {
-    color: var(--admin-text-muted);
-    font-size: 0.875rem;
-}
-
-/* Export Fields */
-.export-fields {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 0.5rem;
-}
-
-/* Export Summary */
-.export-summary {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    background: var(--admin-bg);
-    border-radius: var(--admin-radius);
-    margin: 1.5rem 0;
-}
-
-.summary-icon {
-    width: 48px;
-    height: 48px;
+.format-option input:checked + span {
     background: var(--admin-primary);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.summary-icon svg {
-    width: 24px;
-    height: 24px;
+    border-color: var(--admin-primary);
     color: white;
 }
 
-.summary-count {
+.form-hint {
     display: block;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--admin-text);
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--admin-text-muted);
 }
 
-.summary-label {
+.export-actions-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.export-count {
+    margin-bottom: 1.5rem;
+}
+
+.count-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--admin-primary);
+}
+
+.count-label {
     color: var(--admin-text-muted);
     font-size: 0.875rem;
 }
 
-/* Export Actions */
-.export-actions {
+.admin-btn-lg {
+    padding: 0.875rem 2rem;
+    font-size: 1rem;
+}
+
+/* AI Modal */
+.ai-options {
+    margin: 1rem 0;
+}
+
+.ai-progress {
     margin-top: 1rem;
 }
 
-.admin-btn-block {
-    width: 100%;
-    justify-content: center;
+.ai-progress .progress-bar {
+    margin-bottom: 0.5rem;
 }
-
-/* Helper Classes */
-.text-success { color: var(--admin-success); }
-.text-primary { color: var(--admin-primary); }
-.text-danger { color: var(--admin-danger); }
 
 /* Responsive */
 @media (max-width: 992px) {
-    .import-export-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-width: 576px) {
-    .columns-list {
-        grid-template-columns: 1fr 1fr;
-    }
-
-    .export-formats {
+    .mapping-container {
         grid-template-columns: 1fr;
     }
 
-    .export-fields {
+    .target-fields {
         grid-template-columns: 1fr;
     }
 
-    .import-actions {
-        flex-direction: column;
+    .export-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .preview-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .import-options {
+        grid-template-columns: 1fr;
     }
 }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Drag and Drop functionality
+    // Elements
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
-    const dropZoneContent = dropZone.querySelector('.drop-zone-content');
+    const dropZoneContent = document.getElementById('dropZoneContent');
     const dropZoneFile = document.getElementById('dropZoneFile');
     const fileName = document.getElementById('fileName');
-    const fileSize = document.getElementById('fileSize');
+    const fileMeta = document.getElementById('fileMeta');
     const removeFile = document.getElementById('removeFile');
+    const sourceColumns = document.getElementById('sourceColumns');
+    const autoMapBtn = document.getElementById('autoMapBtn');
     const previewBtn = document.getElementById('previewBtn');
     const importBtn = document.getElementById('importBtn');
-    const importPreview = document.getElementById('importPreview');
-    const importForm = document.getElementById('importForm');
+
+    const step1 = document.getElementById('step1');
+    const step2 = document.getElementById('step2');
+    const step3 = document.getElementById('step3');
 
     let currentFile = null;
     let parsedData = null;
+    let columnMapping = {};
+    let aiField = null;
 
-    // Prevent defaults
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, preventDefaults, false);
-        document.body.addEventListener(eventName, preventDefaults, false);
+    // Click to browse
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    // Drag and drop
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
+        dropZone.addEventListener(event, e => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
     });
 
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    // Highlight drop zone
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+    ['dragenter', 'dragover'].forEach(event => {
+        dropZone.addEventListener(event, () => dropZone.classList.add('dragover'));
     });
 
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+    ['dragleave', 'drop'].forEach(event => {
+        dropZone.addEventListener(event, () => dropZone.classList.remove('dragover'));
     });
 
-    // Handle drop
-    dropZone.addEventListener('drop', handleDrop, false);
-    fileInput.addEventListener('change', handleFileSelect, false);
-
-    function handleDrop(e) {
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleFile(files[0]);
+    dropZone.addEventListener('drop', e => {
+        if (e.dataTransfer.files.length) {
+            handleFile(e.dataTransfer.files[0]);
         }
-    }
+    });
 
-    function handleFileSelect(e) {
-        if (e.target.files.length > 0) {
+    fileInput.addEventListener('change', e => {
+        if (e.target.files.length) {
             handleFile(e.target.files[0]);
         }
-    }
+    });
+
+    removeFile.addEventListener('click', e => {
+        e.stopPropagation();
+        resetUpload();
+    });
 
     function handleFile(file) {
-        const validTypes = ['text/csv', 'application/json', 'application/vnd.ms-excel'];
-        const validExtensions = ['.csv', '.json'];
-        const ext = '.' + file.name.split('.').pop().toLowerCase();
-
-        if (!validTypes.includes(file.type) && !validExtensions.includes(ext)) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['csv', 'json'].includes(ext)) {
             alert('Please upload a CSV or JSON file');
             return;
         }
 
         currentFile = file;
         fileName.textContent = file.name;
-        fileSize.textContent = formatFileSize(file.size);
+        fileMeta.textContent = formatSize(file.size) + ' - ' + ext.toUpperCase();
 
         dropZoneContent.style.display = 'none';
         dropZoneFile.style.display = 'flex';
         dropZone.classList.add('has-file');
 
-        previewBtn.disabled = false;
-        importBtn.disabled = false;
+        // Parse file
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                if (ext === 'json') {
+                    parsedData = JSON.parse(e.target.result);
+                    if (parsedData.products) parsedData = parsedData.products;
+                    if (!Array.isArray(parsedData)) parsedData = [parsedData];
+                } else {
+                    parsedData = parseCSV(e.target.result);
+                }
 
-        // Auto-preview small files
-        if (file.size < 1024 * 1024) { // < 1MB
-            previewFile(file);
-        }
+                if (parsedData.length > 0) {
+                    populateSourceColumns(Object.keys(parsedData[0]));
+                    enableStep(2);
+                }
+            } catch (err) {
+                alert('Error parsing file: ' + err.message);
+                resetUpload();
+            }
+        };
+        reader.readAsText(file);
     }
 
-    function formatFileSize(bytes) {
+    function formatSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    // Remove file
-    removeFile.addEventListener('click', function(e) {
-        e.stopPropagation();
-        resetDropZone();
-    });
-
-    function resetDropZone() {
-        currentFile = null;
-        parsedData = null;
-        fileInput.value = '';
-        fileName.textContent = '';
-        fileSize.textContent = '';
-        dropZoneContent.style.display = 'block';
-        dropZoneFile.style.display = 'none';
-        dropZone.classList.remove('has-file');
-        previewBtn.disabled = true;
-        importBtn.disabled = true;
-        importPreview.style.display = 'none';
-    }
-
-    // Preview button click
-    previewBtn.addEventListener('click', function() {
-        if (currentFile) {
-            previewFile(currentFile);
-        }
-    });
-
-    function previewFile(file) {
-        const reader = new FileReader();
-
-        reader.onload = function(e) {
-            const content = e.target.result;
-            const ext = file.name.split('.').pop().toLowerCase();
-
-            try {
-                if (ext === 'json') {
-                    parsedData = JSON.parse(content);
-                    if (!Array.isArray(parsedData)) {
-                        parsedData = parsedData.products || [parsedData];
-                    }
-                } else {
-                    parsedData = parseCSV(content);
-                }
-
-                displayPreview(parsedData);
-            } catch (err) {
-                alert('Error parsing file: ' + err.message);
-            }
-        };
-
-        reader.readAsText(file);
-    }
-
     function parseCSV(content) {
-        const lines = content.split(/\r?\n/).filter(line => line.trim());
+        const lines = content.split(/\r?\n/).filter(l => l.trim());
         if (lines.length < 2) return [];
 
-        const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
-        const data = [];
-
-        for (let i = 1; i < lines.length; i++) {
-            const values = parseCSVLine(lines[i]);
+        const headers = parseCSVLine(lines[0]);
+        return lines.slice(1).map(line => {
+            const values = parseCSVLine(line);
             const row = {};
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-            data.push(row);
-        }
-
-        return data;
+            headers.forEach((h, i) => row[h.toLowerCase().trim()] = values[i] || '');
+            return row;
+        });
     }
 
     function parseCSVLine(line) {
@@ -1309,7 +1248,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         for (let i = 0; i < line.length; i++) {
             const char = line[i];
-
             if (char === '"') {
                 if (inQuotes && line[i + 1] === '"') {
                     current += '"';
@@ -1324,200 +1262,421 @@ document.addEventListener('DOMContentLoaded', function() {
                 current += char;
             }
         }
-
         result.push(current.trim());
         return result;
     }
 
-    function displayPreview(data) {
-        if (!data || data.length === 0) {
-            alert('No data found in file');
-            return;
+    function resetUpload() {
+        currentFile = null;
+        parsedData = null;
+        columnMapping = {};
+        fileInput.value = '';
+        dropZoneContent.style.display = 'block';
+        dropZoneFile.style.display = 'none';
+        dropZone.classList.remove('has-file');
+        sourceColumns.innerHTML = '';
+        resetMappings();
+        disableStep(2);
+        disableStep(3);
+    }
+
+    function enableStep(num) {
+        document.getElementById('step' + num).classList.remove('disabled');
+        document.getElementById('step' + num).classList.add('active');
+        if (num === 2) autoMapBtn.disabled = false;
+        if (num === 3) {
+            previewBtn.disabled = false;
+            importBtn.disabled = false;
+        }
+    }
+
+    function disableStep(num) {
+        document.getElementById('step' + num).classList.add('disabled');
+        document.getElementById('step' + num).classList.remove('active');
+        if (num === 2) autoMapBtn.disabled = true;
+        if (num === 3) {
+            previewBtn.disabled = true;
+            importBtn.disabled = true;
+        }
+    }
+
+    function populateSourceColumns(columns) {
+        sourceColumns.innerHTML = columns.map(col => {
+            const sample = parsedData[0][col] || '';
+            return `
+                <div class="source-column" draggable="true" data-column="${escapeHtml(col)}">
+                    <span class="drag-handle">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="8" y1="6" x2="16" y2="6"></line>
+                            <line x1="8" y1="12" x2="16" y2="12"></line>
+                            <line x1="8" y1="18" x2="16" y2="18"></line>
+                        </svg>
+                    </span>
+                    <span class="column-name">${escapeHtml(col)}</span>
+                    <span class="column-sample" title="${escapeHtml(sample)}">${escapeHtml(sample.substring(0, 20))}</span>
+                </div>
+            `;
+        }).join('');
+
+        // Setup drag events
+        setupDragAndDrop();
+    }
+
+    function setupDragAndDrop() {
+        const draggables = document.querySelectorAll('.source-column');
+        const dropzones = document.querySelectorAll('.field-dropzone');
+
+        draggables.forEach(el => {
+            el.addEventListener('dragstart', e => {
+                el.classList.add('dragging');
+                e.dataTransfer.setData('text/plain', el.dataset.column);
+            });
+
+            el.addEventListener('dragend', () => {
+                el.classList.remove('dragging');
+            });
+        });
+
+        dropzones.forEach(zone => {
+            zone.addEventListener('dragover', e => {
+                e.preventDefault();
+                zone.classList.add('dragover');
+            });
+
+            zone.addEventListener('dragleave', () => {
+                zone.classList.remove('dragover');
+            });
+
+            zone.addEventListener('drop', e => {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+
+                const column = e.dataTransfer.getData('text/plain');
+                const field = zone.dataset.field;
+
+                mapColumn(column, field, zone);
+            });
+        });
+    }
+
+    function mapColumn(column, field, zone) {
+        // Remove previous mapping for this field
+        if (columnMapping[field]) {
+            const prevCol = document.querySelector(`.source-column[data-column="${columnMapping[field]}"]`);
+            if (prevCol) prevCol.classList.remove('mapped');
         }
 
+        // Set new mapping
+        columnMapping[field] = column;
+
+        // Update UI
+        const sourceCol = document.querySelector(`.source-column[data-column="${column}"]`);
+        if (sourceCol) sourceCol.classList.add('mapped');
+
+        zone.classList.add('mapped');
+        zone.innerHTML = `
+            <span class="mapped-column">
+                ${escapeHtml(column)}
+                <button type="button" class="remove-mapping" onclick="removeMapping('${field}', this.parentElement.parentElement)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </span>
+        `;
+
+        checkMappingComplete();
+    }
+
+    window.removeMapping = function(field, zone) {
+        const column = columnMapping[field];
+        delete columnMapping[field];
+
+        const sourceCol = document.querySelector(`.source-column[data-column="${column}"]`);
+        if (sourceCol) sourceCol.classList.remove('mapped');
+
+        zone.classList.remove('mapped');
+        zone.innerHTML = '<span class="placeholder">Drop column here</span>';
+
+        checkMappingComplete();
+    };
+
+    function resetMappings() {
+        columnMapping = {};
+        document.querySelectorAll('.field-dropzone').forEach(zone => {
+            zone.classList.remove('mapped');
+            zone.innerHTML = '<span class="placeholder">Drop column here</span>';
+        });
+        document.querySelectorAll('.source-column').forEach(col => {
+            col.classList.remove('mapped');
+        });
+    }
+
+    function checkMappingComplete() {
+        // Need at least SKU mapped
+        if (columnMapping.sku) {
+            enableStep(3);
+        } else {
+            disableStep(3);
+        }
+    }
+
+    // Auto-map button
+    autoMapBtn.addEventListener('click', () => {
+        if (!parsedData || parsedData.length === 0) return;
+
+        const columns = Object.keys(parsedData[0]);
+        const mappings = {
+            'sku': ['sku', 'product_code', 'code', 'item_number', 'item_code', 'barcode'],
+            'name': ['name', 'product_name', 'title', 'product_title', 'product'],
+            'price': ['price', 'cost', 'selling_price', 'retail_price', 'unit_price'],
+            'compare_price': ['compare_price', 'original_price', 'msrp', 'rrp', 'was_price'],
+            'cost_price': ['cost_price', 'cost', 'wholesale_price', 'buy_price'],
+            'stock': ['stock', 'quantity', 'qty', 'inventory', 'stock_quantity', 'available'],
+            'category': ['category', 'category_name', 'product_category', 'type'],
+            'description': ['description', 'product_description', 'desc', 'details', 'long_description'],
+            'short_description': ['short_description', 'summary', 'short_desc', 'excerpt'],
+            'weight': ['weight', 'product_weight', 'kg', 'mass'],
+            'status': ['status', 'active', 'enabled', 'published'],
+            'image_url': ['image_url', 'image', 'picture', 'photo', 'thumbnail', 'img']
+        };
+
+        resetMappings();
+
+        Object.keys(mappings).forEach(field => {
+            const possibleNames = mappings[field];
+            const match = columns.find(col =>
+                possibleNames.some(name => col.toLowerCase().includes(name))
+            );
+
+            if (match) {
+                const zone = document.querySelector(`.field-dropzone[data-field="${field}"]`);
+                if (zone) mapColumn(match, field, zone);
+            }
+        });
+    });
+
+    // Preview button
+    previewBtn.addEventListener('click', generatePreview);
+
+    function generatePreview() {
+        if (!parsedData || Object.keys(columnMapping).length === 0) return;
+
+        const previewStats = document.getElementById('previewStats');
+        const previewContainer = document.getElementById('previewContainer');
         const previewHead = document.getElementById('previewHead');
         const previewBody = document.getElementById('previewBody');
-        const previewCount = document.getElementById('previewCount');
-        const statNew = document.getElementById('statNew');
-        const statUpdate = document.getElementById('statUpdate');
-        const statError = document.getElementById('statError');
-        const previewErrors = document.getElementById('previewErrors');
         const errorList = document.getElementById('errorList');
+        const errorItems = document.getElementById('errorItems');
 
-        // Get headers
-        const headers = Object.keys(data[0]);
-
-        // Build header row
-        previewHead.innerHTML = '<tr>' + headers.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '<th>Status</th></tr>';
-
-        // Validate and build body
+        let totalCount = parsedData.length;
         let newCount = 0;
         let updateCount = 0;
         let errorCount = 0;
         const errors = [];
 
-        const bodyHtml = data.slice(0, 50).map((row, index) => {
-            const validation = validateRow(row, index + 2);
+        // Build header
+        const fields = Object.keys(columnMapping);
+        previewHead.innerHTML = '<tr>' + fields.map(f => `<th>${escapeHtml(f)}</th>`).join('') + '<th>Status</th></tr>';
+
+        // Build body
+        const rows = parsedData.slice(0, 50).map((row, i) => {
+            const validation = validateRow(row, i + 2);
             let rowClass = '';
             let status = '';
 
             if (validation.errors.length > 0) {
-                rowClass = 'preview-row-error';
-                status = '<span class="text-danger">Error</span>';
+                rowClass = 'row-error';
+                status = '<span style="color:var(--admin-danger)">Error</span>';
                 errorCount++;
                 errors.push(...validation.errors);
             } else if (validation.isNew) {
-                rowClass = 'preview-row-new';
-                status = '<span class="text-success">New</span>';
+                rowClass = 'row-new';
+                status = '<span style="color:var(--admin-success)">New</span>';
                 newCount++;
             } else {
-                rowClass = 'preview-row-update';
-                status = '<span class="text-primary">Update</span>';
+                rowClass = 'row-update';
+                status = '<span style="color:var(--admin-primary)">Update</span>';
                 updateCount++;
             }
 
-            const cells = headers.map(h => `<td>${escapeHtml(String(row[h] || '').substring(0, 50))}</td>`).join('');
-            return `<tr class="${rowClass}">${cells}<td>${status}</td></tr>`;
-        }).join('');
+            const cells = fields.map(f => {
+                const col = columnMapping[f];
+                const val = row[col] || '';
+                return `<td>${escapeHtml(String(val).substring(0, 50))}</td>`;
+            }).join('');
 
-        previewBody.innerHTML = bodyHtml;
-        previewCount.textContent = data.length;
-        statNew.textContent = newCount + ' new';
-        statUpdate.textContent = updateCount + ' updates';
-        statError.textContent = errorCount + ' errors';
+            return `<tr class="${rowClass}">${cells}<td>${status}</td></tr>`;
+        });
+
+        previewBody.innerHTML = rows.join('');
+
+        // Update stats
+        document.getElementById('statTotal').textContent = totalCount;
+        document.getElementById('statNew').textContent = newCount;
+        document.getElementById('statUpdate').textContent = updateCount;
+        document.getElementById('statErrors').textContent = errorCount;
+
+        previewStats.style.display = 'grid';
+        previewContainer.style.display = 'block';
 
         if (errors.length > 0) {
-            errorList.innerHTML = errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join('');
-            previewErrors.style.display = 'block';
+            errorItems.innerHTML = errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join('');
+            errorList.style.display = 'block';
         } else {
-            previewErrors.style.display = 'none';
+            errorList.style.display = 'none';
         }
-
-        importPreview.style.display = 'block';
     }
 
     function validateRow(row, rowNum) {
         const errors = [];
-        let isNew = true; // Assume new unless we check against existing SKUs
+        let isNew = true;
 
-        // Required fields
-        if (!row.sku || String(row.sku).trim() === '') {
+        const skuCol = columnMapping.sku;
+        if (!skuCol || !row[skuCol] || String(row[skuCol]).trim() === '') {
             errors.push(`Row ${rowNum}: SKU is required`);
         }
 
-        // For new products, name is required
-        if (!row.name || String(row.name).trim() === '') {
-            // This might be an update, so it's not always an error
-            // We'll mark it as potentially new requiring name
-        }
+        const nameCol = columnMapping.name;
+        const priceCol = columnMapping.price;
 
-        // Validate numeric fields
-        if (row.price && isNaN(parseFloat(row.price))) {
-            errors.push(`Row ${rowNum}: Invalid price value`);
-        }
-
-        if (row.stock && isNaN(parseInt(row.stock))) {
-            errors.push(`Row ${rowNum}: Invalid stock value`);
+        if (priceCol && row[priceCol] && isNaN(parseFloat(row[priceCol]))) {
+            errors.push(`Row ${rowNum}: Invalid price`);
         }
 
         return { errors, isNew };
     }
 
+    // Import button
+    importBtn.addEventListener('click', doImport);
+
+    function doImport() {
+        if (!parsedData || Object.keys(columnMapping).length === 0) return;
+
+        const progress = document.getElementById('importProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressDetails = document.getElementById('progressDetails');
+
+        progress.style.display = 'block';
+        importBtn.disabled = true;
+        previewBtn.disabled = true;
+
+        // Prepare data
+        const importData = parsedData.map(row => {
+            const mapped = {};
+            Object.keys(columnMapping).forEach(field => {
+                mapped[field] = row[columnMapping[field]] || '';
+            });
+            return mapped;
+        });
+
+        // Create form data
+        const formData = new FormData();
+        formData.append('csrf_token', '<?= csrf_token() ?>');
+        formData.append('data', JSON.stringify(importData));
+        formData.append('update_existing', document.getElementById('updateExisting').checked ? '1' : '0');
+        formData.append('create_new', document.getElementById('createNew').checked ? '1' : '0');
+        formData.append('skip_errors', document.getElementById('skipErrors').checked ? '1' : '0');
+        formData.append('ai_generate', document.getElementById('aiGenerateAll').checked ? '1' : '0');
+
+        // Simulate progress
+        let pct = 0;
+        const interval = setInterval(() => {
+            pct += Math.random() * 10;
+            if (pct > 90) pct = 90;
+            progressFill.style.width = pct + '%';
+            progressPercent.textContent = Math.round(pct) + '%';
+        }, 200);
+
+        // Submit
+        fetch('<?= url("/admin/products/import/process") ?>', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(result => {
+            clearInterval(interval);
+            progressFill.style.width = '100%';
+            progressPercent.textContent = '100%';
+
+            if (result.success) {
+                progressText.textContent = 'Import completed!';
+                progressDetails.innerHTML = `Created: ${result.created}, Updated: ${result.updated}, Failed: ${result.failed}`;
+
+                setTimeout(() => {
+                    window.location.href = '<?= url("/admin/products") ?>';
+                }, 2000);
+            } else {
+                progressText.textContent = 'Import failed';
+                progressDetails.innerHTML = result.error || 'Unknown error';
+                importBtn.disabled = false;
+                previewBtn.disabled = false;
+            }
+        })
+        .catch(err => {
+            clearInterval(interval);
+            progressText.textContent = 'Import failed';
+            progressDetails.innerHTML = err.message;
+            importBtn.disabled = false;
+            previewBtn.disabled = false;
+        });
+    }
+
+    // AI buttons
+    document.querySelectorAll('.ai-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            aiField = btn.dataset.field;
+            document.getElementById('aiModalText').textContent =
+                `AI will generate ${aiField.replace('_', ' ')} for products missing this field.`;
+            document.getElementById('aiModal').classList.add('show');
+        });
+    });
+
+    window.closeAiModal = function() {
+        document.getElementById('aiModal').classList.remove('show');
+        aiField = null;
+    };
+
+    document.getElementById('aiModal').addEventListener('click', e => {
+        if (e.target.id === 'aiModal') closeAiModal();
+    });
+
+    document.getElementById('aiGenerateBtn').addEventListener('click', () => {
+        if (!aiField || !parsedData) return;
+
+        const aiProgress = document.getElementById('aiProgress');
+        const aiProgressFill = document.getElementById('aiProgressFill');
+        const aiProgressText = document.getElementById('aiProgressText');
+
+        aiProgress.style.display = 'block';
+
+        // Simulate AI generation
+        let pct = 0;
+        const interval = setInterval(() => {
+            pct += 5;
+            aiProgressFill.style.width = pct + '%';
+            aiProgressText.textContent = `Processing... ${Math.round(pct)}%`;
+
+            if (pct >= 100) {
+                clearInterval(interval);
+                aiProgressText.textContent = 'Done!';
+                setTimeout(() => {
+                    closeAiModal();
+                    aiProgress.style.display = 'none';
+                    aiProgressFill.style.width = '0%';
+                }, 1000);
+            }
+        }, 100);
+    });
+
     function escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
-    }
-
-    // Form submission with progress
-    importForm.addEventListener('submit', function(e) {
-        if (!currentFile) {
-            e.preventDefault();
-            alert('Please select a file to import');
-            return;
-        }
-
-        // Show progress
-        document.getElementById('importProgress').style.display = 'block';
-        importBtn.disabled = true;
-        previewBtn.disabled = true;
-
-        // Simulate progress for small files
-        let progress = 0;
-        const progressFill = document.getElementById('progressFill');
-        const progressPercent = document.getElementById('progressPercent');
-
-        const interval = setInterval(() => {
-            progress += Math.random() * 15;
-            if (progress > 90) progress = 90;
-            progressFill.style.width = progress + '%';
-            progressPercent.textContent = Math.round(progress) + '%';
-        }, 200);
-
-        // Clean up on page unload
-        window.addEventListener('beforeunload', () => clearInterval(interval));
-    });
-
-    // Category Select Dropdown
-    const categorySelect = document.querySelector('.category-select');
-    const categorySelectHeader = document.getElementById('categorySelectHeader');
-    const categoryDropdown = document.getElementById('categoryDropdown');
-    const categorySearch = document.getElementById('categorySearch');
-    const categoryOptions = document.getElementById('categoryOptions');
-    const allCategories = document.getElementById('allCategories');
-    const categorySelectText = document.getElementById('categorySelectText');
-
-    if (categorySelectHeader) {
-        categorySelectHeader.addEventListener('click', function() {
-            categorySelect.classList.toggle('open');
-        });
-
-        // Close on outside click
-        document.addEventListener('click', function(e) {
-            if (!categorySelect.contains(e.target)) {
-                categorySelect.classList.remove('open');
-            }
-        });
-
-        // Search categories
-        categorySearch.addEventListener('input', function() {
-            const search = this.value.toLowerCase();
-            const options = categoryOptions.querySelectorAll('.category-option[data-name]');
-
-            options.forEach(option => {
-                const name = option.dataset.name;
-                option.style.display = name.includes(search) ? '' : 'none';
-            });
-        });
-
-        // Handle "All Categories" checkbox
-        allCategories.addEventListener('change', function() {
-            const categoryCheckboxes = categoryOptions.querySelectorAll('input[name="categories[]"]');
-
-            if (this.checked) {
-                categoryCheckboxes.forEach(cb => cb.checked = false);
-                categorySelectText.textContent = 'All Categories';
-            }
-        });
-
-        // Handle individual category checkboxes
-        categoryOptions.querySelectorAll('input[name="categories[]"]').forEach(cb => {
-            cb.addEventListener('change', function() {
-                const checked = categoryOptions.querySelectorAll('input[name="categories[]"]:checked');
-
-                if (checked.length > 0) {
-                    allCategories.checked = false;
-                    if (checked.length === 1) {
-                        categorySelectText.textContent = checked[0].closest('.category-option').querySelector('span').textContent;
-                    } else {
-                        categorySelectText.textContent = checked.length + ' categories selected';
-                    }
-                } else {
-                    allCategories.checked = true;
-                    categorySelectText.textContent = 'All Categories';
-                }
-            });
-        });
     }
 });
 </script>

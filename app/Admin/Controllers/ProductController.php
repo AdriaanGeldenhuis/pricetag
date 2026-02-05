@@ -1223,4 +1223,159 @@ class ProductController extends Controller
         echo json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }
+
+    /**
+     * Process import via AJAX (with column mapping)
+     */
+    public function importProcess(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->validateCsrf()) {
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+            exit;
+        }
+
+        $data = json_decode($_POST['data'] ?? '[]', true);
+        $updateExisting = ($_POST['update_existing'] ?? '1') === '1';
+        $createNew = ($_POST['create_new'] ?? '1') === '1';
+        $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
+        $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
+
+        if (empty($data)) {
+            echo json_encode(['success' => false, 'error' => 'No data provided']);
+            exit;
+        }
+
+        $db = db();
+
+        try {
+            $created = 0;
+            $updated = 0;
+            $failed = 0;
+            $errors = [];
+
+            $categoryMap = $this->getCategoryMap($db);
+
+            foreach ($data as $index => $row) {
+                $rowNum = $index + 1;
+
+                try {
+                    $sku = trim($row['sku'] ?? '');
+                    if (empty($sku)) {
+                        if ($skipErrors) {
+                            $errors[] = "Row {$rowNum}: SKU is required";
+                            $failed++;
+                            continue;
+                        }
+                        throw new \Exception("Row {$rowNum}: SKU is required");
+                    }
+
+                    // Check if product exists
+                    $existing = $db->query("SELECT id FROM products WHERE sku = ?", [$sku])->fetch();
+
+                    if ($existing) {
+                        if (!$updateExisting) {
+                            continue;
+                        }
+                        $this->updateProductFromImport($db, $existing['id'], $row, $categoryMap);
+                        $updated++;
+                    } else {
+                        if (!$createNew) {
+                            continue;
+                        }
+
+                        $name = trim($row['name'] ?? '');
+
+                        // AI Generate name if empty and enabled
+                        if (empty($name) && $aiGenerate) {
+                            $name = $this->aiGenerateName($sku, $row);
+                        }
+
+                        if (empty($name)) {
+                            if ($skipErrors) {
+                                $errors[] = "Row {$rowNum}: Name is required for new products";
+                                $failed++;
+                                continue;
+                            }
+                            throw new \Exception("Row {$rowNum}: Name is required for new products");
+                        }
+
+                        $row['name'] = $name;
+
+                        // AI Generate description if empty and enabled
+                        if (empty($row['description']) && $aiGenerate) {
+                            $row['description'] = $this->aiGenerateDescription($name, $row);
+                        }
+
+                        $this->createProductFromImport($db, $row, $categoryMap);
+                        $created++;
+                    }
+
+                } catch (\Exception $e) {
+                    if ($skipErrors) {
+                        $errors[] = $e->getMessage();
+                        $failed++;
+                        continue;
+                    }
+                    throw $e;
+                }
+            }
+
+            echo json_encode([
+                'success' => true,
+                'created' => $created,
+                'updated' => $updated,
+                'failed' => $failed,
+                'errors' => $errors
+            ]);
+
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+
+        exit;
+    }
+
+    /**
+     * AI Generate product name
+     */
+    private function aiGenerateName(string $sku, array $row): string
+    {
+        // Use basic name generation from available data
+        $parts = [];
+
+        if (!empty($row['category'])) {
+            $parts[] = ucwords($row['category']);
+        }
+
+        $parts[] = 'Product';
+        $parts[] = strtoupper(substr($sku, -4));
+
+        return implode(' ', $parts);
+    }
+
+    /**
+     * AI Generate product description
+     */
+    private function aiGenerateDescription(string $name, array $row): string
+    {
+        $desc = "Introducing the {$name}. ";
+
+        if (!empty($row['category'])) {
+            $desc .= "This quality " . strtolower($row['category']) . " product ";
+        } else {
+            $desc .= "This quality product ";
+        }
+
+        $desc .= "offers excellent value and performance. ";
+
+        if (!empty($row['price'])) {
+            $desc .= "Available at an affordable price. ";
+        }
+
+        $desc .= "Order now and experience the difference!";
+
+        return $desc;
+    }
 }

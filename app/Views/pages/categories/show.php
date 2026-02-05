@@ -1,48 +1,64 @@
-<!-- Category Detail Page -->
+<!-- Category Detail Page - Full Width with Dual Sidebars -->
 
 <!-- Breadcrumbs -->
-<nav class="breadcrumbs container">
-    <?php foreach ($breadcrumbs as $i => $crumb): ?>
-    <div class="breadcrumb-item">
-        <?php if ($i === count($breadcrumbs) - 1): ?>
-        <span class="breadcrumb-current"><?= e($crumb['name']) ?></span>
-        <?php else: ?>
-        <a href="<?= $crumb['url'] ?>" class="breadcrumb-link"><?= e($crumb['name']) ?></a>
-        <?php endif; ?>
+<nav class="breadcrumbs">
+    <div class="category-container">
+        <?php foreach ($breadcrumbs as $i => $crumb): ?>
+        <div class="breadcrumb-item">
+            <?php if ($i === count($breadcrumbs) - 1): ?>
+            <span class="breadcrumb-current"><?= e($crumb['name']) ?></span>
+            <?php else: ?>
+            <a href="<?= $crumb['url'] ?>" class="breadcrumb-link"><?= e($crumb['name']) ?></a>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
     </div>
-    <?php endforeach; ?>
 </nav>
 
-<div class="container py-8">
-    <!-- Category Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-semibold mb-2"><?= e($category->name) ?></h1>
-        <?php if ($category->description): ?>
-        <p class="text-muted"><?= e($category->description) ?></p>
-        <?php endif; ?>
-    </div>
-
-    <!-- Subcategories -->
-    <?php if (!empty($subcategories)): ?>
-    <div class="mb-8">
-        <h2 class="text-lg font-semibold mb-4">Subcategories</h2>
-        <div class="flex flex-wrap gap-3">
-            <?php foreach ($subcategories as $sub): ?>
-            <a href="<?= url('/categories/' . $sub->slug) ?>"
-               class="btn btn-outline btn-sm">
-                <?= e($sub->name) ?>
-            </a>
-            <?php endforeach; ?>
+<div class="category-page">
+    <div class="category-container">
+        <!-- Category Header -->
+        <div class="category-header">
+            <div class="category-header-content">
+                <h1 class="category-title"><?= e($category->name) ?></h1>
+                <?php if ($category->description): ?>
+                <p class="category-description"><?= e($category->description) ?></p>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
-    <?php endif; ?>
 
-    <div class="flex flex-col lg:flex-row gap-8">
-        <!-- Sidebar Filters -->
-        <aside class="lg:w-64 flex-shrink-0">
-            <div class="card">
-                <div class="card-body">
-                    <h3 class="font-semibold mb-4">Filters</h3>
+        <!-- Subcategories -->
+        <?php if (!empty($subcategories)): ?>
+        <div class="subcategories-section">
+            <h2 class="subcategories-title">Subcategories</h2>
+            <div class="subcategories-list">
+                <?php foreach ($subcategories as $sub): ?>
+                <a href="<?= url('/categories/' . $sub->slug) ?>" class="subcategory-chip">
+                    <?= e($sub->name) ?>
+                    <?php if (isset($sub->product_count)): ?>
+                    <span class="subcategory-count"><?= $sub->product_count ?></span>
+                    <?php endif; ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <div class="category-layout">
+            <!-- Left Sidebar - Filters -->
+            <aside class="category-sidebar category-sidebar-left">
+                <div class="filters-panel">
+                    <div class="filters-panel-header">
+                        <h3 class="filters-panel-title">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                            </svg>
+                            Filters
+                        </h3>
+                        <?php if (array_filter($filters, fn($v) => !empty($v) && $v !== 'newest')): ?>
+                        <a href="<?= url('/categories/' . $category->slug) ?>" class="filters-clear-btn">Clear All</a>
+                        <?php endif; ?>
+                    </div>
 
                     <form action="<?= url('/categories/' . $category->slug) ?>" method="GET" id="filter-form">
                         <!-- Price Range Slider -->
@@ -52,132 +68,1064 @@
                             $currentMin = (int)($filters['min_price'] ?? $priceMin);
                             $currentMax = (int)($filters['max_price'] ?? $priceMax);
                         ?>
-                        <div class="mb-6">
-                            <h4 class="text-sm font-medium mb-3">Price</h4>
-                            <div class="price-range-slider">
-                                <div class="price-range-track">
-                                    <div class="price-range-progress" id="priceProgress"></div>
+                        <div class="filter-section">
+                            <h4 class="filter-section-title">
+                                <span>Price</span>
+                                <svg class="filter-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </h4>
+                            <div class="filter-section-content">
+                                <div class="price-range-slider">
+                                    <div class="price-range-track">
+                                        <div class="price-range-progress" id="priceProgress"></div>
+                                    </div>
+                                    <input type="range" class="price-range-input" id="priceMin"
+                                           min="<?= $priceMin ?>" max="<?= $priceMax ?>" value="<?= $currentMin ?>">
+                                    <input type="range" class="price-range-input" id="priceMax"
+                                           min="<?= $priceMin ?>" max="<?= $priceMax ?>" value="<?= $currentMax ?>">
                                 </div>
-                                <input type="range" class="price-range-input" id="priceMin"
-                                       min="<?= $priceMin ?>" max="<?= $priceMax ?>" value="<?= $currentMin ?>">
-                                <input type="range" class="price-range-input" id="priceMax"
-                                       min="<?= $priceMin ?>" max="<?= $priceMax ?>" value="<?= $currentMax ?>">
+                                <div class="price-range-values">
+                                    <span id="priceMinDisplay"><?= formatPrice($currentMin) ?></span>
+                                    <span class="price-range-separator">-</span>
+                                    <span id="priceMaxDisplay"><?= formatPrice($currentMax) ?></span>
+                                </div>
+                                <input type="hidden" name="min_price" id="minPriceInput" value="<?= $currentMin ?>">
+                                <input type="hidden" name="max_price" id="maxPriceInput" value="<?= $currentMax ?>">
                             </div>
-                            <div class="price-range-values">
-                                <span id="priceMinDisplay"><?= formatPrice($currentMin) ?></span>
-                                <span>-</span>
-                                <span id="priceMaxDisplay"><?= formatPrice($currentMax) ?></span>
-                            </div>
-                            <input type="hidden" name="min_price" id="minPriceInput" value="<?= $currentMin ?>">
-                            <input type="hidden" name="max_price" id="maxPriceInput" value="<?= $currentMax ?>">
                         </div>
                         <?php endif; ?>
 
                         <!-- Availability -->
-                        <div class="mb-6">
-                            <h4 class="text-sm font-medium mb-3">Availability</h4>
-                            <label class="form-check">
-                                <input type="checkbox" name="in_stock" value="1"
-                                       class="form-check-input"
-                                       <?= !empty($filters['in_stock']) ? 'checked' : '' ?>
-                                       onchange="this.form.submit()">
-                                <span class="form-check-label">In Stock Only</span>
-                            </label>
-                        </div>
-
-                        <!-- On Sale -->
-                        <div class="mb-6">
-                            <label class="form-check">
-                                <input type="checkbox" name="on_sale" value="1"
-                                       class="form-check-input"
-                                       <?= !empty($filters['on_sale']) ? 'checked' : '' ?>
-                                       onchange="this.form.submit()">
-                                <span class="form-check-label">On Sale</span>
-                            </label>
+                        <div class="filter-section">
+                            <h4 class="filter-section-title">
+                                <span>Availability</span>
+                                <svg class="filter-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </h4>
+                            <div class="filter-section-content">
+                                <label class="filter-checkbox-item">
+                                    <input type="checkbox" name="in_stock" value="1"
+                                           class="filter-checkbox-input"
+                                           <?= !empty($filters['in_stock']) ? 'checked' : '' ?>>
+                                    <span class="filter-checkbox-custom"></span>
+                                    <span class="filter-checkbox-label">In Stock Only</span>
+                                </label>
+                                <label class="filter-checkbox-item">
+                                    <input type="checkbox" name="on_sale" value="1"
+                                           class="filter-checkbox-input"
+                                           <?= !empty($filters['on_sale']) ? 'checked' : '' ?>>
+                                    <span class="filter-checkbox-custom"></span>
+                                    <span class="filter-checkbox-label">On Sale</span>
+                                </label>
+                            </div>
                         </div>
 
                         <!-- Attributes -->
                         <?php foreach ($availableFilters['attributes'] ?? [] as $attr): ?>
                         <?php if (!empty($attr['values'])): ?>
-                        <div class="mb-6">
-                            <h4 class="text-sm font-medium mb-3"><?= e($attr['name']) ?></h4>
-                            <?php foreach ($attr['values'] as $val): ?>
-                            <label class="form-check">
-                                <input type="checkbox" name="attr[<?= $attr['id'] ?>][]"
-                                       value="<?= $val['id'] ?>"
-                                       class="form-check-input"
-                                       <?= in_array($val['id'], $filters['attributes'][$attr['id']] ?? []) ? 'checked' : '' ?>
-                                       onchange="this.form.submit()">
-                                <span class="form-check-label">
-                                    <?php if ($attr['type'] === 'color' && $val['color_code']): ?>
-                                    <span class="inline-block w-4 h-4 rounded-full mr-1" style="background-color: <?= e($val['color_code']) ?>"></span>
-                                    <?php endif; ?>
-                                    <?= e($val['value']) ?>
-                                </span>
-                            </label>
-                            <?php endforeach; ?>
+                        <div class="filter-section">
+                            <h4 class="filter-section-title">
+                                <span><?= e($attr['name']) ?></span>
+                                <svg class="filter-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </h4>
+                            <div class="filter-section-content">
+                                <?php foreach ($attr['values'] as $val): ?>
+                                <label class="filter-checkbox-item">
+                                    <input type="checkbox" name="attr[<?= $attr['id'] ?>][]"
+                                           value="<?= $val['id'] ?>"
+                                           class="filter-checkbox-input"
+                                           <?= in_array($val['id'], $filters['attributes'][$attr['id']] ?? []) ? 'checked' : '' ?>>
+                                    <span class="filter-checkbox-custom">
+                                        <?php if ($attr['type'] === 'color' && $val['color_code']): ?>
+                                        <span class="filter-color-swatch" style="background-color: <?= e($val['color_code']) ?>"></span>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="filter-checkbox-label"><?= e($val['value']) ?></span>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
                         <?php endif; ?>
                         <?php endforeach; ?>
 
-                        <button type="submit" class="btn btn-primary btn-block">Apply Filters</button>
-
-                        <?php if (array_filter($filters, fn($v) => !empty($v) && $v !== 'newest')): ?>
-                        <a href="<?= url('/categories/' . $category->slug) ?>" class="btn btn-outline btn-block mt-2">Clear Filters</a>
-                        <?php endif; ?>
+                        <button type="submit" class="filter-apply-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            Apply Filters
+                        </button>
                     </form>
                 </div>
-            </div>
-        </aside>
+            </aside>
 
-        <!-- Product Grid -->
-        <div class="flex-1">
-            <!-- Header -->
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <p class="text-muted text-sm"><?= $pagination['total'] ?> products found</p>
+            <!-- Main Content - Product Grid -->
+            <main class="category-main">
+                <!-- Results Header -->
+                <div class="category-results-header">
+                    <p class="category-results-count">
+                        <span class="count-number"><?= $pagination['total'] ?></span> products found
+                    </p>
 
-                <div class="flex items-center gap-3">
-                    <label class="text-sm text-muted">Sort by:</label>
-                    <select name="sort" class="form-select" style="width: auto;"
-                            onchange="window.location.href = '<?= url('/categories/' . $category->slug) ?>?sort=' + this.value">
-                        <option value="newest" <?= ($filters['sort'] ?? '') === 'newest' ? 'selected' : '' ?>>Newest</option>
-                        <option value="price_asc" <?= ($filters['sort'] ?? '') === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
-                        <option value="price_desc" <?= ($filters['sort'] ?? '') === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
-                        <option value="popular" <?= ($filters['sort'] ?? '') === 'popular' ? 'selected' : '' ?>>Most Popular</option>
-                        <option value="rating" <?= ($filters['sort'] ?? '') === 'rating' ? 'selected' : '' ?>>Top Rated</option>
-                    </select>
+                    <div class="category-results-controls">
+                        <!-- Mobile Filter Toggle -->
+                        <button type="button" class="mobile-filter-toggle" id="mobileFilterToggle">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                            </svg>
+                            Filters
+                        </button>
+
+                        <div class="category-sort">
+                            <label class="sort-label">Sort by:</label>
+                            <select name="sort" class="sort-select"
+                                    onchange="window.location.href = '<?= url('/categories/' . $category->slug) ?>?sort=' + this.value">
+                                <option value="newest" <?= ($filters['sort'] ?? '') === 'newest' ? 'selected' : '' ?>>Newest</option>
+                                <option value="price_asc" <?= ($filters['sort'] ?? '') === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
+                                <option value="price_desc" <?= ($filters['sort'] ?? '') === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
+                                <option value="popular" <?= ($filters['sort'] ?? '') === 'popular' ? 'selected' : '' ?>>Most Popular</option>
+                                <option value="rating" <?= ($filters['sort'] ?? '') === 'rating' ? 'selected' : '' ?>>Top Rated</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
-            </div>
 
-            <?php if (empty($products)): ?>
-            <!-- No Results -->
-            <div class="text-center py-16">
-                <svg class="mx-auto mb-4 text-muted" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <path d="M21 21l-4.35-4.35"></path>
-                </svg>
-                <h2 class="text-xl font-semibold mb-2">No products found</h2>
-                <p class="text-muted mb-6">Try adjusting your filters or browse other categories</p>
-                <a href="<?= url('/categories/' . $category->slug) ?>" class="btn btn-primary">Clear Filters</a>
-            </div>
-            <?php else: ?>
-            <!-- Products Grid -->
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                <?php foreach ($products as $product): ?>
-                <?php include APP_PATH . '/Views/components/product-card.php'; ?>
-                <?php endforeach; ?>
-            </div>
+                <?php if (empty($products)): ?>
+                <!-- No Results -->
+                <div class="category-no-results">
+                    <div class="no-results-icon">
+                        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="M21 21l-4.35-4.35"></path>
+                        </svg>
+                    </div>
+                    <h2 class="no-results-title">No products found</h2>
+                    <p class="no-results-text">Try adjusting your filters or browse other categories</p>
+                    <a href="<?= url('/categories/' . $category->slug) ?>" class="btn btn-primary">Clear Filters</a>
+                </div>
+                <?php else: ?>
+                <!-- Products Grid -->
+                <div class="category-products-grid">
+                    <?php foreach ($products as $product): ?>
+                    <?php include APP_PATH . '/Views/components/product-card.php'; ?>
+                    <?php endforeach; ?>
+                </div>
 
-            <!-- Pagination -->
-            <?= \App\Core\View::pagination($pagination, url('/categories/' . $category->slug)) ?>
-            <?php endif; ?>
+                <!-- Pagination -->
+                <?= \App\Core\View::pagination($pagination, url('/categories/' . $category->slug)) ?>
+                <?php endif; ?>
+            </main>
+
+            <!-- Right Sidebar - Banners & Promotions -->
+            <aside class="category-sidebar category-sidebar-right">
+                <!-- Featured Deal Banner -->
+                <div class="sidebar-banner sidebar-banner-featured">
+                    <div class="sidebar-banner-badge">Hot Deal</div>
+                    <div class="sidebar-banner-content">
+                        <h4 class="sidebar-banner-title">Flash Sale</h4>
+                        <p class="sidebar-banner-text">Up to 50% off selected items</p>
+                        <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-banner-btn">Shop Now</a>
+                    </div>
+                    <div class="sidebar-banner-glow"></div>
+                </div>
+
+                <!-- New Arrivals Banner -->
+                <div class="sidebar-banner sidebar-banner-new">
+                    <div class="sidebar-banner-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
+                    <div class="sidebar-banner-content">
+                        <h4 class="sidebar-banner-title">New Arrivals</h4>
+                        <p class="sidebar-banner-text">Check out our latest products</p>
+                        <a href="<?= url('/products?sort=newest') ?>" class="sidebar-banner-link">
+                            Browse New
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Best Sellers Banner -->
+                <div class="sidebar-banner sidebar-banner-popular">
+                    <div class="sidebar-banner-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20V10"></path>
+                            <path d="M18 20V4"></path>
+                            <path d="M6 20v-4"></path>
+                        </svg>
+                    </div>
+                    <div class="sidebar-banner-content">
+                        <h4 class="sidebar-banner-title">Best Sellers</h4>
+                        <p class="sidebar-banner-text">Most popular products this week</p>
+                        <a href="<?= url('/products?sort=popular') ?>" class="sidebar-banner-link">
+                            View Top Products
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Newsletter Banner -->
+                <div class="sidebar-banner sidebar-banner-newsletter">
+                    <div class="sidebar-banner-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                    </div>
+                    <div class="sidebar-banner-content">
+                        <h4 class="sidebar-banner-title">Stay Updated</h4>
+                        <p class="sidebar-banner-text">Get exclusive deals & updates</p>
+                        <form class="sidebar-newsletter-form">
+                            <input type="email" placeholder="Your email" class="sidebar-newsletter-input">
+                            <button type="submit" class="sidebar-newsletter-btn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Help Banner -->
+                <div class="sidebar-banner sidebar-banner-help">
+                    <div class="sidebar-banner-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="sidebar-banner-content">
+                        <h4 class="sidebar-banner-title">Need Help?</h4>
+                        <p class="sidebar-banner-text">Our support team is here for you</p>
+                        <a href="<?= url('/contact') ?>" class="sidebar-banner-link">
+                            Contact Us
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </aside>
         </div>
     </div>
 </div>
 
-<?php if ($availableFilters['price_range']['min_price'] !== null): ?>
+<!-- Mobile Filter Sidebar Overlay -->
+<div class="mobile-filter-overlay" id="mobileFilterOverlay"></div>
+
+<style>
+/* =========================================================================
+   CATEGORY PAGE - Full Width with Dual Sidebars
+   ========================================================================= */
+
+.category-page {
+    min-height: 100vh;
+    padding-bottom: var(--space-16);
+}
+
+.category-container {
+    width: 100%;
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 0 var(--space-4);
+}
+
+@media (min-width: 1024px) {
+    .category-container {
+        padding: 0 var(--space-6);
+    }
+}
+
+@media (min-width: 1440px) {
+    .category-container {
+        padding: 0 var(--space-8);
+    }
+}
+
+/* Breadcrumbs */
+.breadcrumbs .category-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Category Header */
+.category-header {
+    padding: var(--space-8) 0;
+    margin-bottom: var(--space-4);
+    border-bottom: var(--border-1) solid var(--color-border);
+}
+
+.category-title {
+    font-size: var(--text-3xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text);
+    margin: 0 0 var(--space-2) 0;
+    background: linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.category-description {
+    font-size: var(--text-base);
+    color: var(--color-text-secondary);
+    margin: 0;
+    max-width: 800px;
+}
+
+/* Subcategories */
+.subcategories-section {
+    margin-bottom: var(--space-6);
+}
+
+.subcategories-title {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    margin: 0 0 var(--space-4) 0;
+}
+
+.subcategories-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.subcategory-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background-color: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+    transition: var(--transition-all);
+}
+
+.subcategory-chip:hover {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+}
+
+.subcategory-count {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    background-color: var(--color-background);
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-full);
+}
+
+.subcategory-chip:hover .subcategory-count {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: var(--color-text);
+}
+
+/* Category Layout - 3 Columns */
+.category-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+}
+
+@media (min-width: 1024px) {
+    .category-layout {
+        grid-template-columns: 260px 1fr;
+    }
+}
+
+@media (min-width: 1440px) {
+    .category-layout {
+        grid-template-columns: 280px 1fr 280px;
+    }
+}
+
+/* =========================================================================
+   SIDEBAR STYLES (Shared)
+   ========================================================================= */
+
+.category-sidebar {
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    .category-sidebar-left {
+        display: block;
+    }
+}
+
+@media (min-width: 1440px) {
+    .category-sidebar-right {
+        display: block;
+    }
+}
+
+/* Filters Panel */
+.filters-panel {
+    position: sticky;
+    top: calc(var(--header-height) + var(--space-4) + 48px);
+    background: linear-gradient(145deg, var(--color-background-elevated) 0%, var(--color-background-alt) 100%);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-2xl);
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.filters-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-5);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
+    border-bottom: var(--border-1) solid var(--color-border);
+}
+
+.filters-panel-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-lg);
+    font-weight: var(--font-bold);
+    color: var(--color-text);
+    margin: 0;
+}
+
+.filters-clear-btn {
+    font-size: var(--text-xs);
+    font-weight: var(--font-medium);
+    color: rgba(255, 255, 255, 0.8);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    transition: var(--transition-colors);
+}
+
+.filters-clear-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--color-text);
+}
+
+/* Filter Sections */
+.filter-section {
+    border-bottom: var(--border-1) solid var(--color-border);
+}
+
+.filter-section:last-of-type {
+    border-bottom: none;
+}
+
+.filter-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: var(--transition-colors);
+    margin: 0;
+}
+
+.filter-section-title:hover {
+    background-color: var(--color-background-hover);
+}
+
+.filter-toggle-icon {
+    color: var(--color-text-muted);
+    transition: transform var(--duration-200);
+}
+
+.filter-section.collapsed .filter-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.filter-section.collapsed .filter-section-content {
+    display: none;
+}
+
+.filter-section-content {
+    padding: 0 var(--space-5) var(--space-5);
+}
+
+/* Price Range Slider */
+.price-range-slider {
+    position: relative;
+    height: 8px;
+    margin: var(--space-4) 0;
+}
+
+.price-range-track {
+    position: absolute;
+    width: 100%;
+    height: 8px;
+    background-color: var(--color-background);
+    border-radius: var(--radius-full);
+}
+
+.price-range-progress {
+    position: absolute;
+    height: 100%;
+    background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-accent) 100%);
+    border-radius: var(--radius-full);
+}
+
+.price-range-input {
+    position: absolute;
+    width: 100%;
+    height: 8px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+    top: 0;
+}
+
+.price-range-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--color-primary);
+    border: 3px solid var(--color-background);
+    border-radius: 50%;
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: transform var(--duration-200);
+}
+
+.price-range-input::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.price-range-input::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--color-primary);
+    border: 3px solid var(--color-background);
+    border-radius: 50%;
+    cursor: pointer;
+    pointer-events: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.price-range-values {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-primary);
+    margin-top: var(--space-2);
+}
+
+.price-range-separator {
+    color: var(--color-text-muted);
+}
+
+/* Filter Checkboxes */
+.filter-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+
+.filter-checkbox-item:hover {
+    color: var(--color-primary);
+}
+
+.filter-checkbox-input {
+    display: none;
+}
+
+.filter-checkbox-custom {
+    width: 20px;
+    height: 20px;
+    border: var(--border-2) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-background);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-all);
+    flex-shrink: 0;
+}
+
+.filter-checkbox-input:checked + .filter-checkbox-custom {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
+.filter-checkbox-input:checked + .filter-checkbox-custom::after {
+    content: '';
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin-bottom: 2px;
+}
+
+.filter-color-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.filter-checkbox-label {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.filter-checkbox-item:hover .filter-checkbox-label {
+    color: var(--color-text);
+}
+
+/* Apply Button */
+.filter-apply-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    width: calc(100% - var(--space-10));
+    margin: var(--space-5);
+    padding: var(--space-4);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: var(--font-bold);
+    border: none;
+    border-radius: var(--radius-xl);
+    cursor: pointer;
+    transition: var(--transition-all);
+    box-shadow: 0 4px 15px rgba(139, 43, 43, 0.3);
+}
+
+.filter-apply-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(139, 43, 43, 0.4);
+}
+
+/* =========================================================================
+   RIGHT SIDEBAR - BANNERS
+   ========================================================================= */
+
+.category-sidebar-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.sidebar-banner {
+    position: relative;
+    padding: var(--space-5);
+    background: linear-gradient(145deg, var(--color-background-elevated) 0%, var(--color-background-alt) 100%);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-2xl);
+    overflow: hidden;
+    transition: var(--transition-all);
+}
+
+.sidebar-banner:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* Featured Deal Banner */
+.sidebar-banner-featured {
+    background: linear-gradient(135deg, var(--color-primary) 0%, #991b1b 50%, #7f1d1d 100%);
+    border-color: var(--color-primary);
+}
+
+.sidebar-banner-featured .sidebar-banner-glow {
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.sidebar-banner-badge {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    font-size: 10px;
+    font-weight: var(--font-bold);
+    text-transform: uppercase;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: var(--color-text);
+    border-radius: var(--radius-full);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.sidebar-banner-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-background);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-3);
+    color: var(--color-primary);
+}
+
+.sidebar-banner-content {
+    position: relative;
+    z-index: 1;
+}
+
+.sidebar-banner-title {
+    font-size: var(--text-lg);
+    font-weight: var(--font-bold);
+    color: var(--color-text);
+    margin: 0 0 var(--space-2) 0;
+}
+
+.sidebar-banner-text {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin: 0 0 var(--space-4) 0;
+    line-height: var(--leading-relaxed);
+}
+
+.sidebar-banner-featured .sidebar-banner-text {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.sidebar-banner-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-3) var(--space-5);
+    background-color: rgba(255, 255, 255, 0.2);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    border-radius: var(--radius-lg);
+    transition: var(--transition-all);
+}
+
+.sidebar-banner-btn:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+    transform: translateX(4px);
+}
+
+.sidebar-banner-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-primary);
+    transition: var(--transition-all);
+}
+
+.sidebar-banner-link:hover {
+    color: var(--color-accent);
+}
+
+.sidebar-banner-link:hover svg {
+    transform: translateX(4px);
+}
+
+.sidebar-banner-link svg {
+    transition: transform var(--duration-200);
+}
+
+/* Newsletter Banner */
+.sidebar-newsletter-form {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.sidebar-newsletter-input {
+    flex: 1;
+    padding: var(--space-3);
+    background-color: var(--color-background);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+}
+
+.sidebar-newsletter-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+.sidebar-newsletter-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.sidebar-newsletter-btn {
+    padding: var(--space-3);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
+    border: none;
+    border-radius: var(--radius-lg);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: var(--transition-all);
+}
+
+.sidebar-newsletter-btn:hover {
+    transform: scale(1.05);
+}
+
+/* =========================================================================
+   MAIN CONTENT AREA
+   ========================================================================= */
+
+.category-main {
+    min-width: 0;
+}
+
+/* Results Header */
+.category-results-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background-color: var(--color-background-elevated);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-6);
+}
+
+@media (min-width: 640px) {
+    .category-results-header {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+}
+
+.category-results-count {
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    margin: 0;
+}
+
+.count-number {
+    font-weight: var(--font-bold);
+    color: var(--color-primary);
+    font-size: var(--text-lg);
+}
+
+.category-results-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+/* Mobile Filter Toggle */
+.mobile-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    background-color: var(--color-background);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text);
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+
+.mobile-filter-toggle:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+@media (min-width: 1024px) {
+    .mobile-filter-toggle {
+        display: none;
+    }
+}
+
+/* Sort Dropdown */
+.category-sort {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.sort-label {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    display: none;
+}
+
+@media (min-width: 640px) {
+    .sort-label {
+        display: block;
+    }
+}
+
+.sort-select {
+    padding: var(--space-2) var(--space-10) var(--space-2) var(--space-4);
+    background-color: var(--color-background);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-lg);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23a1a1aa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right var(--space-3) center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+
+.sort-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+/* Products Grid */
+.category-products-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-4);
+}
+
+@media (min-width: 640px) {
+    .category-products-grid {
+        gap: var(--space-6);
+    }
+}
+
+@media (min-width: 768px) {
+    .category-products-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1280px) {
+    .category-products-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1536px) {
+    .category-products-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* No Results */
+.category-no-results {
+    text-align: center;
+    padding: var(--space-16) var(--space-4);
+    background: linear-gradient(145deg, var(--color-background-elevated) 0%, var(--color-background-alt) 100%);
+    border: var(--border-1) solid var(--color-border);
+    border-radius: var(--radius-2xl);
+}
+
+.no-results-icon {
+    margin: 0 auto var(--space-6);
+    color: var(--color-text-muted);
+    opacity: 0.3;
+}
+
+.no-results-title {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text);
+    margin: 0 0 var(--space-2) 0;
+}
+
+.no-results-text {
+    font-size: var(--text-base);
+    color: var(--color-text-muted);
+    margin: 0 0 var(--space-6) 0;
+}
+
+/* =========================================================================
+   MOBILE FILTER SIDEBAR
+   ========================================================================= */
+
+.mobile-filter-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: var(--z-modal);
+    opacity: 0;
+    visibility: hidden;
+    transition: all var(--duration-300);
+}
+
+.mobile-filter-overlay.is-active {
+    opacity: 1;
+    visibility: visible;
+}
+
+@media (min-width: 1024px) {
+    .mobile-filter-overlay {
+        display: none;
+    }
+}
+
+/* Mobile Sidebar Panel */
+.category-sidebar.mobile-active {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: min(320px, 85vw);
+    height: 100%;
+    z-index: calc(var(--z-modal) + 1);
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform var(--duration-300) var(--ease-out);
+    background-color: var(--color-background);
+}
+
+.category-sidebar.mobile-active.is-open {
+    transform: translateX(0);
+}
+
+.category-sidebar.mobile-active .filters-panel {
+    position: static;
+    border-radius: 0;
+    border: none;
+    height: 100%;
+}
+</style>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Price Range Slider
     const priceMin = document.getElementById('priceMin');
     const priceMax = document.getElementById('priceMax');
     const progress = document.getElementById('priceProgress');
@@ -186,51 +1134,74 @@ document.addEventListener('DOMContentLoaded', function() {
     const minInput = document.getElementById('minPriceInput');
     const maxInput = document.getElementById('maxPriceInput');
 
-    if (!priceMin || !priceMax) return;
+    if (priceMin && priceMax) {
+        const min = parseInt(priceMin.min);
+        const max = parseInt(priceMin.max);
+        const gap = Math.max(1, Math.floor((max - min) * 0.01));
 
-    const min = parseInt(priceMin.min);
-    const max = parseInt(priceMin.max);
-    const gap = Math.max(1, Math.floor((max - min) * 0.01)); // 1% minimum gap
-
-    function formatPrice(value) {
-        return 'R' + parseInt(value).toLocaleString('en-ZA');
-    }
-
-    function updateSlider() {
-        let minVal = parseInt(priceMin.value);
-        let maxVal = parseInt(priceMax.value);
-
-        // Prevent overlap
-        if (maxVal - minVal < gap) {
-            if (this === priceMin) {
-                priceMin.value = maxVal - gap;
-                minVal = maxVal - gap;
-            } else {
-                priceMax.value = minVal + gap;
-                maxVal = minVal + gap;
-            }
+        function formatPrice(value) {
+            return 'R' + parseInt(value).toLocaleString('en-ZA');
         }
 
-        // Update progress bar
-        const leftPercent = ((minVal - min) / (max - min)) * 100;
-        const rightPercent = ((maxVal - min) / (max - min)) * 100;
-        progress.style.left = leftPercent + '%';
-        progress.style.width = (rightPercent - leftPercent) + '%';
+        function updateSlider() {
+            let minVal = parseInt(priceMin.value);
+            let maxVal = parseInt(priceMax.value);
 
-        // Update display
-        minDisplay.textContent = formatPrice(minVal);
-        maxDisplay.textContent = formatPrice(maxVal);
+            if (maxVal - minVal < gap) {
+                if (this === priceMin) {
+                    priceMin.value = maxVal - gap;
+                    minVal = maxVal - gap;
+                } else {
+                    priceMax.value = minVal + gap;
+                    maxVal = minVal + gap;
+                }
+            }
 
-        // Update hidden inputs
-        minInput.value = minVal;
-        maxInput.value = maxVal;
+            const leftPercent = ((minVal - min) / (max - min)) * 100;
+            const rightPercent = ((maxVal - min) / (max - min)) * 100;
+            progress.style.left = leftPercent + '%';
+            progress.style.width = (rightPercent - leftPercent) + '%';
+
+            minDisplay.textContent = formatPrice(minVal);
+            maxDisplay.textContent = formatPrice(maxVal);
+
+            minInput.value = minVal;
+            maxInput.value = maxVal;
+        }
+
+        priceMin.addEventListener('input', updateSlider);
+        priceMax.addEventListener('input', updateSlider);
+        updateSlider.call(priceMin);
     }
 
-    priceMin.addEventListener('input', updateSlider);
-    priceMax.addEventListener('input', updateSlider);
+    // Mobile Filter Toggle
+    const mobileFilterToggle = document.getElementById('mobileFilterToggle');
+    const mobileFilterOverlay = document.getElementById('mobileFilterOverlay');
+    const sidebar = document.querySelector('.category-sidebar-left');
 
-    // Initialize
-    updateSlider.call(priceMin);
+    if (mobileFilterToggle && sidebar) {
+        const mobileSidebar = sidebar.cloneNode(true);
+        mobileSidebar.classList.add('mobile-active');
+        document.body.appendChild(mobileSidebar);
+
+        mobileFilterToggle.addEventListener('click', function() {
+            mobileSidebar.classList.add('is-open');
+            mobileFilterOverlay.classList.add('is-active');
+            document.body.style.overflow = 'hidden';
+        });
+
+        mobileFilterOverlay.addEventListener('click', function() {
+            mobileSidebar.classList.remove('is-open');
+            mobileFilterOverlay.classList.remove('is-active');
+            document.body.style.overflow = '';
+        });
+    }
+
+    // Collapsible filter sections
+    document.querySelectorAll('.filter-section-title').forEach(title => {
+        title.addEventListener('click', function() {
+            this.closest('.filter-section').classList.toggle('collapsed');
+        });
+    });
 });
 </script>
-<?php endif; ?>

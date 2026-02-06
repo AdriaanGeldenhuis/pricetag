@@ -696,7 +696,7 @@ function ptShowToast(message, type = 'success') {
         document.body.appendChild(container);
     }
     const toast = document.createElement('div');
-    toast.style.cssText = 'background:' + (type === 'error' ? '#f87171' : '#34d399') + ';color:#0b0b10;padding:12px 20px;border-radius:12px;margin-top:8px;box-shadow:0 8px 32px rgba(0,0,0,0.4);font-weight:600;font-size:0.875rem;';
+    toast.style.cssText = 'background:' + (type === 'error' ? '#ef4444' : '#22c55e') + ';color:#fff;padding:12px 20px;border-radius:8px;margin-top:8px;box-shadow:0 8px 32px rgba(0,0,0,0.4);font-weight:600;font-size:0.875rem;';
     toast.textContent = message;
     container.appendChild(toast);
     setTimeout(() => {

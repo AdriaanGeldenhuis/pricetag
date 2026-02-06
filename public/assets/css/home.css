@@ -687,7 +687,7 @@
 
 @media (min-width: 1024px) {
     .product-carousel-slide {
-        flex: 0 0 calc(25% - var(--space-3));
+        flex: 0 0 calc(20% - var(--space-3));
     }
 }
 

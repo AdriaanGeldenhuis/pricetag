@@ -473,8 +473,23 @@ class OpenAIService
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
         $prompt .= "{\n";
         $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
-        $prompt .= "  \"short_description\": \"...\",  // Max 160 chars, compelling selling point\n";
-        $prompt .= "  \"description\": \"...\",         // Detailed HTML (use <p>, <ul>, <li>, <strong>), 3-4 paragraphs\n";
+        $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4-5 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four\\n• Point five. Each point is a key selling feature (max 30 words each). No intro text before bullets.\n";
+        $prompt .= "  \"description\": \"...\",         // RICH product description. NO HTML TAGS (no <p>, <ul>, <li>, <strong>). Use PLAIN TEXT with newlines (\\n). Structure it as follows:\\n\\n";
+        $prompt .= "    Line 1: Product headline - one powerful sentence about the product\\n";
+        $prompt .= "    Line 2: Empty line\\n";
+        $prompt .= "    Line 3-5: What makes this product special (2-3 sentences)\\n";
+        $prompt .= "    Line 6: Empty line\\n";
+        $prompt .= "    Line 7: ★ KEY FEATURES heading\\n";
+        $prompt .= "    Lines 8-14: Feature list using ✓ prefix, one per line (at least 6 features)\\n";
+        $prompt .= "    Line 15: Empty line\\n";
+        $prompt .= "    Line 16: ⚡ PERFORMANCE heading\\n";
+        $prompt .= "    Lines 17-19: Performance details (2-3 sentences)\\n";
+        $prompt .= "    Line 20: Empty line\\n";
+        $prompt .= "    Line 21: 📦 WHAT'S IN THE BOX heading\\n";
+        $prompt .= "    Lines 22-24: Box contents list using • prefix\\n";
+        $prompt .= "    Line 25: Empty line\\n";
+        $prompt .= "    Line 26: Final call-to-action sentence for Pricetag.co.za\\n\\n";
+        $prompt .= "    IMPORTANT: Use Unicode symbols (★ ✓ ⚡ 📦 •) for visual appeal. No HTML whatsoever.\\n\n";
         $prompt .= "  \"meta_title\": \"...\",          // Max 70 chars, SEO optimized\n";
         $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
         $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
@@ -484,6 +499,9 @@ class OpenAIService
         $prompt .= "  \"weight\": 0.5                  // Estimated weight in kg\n";
         $prompt .= "}\n";
         $prompt .= "\nRules: All prices in ZAR (R). Write for a premium store. Include REAL specs.\n";
+        $prompt .= "CRITICAL FORMAT RULES:\n";
+        $prompt .= "- short_description: MUST be 4-5 bullet points using • character, separated by \\n. NO prose.\n";
+        $prompt .= "- description: MUST be plain text with \\n for newlines. NO HTML tags whatsoever. Use Unicode symbols for visual structure.\n";
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {

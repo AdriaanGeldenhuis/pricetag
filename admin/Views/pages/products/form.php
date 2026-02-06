@@ -192,13 +192,13 @@ $productAttributes = $productAttributes ?? [];
 
                                 <div class="form-group">
                                     <label for="short_description" class="form-label">Short Description</label>
-                                    <textarea id="short_description" name="short_description" rows="2" maxlength="160"
-                                              class="form-input seo-field" data-max-length="160" data-quality="15"
+                                    <textarea id="short_description" name="short_description" rows="5" maxlength="500"
+                                              class="form-input seo-field" data-max-length="500" data-quality="15"
                                               oninput="updateCharCount(this)"><?= e($product->short_description ?? '') ?></textarea>
                                     <div class="flex justify-between text-sm mt-1">
-                                        <span class="text-muted">Brief description for product cards</span>
+                                        <span class="text-muted">4-5 bullet points highlighting key features</span>
                                         <span class="char-counter" data-for="short_description">
-                                            <span class="char-count"><?= strlen($product->short_description ?? '') ?></span>/160
+                                            <span class="char-count"><?= strlen($product->short_description ?? '') ?></span>/500
                                         </span>
                                     </div>
                                 </div>

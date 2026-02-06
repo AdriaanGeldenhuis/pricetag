@@ -601,8 +601,8 @@
    ========================================================================= */
 
 .pt-description {
-    font-size: 1rem;
-    line-height: 1.7;
+    font-size: 0.95rem;
+    line-height: 1.9;
     color: var(--pt-text-secondary);
 }
 
@@ -1062,6 +1062,15 @@
 
 .pt-description-content p {
     margin-bottom: 1.25rem;
+}
+
+/* Rich Description Styling - for AI-generated structured descriptions */
+.pt-rich-description {
+    font-size: 1.05rem;
+    line-height: 2;
+    color: var(--pt-text);
+    max-width: 860px;
+    padding: 1.5rem 0;
 }
 
 /* Specifications Table */

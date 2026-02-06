@@ -481,7 +481,17 @@ $productAttributes = $productAttributes ?? [];
                 <div class="card">
                     <div class="card-header flex justify-between items-center">
                         <h2 class="font-semibold">Product Images</h2>
-                        <span class="text-sm text-muted">Drag to reorder</span>
+                        <div class="flex items-center gap-3">
+                            <?php if (!empty($product->id)): ?>
+                            <button type="button" onclick="generateAiImages()" class="btn btn-outline btn-sm" id="btn-ai-images" title="Generate 4 AI product info cards">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                                AI Generate Images
+                            </button>
+                            <?php endif; ?>
+                            <span class="text-sm text-muted">Drag to reorder</span>
+                        </div>
                     </div>
                     <div class="card-body">
                         <?php if (!empty($images)): ?>
@@ -1181,6 +1191,42 @@ function makeProductionReady() {
                   '\n\nReview the changes and click Save to keep them.');
         } else {
             alert('Error: ' + (data.message || 'AI generation failed'));
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        alert('Error: ' + err.message);
+    });
+}
+
+// AI: Generate Product Images
+function generateAiImages() {
+    const btn = document.getElementById('btn-ai-images');
+    if (!btn || !productId) return;
+
+    if (!confirm('Generate AI product info-card images? This will create up to 4 branded images for this product.')) return;
+
+    btn.disabled = true;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<svg class="animate-spin" width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 70"/></svg> Generating...';
+
+    fetch(baseUrl + '/' + productId + '/ai-images', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken }
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+
+        if (data.success) {
+            alert(data.message + '\n\nRefresh the page to see the new images.');
+            if (data.generated > 0) {
+                window.location.reload();
+            }
+        } else {
+            alert('Error: ' + (data.message || 'Image generation failed'));
         }
     })
     .catch(err => {

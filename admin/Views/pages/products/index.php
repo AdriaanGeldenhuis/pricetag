@@ -68,6 +68,7 @@
                     <option value="active">Set Active</option>
                     <option value="draft">Set Draft</option>
                     <option value="inactive">Set Inactive</option>
+                    <option value="ai-images">Generate AI Images</option>
                     <option value="delete">Delete</option>
                 </select>
                 <button type="button" id="apply-bulk-action" class="btn btn-primary btn-sm">Apply</button>
@@ -403,6 +404,8 @@ document.addEventListener('DOMContentLoaded', function() {
         let confirmMsg = 'Are you sure you want to ';
         if (action === 'delete') {
             confirmMsg += 'delete ' + selected.length + ' product(s)? This cannot be undone.';
+        } else if (action === 'ai-images') {
+            confirmMsg += 'generate AI images for ' + selected.length + ' product(s)? This may take a moment.';
         } else {
             confirmMsg += 'change the status of ' + selected.length + ' product(s) to "' + action + '"?';
         }

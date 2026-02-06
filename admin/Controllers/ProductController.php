@@ -13,6 +13,7 @@ use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
 use App\Services\OpenAIService;
+use App\Services\ProductImageService;
 use App\Services\ProductService;
 
 class ProductController extends Controller
@@ -494,7 +495,7 @@ class ProductController extends Controller
         }
 
         // Validate action
-        $validActions = ['active', 'draft', 'inactive', 'delete'];
+        $validActions = ['active', 'draft', 'inactive', 'delete', 'ai-images'];
         if (!in_array($action, $validActions)) {
             $this->json(['success' => false, 'message' => 'Invalid action'], 400);
             return;
@@ -512,7 +513,61 @@ class ProductController extends Controller
         $db = Database::getInstance();
 
         try {
-            if ($action === 'delete') {
+            if ($action === 'ai-images') {
+                // Generate AI images for selected products
+                $imageService = new ProductImageService();
+                $totalGenerated = 0;
+                $processed = 0;
+
+                foreach ($ids as $pid) {
+                    $product = Product::find($pid);
+                    if (!$product) continue;
+
+                    // Get brand
+                    $stmt = $db->prepare("
+                        SELECT av.value as brand
+                        FROM product_attributes pa
+                        JOIN attribute_values av ON pa.attribute_value_id = av.id
+                        JOIN attributes a ON av.attribute_id = a.id
+                        WHERE pa.product_id = ? AND LOWER(a.name) = 'brand'
+                        LIMIT 1
+                    ");
+                    $stmt->execute([$pid]);
+                    $brandRow = $stmt->fetch();
+                    $brand = $brandRow ? $brandRow['brand'] : '';
+
+                    // Get category
+                    $cats = $product->getCategories();
+                    $catName = !empty($cats) ? $cats[0]['name'] : '';
+
+                    // Get specs
+                    $stmt = $db->prepare("SELECT spec_name, spec_value FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC LIMIT 10");
+                    $stmt->execute([$pid]);
+                    $specs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $specArr = [];
+                    foreach ($specs as $s) {
+                        $specArr[] = ['name' => $s['spec_name'], 'value' => $s['spec_value']];
+                    }
+
+                    $result = $imageService->generateProductImages($pid, [
+                        'name' => $product->name,
+                        'brand' => $brand,
+                        'sku' => $product->sku,
+                        'category' => $catName,
+                        'short_description' => $product->short_description ?? '',
+                        'specifications' => $specArr,
+                    ]);
+
+                    $totalGenerated += $result['generated'];
+                    $processed++;
+                }
+
+                $this->json([
+                    'success' => true,
+                    'message' => "Generated {$totalGenerated} images for {$processed} product(s)",
+                ]);
+                return;
+            } elseif ($action === 'delete') {
                 // Delete products and their related data
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
@@ -1213,12 +1268,91 @@ class ProductController extends Controller
             $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
         }
 
+        // Generate AI product images (if fewer than 4 exist)
+        $imageResult = ['generated' => 0];
+        try {
+            $imageService = new ProductImageService();
+            $imageResult = $imageService->generateProductImages($product->id, [
+                'name' => $updates['name'] ?? $product->name,
+                'brand' => $aiData['brand'] ?? $brand,
+                'sku' => $product->sku,
+                'category' => $categoryName ?: ($aiData['suggested_category'] ?? ''),
+                'short_description' => $aiData['short_description'] ?? $product->short_description ?? '',
+                'specifications' => $aiData['specifications'] ?? [],
+            ]);
+        } catch (\Throwable $e) {
+            error_log("AI image generation failed: " . $e->getMessage());
+        }
+
         // Return all AI data for client-side preview
         $this->json([
             'success' => true,
             'data' => $aiData,
             'updates_applied' => array_keys($updates),
-            'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.',
+            'images_generated' => $imageResult['generated'] ?? 0,
+            'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.'
+                . ($imageResult['generated'] > 0 ? ' ' . $imageResult['generated'] . ' images generated.' : ''),
+        ]);
+    }
+
+    /**
+     * Generate AI product images for a single product (AJAX)
+     */
+    public function generateAiImages(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        // Get brand
+        $stmt = $db->prepare("
+            SELECT av.value as brand
+            FROM product_attributes pa
+            JOIN attribute_values av ON pa.attribute_value_id = av.id
+            JOIN attributes a ON av.attribute_id = a.id
+            WHERE pa.product_id = ? AND LOWER(a.name) = 'brand'
+            LIMIT 1
+        ");
+        $stmt->execute([$product->id]);
+        $brandRow = $stmt->fetch();
+        $brand = $brandRow ? $brandRow['brand'] : '';
+
+        // Get category
+        $categories = $product->getCategories();
+        $categoryName = !empty($categories) ? $categories[0]['name'] : '';
+
+        // Get specifications
+        $stmt = $db->prepare("SELECT spec_name, spec_value FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC LIMIT 10");
+        $stmt->execute([$product->id]);
+        $specs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $specArray = [];
+        foreach ($specs as $spec) {
+            $specArray[] = ['name' => $spec['spec_name'], 'value' => $spec['spec_value']];
+        }
+
+        $imageService = new ProductImageService();
+        $result = $imageService->generateProductImages($product->id, [
+            'name' => $product->name,
+            'brand' => $brand,
+            'sku' => $product->sku,
+            'category' => $categoryName,
+            'short_description' => $product->short_description ?? '',
+            'specifications' => $specArray,
+        ]);
+
+        $this->json([
+            'success' => $result['success'],
+            'generated' => $result['generated'],
+            'message' => $result['message'],
         ]);
     }
 

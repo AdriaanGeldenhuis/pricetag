@@ -159,6 +159,7 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->post('/products/{id}/ai-regenerate-sku', 'Admin\Controllers\ProductController@regenerateFromSku', 'admin.products.ai.regenerate');
     $router->post('/products/ai-search', 'Admin\Controllers\ProductController@searchAiInfo', 'admin.products.ai.search');
     $router->post('/products/{id}/ai-complete', 'Admin\Controllers\ProductController@makeProductionReady', 'admin.products.ai.complete');
+    $router->post('/products/{id}/ai-images', 'Admin\Controllers\ProductController@generateAiImages', 'admin.products.ai.images');
     $router->post('/products/bulk-action', 'Admin\Controllers\ProductController@bulkAction', 'admin.products.bulk');
     $router->post('/products/bulk-edit', 'Admin\Controllers\ProductController@bulkEdit', 'admin.products.bulk.edit');
     $router->post('/products/{id}/duplicate', 'Admin\Controllers\ProductController@duplicate', 'admin.products.duplicate');

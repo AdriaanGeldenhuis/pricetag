@@ -968,6 +968,7 @@ class ProductController extends Controller
 
         $result = $openai->generateProductContent([
             'name' => $product->name,
+            'sku' => $product->sku,
             'description' => $product->description,
             'short_description' => $product->short_description,
             'price' => $product->price,
@@ -1026,7 +1027,8 @@ class ProductController extends Controller
 
     /**
      * Regenerate product info from SKU using AI (AJAX)
-     * This is useful for fixing products that were imported with generic names
+     * Now uses the same generateCompleteProduct() pipeline as everything else.
+     * Pattern matching identifies the product, AI writes the content.
      */
     public function regenerateFromSku(string $id): void
     {
@@ -1067,27 +1069,23 @@ class ProductController extends Controller
         $categories = $product->getCategories();
         $categoryName = !empty($categories) ? $categories[0]['name'] : '';
 
-        $result = $openai->generateFromSku($product->sku, [
+        // Use the SAME pipeline as everything else - pattern match first, then AI
+        $result = $openai->generateCompleteProduct($product->sku, $product->short_description ?? '', [
             'brand' => $brand,
             'category' => $categoryName,
             'price' => $product->price,
+            'existingName' => $product->name,
+            'existingDescription' => $product->description,
         ]);
 
-        if (empty($result['name']) || $result['name'] === $product->sku) {
+        if (empty($result['success']) || empty($result['data']['name']) || $result['data']['name'] === $product->sku) {
             $this->json(['success' => false, 'message' => 'Could not identify product from SKU. Try the web search option instead.']);
             return;
         }
 
-        // Return the generated data for preview
         $this->json([
             'success' => true,
-            'data' => [
-                'name' => $result['name'],
-                'short_description' => $result['short_description'] ?? '',
-                'description' => $result['description'] ?? '',
-                'brand' => $result['brand'] ?? $brand,
-                'suggested_category' => $result['suggested_category'] ?? $categoryName,
-            ],
+            'data' => $result['data'],
         ]);
     }
 

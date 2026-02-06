@@ -1093,15 +1093,28 @@ function regenerateFromSku() {
     .then(data => {
         btn.disabled = false;
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> AI from SKU';
-        if (data.success) {
-            if (data.data.name) document.getElementById('name').value = data.data.name;
-            if (data.data.short_description) document.getElementById('short_description').value = data.data.short_description;
-            if (data.data.description) document.getElementById('description').value = data.data.description;
+        if (data.success && data.data) {
+            const d = data.data;
+            // Apply all AI-generated fields
+            if (d.name) document.getElementById('name').value = d.name;
+            if (d.short_description) document.getElementById('short_description').value = d.short_description;
+            if (d.description) document.getElementById('description').value = d.description;
+            if (d.meta_title && document.getElementById('meta_title')) document.getElementById('meta_title').value = d.meta_title;
+            if (d.meta_description && document.getElementById('meta_description')) document.getElementById('meta_description').value = d.meta_description;
+            if (d.meta_keywords && document.getElementById('meta_keywords')) document.getElementById('meta_keywords').value = d.meta_keywords;
+            if (d.weight && document.getElementById('weight')) document.getElementById('weight').value = d.weight;
+            updateSeoPreview();
             calculateQualityScore();
-            alert('Product info regenerated from SKU!');
+            document.querySelectorAll('.seo-field').forEach(f => updateCharCount(f));
+            alert('Product identified from SKU and all fields generated! Review and save.');
         } else {
-            alert('Error: ' + data.message);
+            alert('Error: ' + (data.message || 'Could not identify product from SKU'));
         }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> AI from SKU';
+        alert('Error: ' + err.message);
     });
 }
 

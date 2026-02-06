@@ -1503,7 +1503,23 @@ class ProductController extends Controller
             try {
                 $sku = trim($row['sku'] ?? '');
                 $name = trim($row['name'] ?? '');
-                $price = (float) ($row['price'] ?? 0);
+
+                // Parse price - handle South African format with space as thousands separator
+                // e.g., "1 392.78" or "R1 392.78" or "1,392.78"
+                $priceStr = $row['price'] ?? '0';
+                $priceStr = preg_replace('/^R\s*/i', '', $priceStr); // Remove R prefix
+                $priceStr = str_replace([' ', ','], ['', ''], $priceStr); // Remove spaces and commas
+                $price = (float) $priceStr;
+
+                // Also parse cost_price the same way
+                $costPriceStr = $row['cost_price'] ?? '';
+                if (!empty($costPriceStr)) {
+                    $costPriceStr = preg_replace('/^R\s*/i', '', $costPriceStr);
+                    $costPriceStr = str_replace([' ', ','], ['', ''], $costPriceStr);
+                }
+
+                // Get short_description - this often has the REAL product name in it
+                $shortDesc = trim($row['short_description'] ?? $row['short_descriptions'] ?? '');
 
                 if (empty($sku)) {
                     if (!$skipErrors) {
@@ -1552,10 +1568,10 @@ class ProductController extends Controller
                     'name' => $name,
                     'slug' => $slug,
                     'description' => $row['description'] ?? '',
-                    'short_description' => $row['short_description'] ?? '',
+                    'short_description' => $shortDesc,
                     'price' => $price,
-                    'compare_price' => !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
-                    'cost_price' => !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
+                    'compare_price' => !empty($row['compare_price']) ? (float) str_replace([' ', ',', 'R'], '', $row['compare_price']) : null,
+                    'cost_price' => !empty($costPriceStr) ? (float) $costPriceStr : null,
                     'stock_quantity' => (int) ($row['stock'] ?? 0),
                     'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
                     'vendor_id' => $vendorId,
@@ -1565,44 +1581,45 @@ class ProductController extends Controller
                 // Store brand for attribute handling
                 $brandValue = $row['brand'] ?? null;
 
-                // AI Generate if enabled - use OpenAI for proper product identification from SKU
+                // AI Generate if enabled - use short_description and SKU to generate proper product name
                 if ($aiGenerate) {
                     $openai = new OpenAIService();
-                    $aiResult = $openai->generateFromSku($sku, [
-                        'brand' => $brandValue,
-                        'category' => $row['category'] ?? '',
-                        'price' => $price
-                    ]);
 
-                    // Log AI result for debugging
-                    error_log("AI Import for SKU {$sku}: " . json_encode($aiResult));
+                    // FIRST: Try to extract product name from short_description if it looks like product info
+                    // e.g., "Intel Core i5 12400 Up to 4.4 GHz; 6 Core..." -> "Intel Core i5-12400 Processor"
+                    $extractedName = $this->extractProductNameFromDescription($shortDesc, $sku);
 
-                    // ALWAYS use AI-generated name from SKU when AI is enabled
-                    // The whole point is to generate proper names from SKU codes
-                    if (!empty($aiResult['name']) && strcasecmp($aiResult['name'], $sku) !== 0) {
-                        $productData['name'] = $aiResult['name'];
-                        error_log("AI Import: Set name to '{$aiResult['name']}' for SKU {$sku}");
+                    if (!empty($extractedName)) {
+                        $productData['name'] = $extractedName;
+                        error_log("AI Import: Extracted name '{$extractedName}' from short_description for SKU {$sku}");
                     } else {
-                        error_log("AI Import: Name not set - AI returned: " . ($aiResult['name'] ?? 'null') . " for SKU {$sku}");
+                        // FALLBACK: Use OpenAI/pattern matching from SKU
+                        $aiResult = $openai->generateFromSku($sku, [
+                            'brand' => $brandValue,
+                            'category' => $row['category'] ?? '',
+                            'price' => $price,
+                            'short_description' => $shortDesc
+                        ]);
+
+                        error_log("AI Import for SKU {$sku}: " . json_encode($aiResult));
+
+                        if (!empty($aiResult['name']) && strcasecmp($aiResult['name'], $sku) !== 0) {
+                            $productData['name'] = $aiResult['name'];
+                            error_log("AI Import: Set name to '{$aiResult['name']}' for SKU {$sku}");
+                        }
+
+                        // Apply AI description if we don't have one
+                        if (empty($productData['description']) && !empty($aiResult['description'])) {
+                            $productData['description'] = $aiResult['description'];
+                        }
                     }
 
-                    // ALWAYS apply AI values for description and short_description when AI is enabled
-                    if (!empty($aiResult['description'])) {
-                        $productData['description'] = $aiResult['description'];
-                    }
-                    if (!empty($aiResult['short_description'])) {
-                        $productData['short_description'] = $aiResult['short_description'];
-                    } elseif (!empty($productData['description'])) {
-                        // Generate short description from description if not provided
-                        $productData['short_description'] = substr(strip_tags($productData['description']), 0, 150);
-                    }
-
-                    // Auto-set brand if detected by AI
+                    // Auto-set brand if detected
                     if (empty($brandValue) && !empty($aiResult['brand'])) {
                         $brandValue = $aiResult['brand'];
                     }
 
-                    // Update slug based on new AI-generated name
+                    // Update slug based on new name
                     $productData['slug'] = slugify($productData['name']);
                 }
 
@@ -1695,6 +1712,73 @@ class ProductController extends Controller
         }
         $desc .= "High quality product available at competitive prices. Order now for fast delivery.";
         return $desc;
+    }
+
+    /**
+     * Extract a proper product name from short_description
+     * e.g., "Intel Core i5 12400 Up to 4.4 GHz; 6 Core..." -> "Intel Core i5-12400 Processor"
+     * e.g., "Intel Celeron G6900 LGA 1700 3.4 GHz..." -> "Intel Celeron G6900 Processor"
+     */
+    private function extractProductNameFromDescription(string $shortDesc, string $sku): ?string
+    {
+        if (empty($shortDesc)) {
+            return null;
+        }
+
+        // Intel Core patterns: "Intel Core i5 12400", "Intel Core i7-12700K", "Intel® Core™ i9 14900KF"
+        if (preg_match('/Intel[®™\s]*Core[®™\s]*(i[3579])[\s\-]*(\d{4,5})([A-Z]*)/i', $shortDesc, $matches)) {
+            $tier = strtolower($matches[1]); // i3, i5, i7, i9
+            $model = $matches[2]; // 12400, 14900
+            $suffix = strtoupper($matches[3] ?? ''); // K, KF, F, etc.
+
+            $name = "Intel Core " . ucfirst($tier) . "-" . $model;
+            if ($suffix) {
+                $name .= $suffix;
+            }
+            $name .= " Processor";
+            return $name;
+        }
+
+        // Intel Celeron: "Intel Celeron G6900"
+        if (preg_match('/Intel[®™\s]*Celeron[®™\s]*(G\d{4})/i', $shortDesc, $matches)) {
+            return "Intel Celeron " . strtoupper($matches[1]) . " Processor";
+        }
+
+        // Intel Pentium: "Intel Pentium Gold G7400"
+        if (preg_match('/Intel[®™\s]*Pentium[®™\s]*(Gold\s*)?(G\d{4})/i', $shortDesc, $matches)) {
+            $gold = !empty($matches[1]) ? 'Gold ' : '';
+            return "Intel Pentium " . $gold . strtoupper($matches[2]) . " Processor";
+        }
+
+        // Intel Core Ultra: "Intel Core Ultra 5/7/9"
+        if (preg_match('/Intel[®™\s]*Core[®™\s]*Ultra\s*(\d)\s*(\d{3}[A-Z]*)/i', $shortDesc, $matches)) {
+            return "Intel Core Ultra " . $matches[1] . " " . strtoupper($matches[2]) . " Processor";
+        }
+
+        // AMD Ryzen: "AMD Ryzen 5 5600X", "Ryzen 7 7800X3D"
+        if (preg_match('/(?:AMD\s*)?Ryzen\s*(\d)\s*(\d{4})([A-Z0-9]*)/i', $shortDesc, $matches)) {
+            $tier = $matches[1];
+            $model = $matches[2];
+            $suffix = strtoupper($matches[3] ?? '');
+            return "AMD Ryzen " . $tier . " " . $model . $suffix . " Processor";
+        }
+
+        // NVIDIA GeForce: "GeForce RTX 4090", "RTX 4080 Ti"
+        if (preg_match('/(GeForce\s*)?(RTX|GTX)\s*(\d{4})(\s*Ti|\s*SUPER)?/i', $shortDesc, $matches)) {
+            $series = strtoupper($matches[2]);
+            $model = $matches[3];
+            $variant = isset($matches[4]) ? ' ' . trim(ucfirst(strtolower($matches[4]))) : '';
+            return "NVIDIA GeForce " . $series . " " . $model . $variant . " Graphics Card";
+        }
+
+        // AMD Radeon: "Radeon RX 7900 XTX"
+        if (preg_match('/Radeon\s*(RX)\s*(\d{4})(\s*XT[X]?)?/i', $shortDesc, $matches)) {
+            $model = $matches[2];
+            $variant = isset($matches[3]) ? ' ' . strtoupper(trim($matches[3])) : '';
+            return "AMD Radeon RX " . $model . $variant . " Graphics Card";
+        }
+
+        return null;
     }
 
     /**

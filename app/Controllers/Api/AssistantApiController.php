@@ -87,12 +87,17 @@ class AssistantApiController extends Controller
         }
 
         // Add cart context
-        $cart = \App\Models\Cart::getForCurrentUser();
-        if ($cart['items']) {
-            $context['cart'] = [
-                'item_count' => count($cart['items']),
-                'total' => $cart['totals']['total'],
-            ];
+        try {
+            $cart = new \App\Models\Cart();
+            $items = $cart->getItems();
+            if (!empty($items)) {
+                $context['cart'] = [
+                    'item_count' => $cart->getCount(),
+                    'total' => $cart->getSubtotal(),
+                ];
+            }
+        } catch (\Exception $e) {
+            // Cart unavailable — continue without cart context
         }
 
         // Search for relevant products based on the message

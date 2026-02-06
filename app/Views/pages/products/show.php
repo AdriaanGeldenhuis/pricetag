@@ -24,32 +24,11 @@
     <!-- ===== PRODUCT SHOWCASE ===== -->
     <section class="pt-showcase">
 
-        <!-- Left Sidebar: Thumbnail Rings (fixed to left screen edge) -->
-        <div class="pt-thumb-sidebar">
-            <?php if (count($images) > 1): ?>
-            <div class="pt-thumb-rings" id="pt-thumbs">
-                <?php foreach ($images as $i => $image): ?>
-                <button type="button"
-                        class="pt-thumb-ring-item <?= $i === 0 ? 'is-active' : '' ?>"
-                        data-image="<?= url('storage/uploads/' . e($image['path'])) ?>"
-                        data-index="<?= $i ?>">
-                    <div class="pt-thumb-ring">
-                        <div class="pt-thumb-ring-border"></div>
-                        <div class="pt-thumb-ring-image">
-                            <img src="<?= url('storage/uploads/' . e($image['path'])) ?>" alt="" loading="lazy">
-                        </div>
-                    </div>
-                </button>
-                <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Center: Product Content (inside container) -->
+        <!-- Product Content (inside container) -->
         <div class="container">
             <div class="pt-hero">
 
-                <!-- Gallery -->
+                <!-- Gallery with thumbnails below -->
                 <div class="pt-gallery" id="pt-gallery">
                     <div class="pt-gallery-main">
                         <?php $mainImage = $images[0] ?? null; ?>
@@ -78,6 +57,25 @@
                             </svg>
                         </button>
                     </div>
+
+                    <!-- Thumbnail Rings below main image -->
+                    <?php if (count($images) > 1): ?>
+                    <div class="pt-thumb-rings" id="pt-thumbs">
+                        <?php foreach ($images as $i => $image): ?>
+                        <button type="button"
+                                class="pt-thumb-ring-item <?= $i === 0 ? 'is-active' : '' ?>"
+                                data-image="<?= url('storage/uploads/' . e($image['path'])) ?>"
+                                data-index="<?= $i ?>">
+                            <div class="pt-thumb-ring">
+                                <div class="pt-thumb-ring-border"></div>
+                                <div class="pt-thumb-ring-image">
+                                    <img src="<?= url('storage/uploads/' . e($image['path'])) ?>" alt="" loading="lazy">
+                                </div>
+                            </div>
+                        </button>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Product Info -->

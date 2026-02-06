@@ -73,30 +73,17 @@
     padding: var(--space-8) 0 var(--space-16);
 }
 
-/* Sidebars: fixed to screen edges, outside the container */
-.pt-thumb-sidebar {
-    display: none;
-}
-
+/* Right sidebar: fixed to right screen edge, outside the container */
 .pt-sidebar-right {
     display: none;
 }
 
 @media (min-width: 1440px) {
-    .pt-thumb-sidebar {
-        display: flex;
-        position: fixed;
-        left: var(--space-4);
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 40;
-    }
-
     .pt-sidebar-right {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: var(--space-3);
+        gap: var(--space-2);
         position: fixed;
         right: var(--space-4);
         top: 50%;
@@ -106,22 +93,16 @@
 }
 
 @media (min-width: 1600px) {
-    .pt-thumb-sidebar {
-        left: var(--space-6);
-    }
-
     .pt-sidebar-right {
         right: var(--space-6);
+        gap: var(--space-3);
     }
 }
 
 @media (min-width: 1920px) {
-    .pt-thumb-sidebar {
-        left: var(--space-8);
-    }
-
     .pt-sidebar-right {
         right: var(--space-8);
+        gap: var(--space-4);
     }
 }
 
@@ -150,11 +131,14 @@
 }
 
 /* =========================================================================
-   GALLERY — main image only (thumbs moved to left sidebar)
+   GALLERY — main image with thumbnail rings below
    ========================================================================= */
 
 .pt-gallery {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
 }
 
 @media (min-width: 1024px) {
@@ -1610,17 +1594,16 @@
 @keyframes pt-spin { to { transform: rotate(360deg); } }
 
 /* =========================================================================
-   LEFT SIDEBAR — thumbnail rings (fixed at left edge)
+   THUMBNAIL RINGS — horizontal row below main image
    ========================================================================= */
 
 .pt-thumb-rings {
     display: flex;
-    flex-direction: column;
     gap: var(--space-3);
-    overflow-y: auto;
-    max-height: 80vh;
+    overflow-x: auto;
     scrollbar-width: none;
-    padding: var(--space-2);
+    padding: var(--space-2) 0;
+    justify-content: center;
 }
 
 .pt-thumb-rings::-webkit-scrollbar { display: none; }
@@ -1642,27 +1625,20 @@
     transform: scale(1.08);
 }
 
-/* Ring container — sized to fill the sidebar gutter */
+/* Ring container */
 .pt-thumb-ring {
     position: relative;
-    width: 90px;
-    height: 90px;
+    width: 68px;
+    height: 68px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-@media (min-width: 1600px) {
+@media (min-width: 768px) {
     .pt-thumb-ring {
-        width: 100px;
-        height: 100px;
-    }
-}
-
-@media (min-width: 1920px) {
-    .pt-thumb-ring {
-        width: 110px;
-        height: 110px;
+        width: 76px;
+        height: 76px;
     }
 }
 
@@ -1805,18 +1781,18 @@
     text-decoration: none;
     transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     padding: var(--space-1);
-    width: 130px;
+    width: 140px;
 }
 
 .pt-sidebar-ring-item:hover {
     transform: translateY(-4px);
 }
 
-/* Ring container — sized to fill the sidebar gutter */
+/* Ring container — large, like the old square card widgets but round */
 .pt-sidebar-ring {
     position: relative;
-    width: 100px;
-    height: 100px;
+    width: 120px;
+    height: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1825,21 +1801,21 @@
 
 @media (min-width: 1600px) {
     .pt-sidebar-ring {
-        width: 110px;
-        height: 110px;
+        width: 150px;
+        height: 150px;
     }
     .pt-sidebar-ring-item {
-        width: 140px;
+        width: 170px;
     }
 }
 
 @media (min-width: 1920px) {
     .pt-sidebar-ring {
-        width: 120px;
-        height: 120px;
+        width: 180px;
+        height: 180px;
     }
     .pt-sidebar-ring-item {
-        width: 150px;
+        width: 200px;
     }
 }
 
@@ -1966,9 +1942,23 @@
 }
 
 .pt-sidebar-ring-image svg {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     transition: transform 0.4s ease, color 0.3s ease;
+}
+
+@media (min-width: 1600px) {
+    .pt-sidebar-ring-image svg {
+        width: 48px;
+        height: 48px;
+    }
+}
+
+@media (min-width: 1920px) {
+    .pt-sidebar-ring-image svg {
+        width: 56px;
+        height: 56px;
+    }
 }
 
 .pt-sidebar-ring-item:hover .pt-sidebar-ring-image svg {
@@ -1988,9 +1978,15 @@
 
 /* Placeholder letter for banners without images */
 .pt-sidebar-ring-placeholder {
-    font-size: 1.5rem;
+    font-size: 2rem;
     font-weight: var(--font-bold);
     color: #c0c0d0;
+}
+
+@media (min-width: 1920px) {
+    .pt-sidebar-ring-placeholder {
+        font-size: 2.5rem;
+    }
 }
 
 /* Label text below ring */
@@ -2009,6 +2005,12 @@
 
 .pt-sidebar-ring-item:hover .pt-sidebar-ring-label {
     color: #f1f5f9;
+}
+
+@media (min-width: 1600px) {
+    .pt-sidebar-ring-label {
+        font-size: var(--text-base);
+    }
 }
 
 /* Ring rotation keyframe */

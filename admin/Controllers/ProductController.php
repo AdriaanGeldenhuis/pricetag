@@ -13,6 +13,7 @@ use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
 use App\Services\OpenAIService;
+use App\Services\ProductService;
 
 class ProductController extends Controller
 {
@@ -170,6 +171,7 @@ class ProductController extends Controller
             'vendor_id' => !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null,
             'meta_title' => $_POST['meta_title'] ?? null,
             'meta_description' => $_POST['meta_description'] ?? null,
+            'meta_keywords' => $_POST['meta_keywords'] ?? null,
             'is_featured' => !empty($_POST['is_featured']),
             'is_new' => !empty($_POST['is_new']),
             'is_on_sale' => !empty($_POST['is_on_sale']),
@@ -283,6 +285,7 @@ class ProductController extends Controller
         $product->vendor_id = !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null;
         $product->meta_title = $_POST['meta_title'] ?? null;
         $product->meta_description = $_POST['meta_description'] ?? null;
+        $product->meta_keywords = $_POST['meta_keywords'] ?? null;
         $product->is_featured = !empty($_POST['is_featured']);
         $product->is_new = !empty($_POST['is_new']);
         $product->is_on_sale = !empty($_POST['is_on_sale']);
@@ -1089,6 +1092,143 @@ class ProductController extends Controller
     }
 
     /**
+     * Make a product production-ready using comprehensive AI (AJAX)
+     * Fills ALL missing fields: name, descriptions, SEO, specs, category, weight
+     */
+    public function makeProductionReady(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        if (!$openai->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+            return;
+        }
+
+        // Get product brand from attributes
+        $db = Database::getInstance();
+        $stmt = $db->prepare("
+            SELECT av.value as brand
+            FROM product_attributes pa
+            JOIN attribute_values av ON pa.attribute_value_id = av.id
+            JOIN attributes a ON av.attribute_id = a.id
+            WHERE pa.product_id = ? AND LOWER(a.name) = 'brand'
+            LIMIT 1
+        ");
+        $stmt->execute([$product->id]);
+        $brandRow = $stmt->fetch();
+        $brand = $brandRow ? $brandRow['brand'] : '';
+
+        // Get product category
+        $categories = $product->getCategories();
+        $categoryName = !empty($categories) ? $categories[0]['name'] : '';
+
+        // Call comprehensive AI generation
+        $result = $openai->generateCompleteProduct($product->sku, $product->short_description ?? '', [
+            'brand' => $brand,
+            'category' => $categoryName,
+            'price' => $product->price,
+            'existingName' => $product->name,
+            'existingDescription' => $product->description,
+        ]);
+
+        if (empty($result['success']) || empty($result['data'])) {
+            $this->json(['success' => false, 'message' => $result['error'] ?? 'AI generation failed']);
+            return;
+        }
+
+        $aiData = $result['data'];
+
+        // Build update array - only update fields that need improvement
+        $updates = [];
+
+        // Name - update if current name looks like a SKU
+        if (!empty($aiData['name']) && (
+            $product->name === $product->sku ||
+            strlen($product->name) < 10 ||
+            preg_match('/^[A-Z0-9\-]+$/', $product->name)
+        )) {
+            $updates['name'] = $aiData['name'];
+        }
+
+        // Descriptions
+        if (!empty($aiData['description']) && (empty($product->description) || strlen($product->description) < 50)) {
+            $updates['description'] = $aiData['description'];
+        }
+        if (!empty($aiData['short_description']) && (empty($product->short_description) || strlen($product->short_description) < 20)) {
+            $updates['short_description'] = $aiData['short_description'];
+        }
+
+        // SEO fields - always update if empty
+        if (!empty($aiData['meta_title']) && empty($product->meta_title)) {
+            $updates['meta_title'] = substr($aiData['meta_title'], 0, 255);
+        }
+        if (!empty($aiData['meta_description']) && empty($product->meta_description)) {
+            $updates['meta_description'] = $aiData['meta_description'];
+        }
+        if (!empty($aiData['meta_keywords']) && empty($product->meta_keywords)) {
+            $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
+        }
+
+        // Weight
+        if (!empty($aiData['weight']) && empty($product->weight)) {
+            $updates['weight'] = (float) $aiData['weight'];
+        }
+
+        // Apply updates to database
+        if (!empty($updates)) {
+            $setClauses = [];
+            $params = [];
+            foreach ($updates as $col => $val) {
+                $setClauses[] = "`{$col}` = ?";
+                $params[] = $val;
+            }
+            $params[] = $product->id;
+            $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
+            $stmt->execute($params);
+        }
+
+        // Handle specifications
+        if (!empty($aiData['specifications'])) {
+            $productService = ProductService::getInstance();
+            $productService->saveSpecifications($product->id, $aiData['specifications']);
+        }
+
+        // Handle category auto-assignment if product has no categories
+        if (empty($categories) && !empty($aiData['suggested_category'])) {
+            $productService = $productService ?? ProductService::getInstance();
+            $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
+            if ($matchedCatId) {
+                $productService->assignCategory($product->id, $matchedCatId, true);
+            }
+        }
+
+        // Handle brand attribute if detected and not already set
+        if (!empty($aiData['brand']) && empty($brand)) {
+            $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
+        }
+
+        // Return all AI data for client-side preview
+        $this->json([
+            'success' => true,
+            'data' => $aiData,
+            'updates_applied' => array_keys($updates),
+            'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.',
+        ]);
+    }
+
+    /**
      * Duplicate a product (AJAX)
      */
     public function duplicate(string $id): void
@@ -1876,43 +2016,71 @@ class ProductController extends Controller
 
                 // Store brand for attribute handling
                 $brandValue = $row['brand'] ?? null;
+                $aiCompleteData = null;
 
-                // AI Generate if enabled - use short_description and SKU to generate proper product name
+                // AI Generate if enabled - use comprehensive AI to create production-ready product
                 if ($aiGenerate) {
                     $openai = new OpenAIService();
+                    $productService = ProductService::getInstance();
 
-                    // FIRST: Try to extract product name from short_description if it looks like product info
-                    // e.g., "Intel Core i5 12400 Up to 4.4 GHz; 6 Core..." -> "Intel Core i5-12400 Processor"
-                    $extractedName = $this->extractProductNameFromDescription($shortDesc, $sku);
-
-                    if (!empty($extractedName)) {
-                        $productData['name'] = $extractedName;
-                        error_log("AI Import: Extracted name '{$extractedName}' from short_description for SKU {$sku}");
-                    } else {
-                        // FALLBACK: Use OpenAI/pattern matching from SKU
-                        $aiResult = $openai->generateFromSku($sku, [
-                            'brand' => $brandValue,
-                            'category' => $row['category'] ?? '',
-                            'price' => $price,
-                            'short_description' => $shortDesc
-                        ]);
-
-                        error_log("AI Import for SKU {$sku}: " . json_encode($aiResult));
-
-                        if (!empty($aiResult['name']) && strcasecmp($aiResult['name'], $sku) !== 0) {
-                            $productData['name'] = $aiResult['name'];
-                            error_log("AI Import: Set name to '{$aiResult['name']}' for SKU {$sku}");
-                        }
-
-                        // Apply AI description if we don't have one
-                        if (empty($productData['description']) && !empty($aiResult['description'])) {
-                            $productData['description'] = $aiResult['description'];
-                        }
+                    // Rate limiting: pause between AI calls during bulk import
+                    static $aiCallCount = 0;
+                    if ($aiCallCount > 0 && $aiCallCount % 10 === 0) {
+                        usleep(2000000); // 2-second pause every 10 products
                     }
+                    $aiCallCount++;
 
-                    // Auto-set brand if detected
-                    if (!empty($aiResult['brand']) && empty($brandValue)) {
-                        $brandValue = $aiResult['brand'];
+                    // Use the comprehensive generateCompleteProduct method
+                    $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
+                        'brand' => $brandValue,
+                        'category' => $row['category'] ?? '',
+                        'price' => $price,
+                        'existingName' => $name,
+                        'existingDescription' => $productData['description'],
+                    ]);
+
+                    if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                        $aiData = $aiResult['data'];
+                        error_log("AI Import (complete) for SKU {$sku}: name=" . ($aiData['name'] ?? 'N/A'));
+
+                        // Apply AI-generated name (if better than raw SKU)
+                        if (!empty($aiData['name']) && strcasecmp($aiData['name'], $sku) !== 0) {
+                            $productData['name'] = $aiData['name'];
+                        }
+
+                        // Apply AI description if we don't have one (or have a poor one)
+                        if (!empty($aiData['description']) && (empty($productData['description']) || strlen($productData['description']) < 50)) {
+                            $productData['description'] = $aiData['description'];
+                        }
+
+                        // Apply short description if empty
+                        if (!empty($aiData['short_description']) && empty($productData['short_description'])) {
+                            $productData['short_description'] = $aiData['short_description'];
+                        }
+
+                        // Apply SEO fields
+                        if (!empty($aiData['meta_title'])) {
+                            $productData['meta_title'] = substr($aiData['meta_title'], 0, 255);
+                        }
+                        if (!empty($aiData['meta_description'])) {
+                            $productData['meta_description'] = $aiData['meta_description'];
+                        }
+                        if (!empty($aiData['meta_keywords'])) {
+                            $productData['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
+                        }
+
+                        // Apply weight if we don't have one
+                        if (!empty($aiData['weight']) && empty($productData['weight'])) {
+                            $productData['weight'] = (float) $aiData['weight'];
+                        }
+
+                        // Auto-set brand if detected
+                        if (!empty($aiData['brand']) && empty($brandValue)) {
+                            $brandValue = $aiData['brand'];
+                        }
+
+                        // Store AI data for post-insert operations (specs, category)
+                        $aiCompleteData = $aiData;
                     }
                 }
 
@@ -1956,12 +2124,23 @@ class ProductController extends Controller
                     $productId = $db->lastInsertId();
                     $created++;
 
-                    // Handle category
+                    // Handle category - from CSV or AI suggestion
+                    $catAssigned = false;
                     if (!empty($row['category'])) {
                         $catId = $categoryLookup[strtolower(trim($row['category']))] ?? null;
                         if ($catId) {
                             $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)");
                             $stmt->execute([$productId, $catId]);
+                            $catAssigned = true;
+                        }
+                    }
+
+                    // AI category auto-assignment if no category was assigned from CSV
+                    if (!$catAssigned && $aiGenerate && !empty($aiCompleteData['suggested_category'])) {
+                        $productService = $productService ?? ProductService::getInstance();
+                        $matchedCatId = $productService->matchCategory($aiCompleteData['suggested_category']);
+                        if ($matchedCatId) {
+                            $productService->assignCategory($productId, $matchedCatId, true);
                         }
                     }
 
@@ -1969,11 +2148,40 @@ class ProductController extends Controller
                     if (!empty($brandValue)) {
                         $this->handleBrandAttribute($db, $productId, trim($brandValue));
                     }
+
+                    // Save AI-generated specifications
+                    if ($aiGenerate && !empty($aiCompleteData['specifications'])) {
+                        $productService = $productService ?? ProductService::getInstance();
+                        $productService->saveSpecifications($productId, $aiCompleteData['specifications']);
+                    }
                 }
 
-                // Also update brand for existing products
-                if ($existingId && !empty($brandValue)) {
-                    $this->handleBrandAttribute($db, $existingId, trim($brandValue));
+                // For existing products: update brand and apply AI specs/category if missing
+                if ($existingId) {
+                    if (!empty($brandValue)) {
+                        $this->handleBrandAttribute($db, $existingId, trim($brandValue));
+                    }
+
+                    if ($aiGenerate && !empty($aiCompleteData)) {
+                        $productService = $productService ?? ProductService::getInstance();
+
+                        // Auto-assign category if product has none
+                        if (!empty($aiCompleteData['suggested_category'])) {
+                            $stmt = $db->prepare("SELECT COUNT(*) FROM product_categories WHERE product_id = ?");
+                            $stmt->execute([$existingId]);
+                            if ((int)$stmt->fetchColumn() === 0) {
+                                $matchedCatId = $productService->matchCategory($aiCompleteData['suggested_category']);
+                                if ($matchedCatId) {
+                                    $productService->assignCategory($existingId, $matchedCatId, true);
+                                }
+                            }
+                        }
+
+                        // Save specs if product has none
+                        if (!empty($aiCompleteData['specifications'])) {
+                            $productService->saveSpecifications($existingId, $aiCompleteData['specifications']);
+                        }
+                    }
                 }
             } catch (\Throwable $e) {
                 $errors[] = "Row " . ($idx + 1) . ": " . $e->getMessage();

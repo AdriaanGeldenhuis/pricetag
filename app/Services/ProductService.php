@@ -1004,6 +1004,114 @@ class ProductService
     }
 
     // =========================================================================
+    // Category Matching
+    // =========================================================================
+
+    /**
+     * Match a suggested category name to an existing category using fuzzy matching.
+     *
+     * @param string $suggestedCategory AI-suggested category name
+     * @return int|null Matched category ID, or null if no match
+     */
+    public function matchCategory(string $suggestedCategory): ?int
+    {
+        if (empty($suggestedCategory)) {
+            return null;
+        }
+
+        $suggestedLower = strtolower(trim($suggestedCategory));
+
+        // Get all categories
+        $stmt = $this->db->query("SELECT id, name FROM categories WHERE is_active = 1");
+        $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (empty($categories)) {
+            return null;
+        }
+
+        // 1. Exact match (case-insensitive)
+        foreach ($categories as $cat) {
+            if (strtolower($cat['name']) === $suggestedLower) {
+                return (int) $cat['id'];
+            }
+        }
+
+        // 2. Contains match - category contains the suggestion or vice versa
+        foreach ($categories as $cat) {
+            $catLower = strtolower($cat['name']);
+            if (str_contains($catLower, $suggestedLower) || str_contains($suggestedLower, $catLower)) {
+                return (int) $cat['id'];
+            }
+        }
+
+        // 3. Keyword match - split into words and match
+        $suggestedWords = array_filter(explode(' ', $suggestedLower), fn($w) => strlen($w) > 2);
+        $bestMatch = null;
+        $bestScore = 0;
+
+        foreach ($categories as $cat) {
+            $catLower = strtolower($cat['name']);
+            $score = 0;
+            foreach ($suggestedWords as $word) {
+                if (str_contains($catLower, $word)) {
+                    $score++;
+                }
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestMatch = (int) $cat['id'];
+            }
+        }
+
+        // Return best match if at least one keyword matched
+        return $bestScore > 0 ? $bestMatch : null;
+    }
+
+    /**
+     * Assign a product to a category (if not already assigned)
+     *
+     * @param int $productId Product ID
+     * @param int $categoryId Category ID
+     * @param bool $isPrimary Whether this is the primary category
+     */
+    public function assignCategory(int $productId, int $categoryId, bool $isPrimary = true): void
+    {
+        // Check if already assigned
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM product_categories WHERE product_id = ? AND category_id = ?");
+        $stmt->execute([$productId, $categoryId]);
+
+        if ((int)$stmt->fetchColumn() === 0) {
+            $stmt = $this->db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
+            $stmt->execute([$productId, $categoryId, $isPrimary ? 1 : 0]);
+        }
+    }
+
+    /**
+     * Save product specifications
+     *
+     * @param int $productId Product ID
+     * @param array $specifications Array of ['name' => '', 'value' => ''] pairs
+     */
+    public function saveSpecifications(int $productId, array $specifications): void
+    {
+        // Don't overwrite existing specs if we already have them
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM product_specifications WHERE product_id = ?");
+        $stmt->execute([$productId]);
+        $existingCount = (int)$stmt->fetchColumn();
+
+        if ($existingCount > 0) {
+            return; // Keep existing specs
+        }
+
+        $stmt = $this->db->prepare("INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order) VALUES (?, ?, ?, ?)");
+        foreach ($specifications as $idx => $spec) {
+            if (!empty($spec['name']) && !empty($spec['value'])) {
+                $stmt->execute([$productId, $spec['name'], $spec['value'], $idx]);
+            }
+        }
+    }
+
+    // =========================================================================
     // Helper Methods
     // =========================================================================
 

@@ -47,6 +47,14 @@ $productAttributes = $productAttributes ?? [];
             </div>
 
             <?php if ($isEdit): ?>
+            <!-- AI Production Ready Button -->
+            <button type="button" onclick="makeProductionReady()" class="btn btn-secondary btn-sm" id="ai-complete-btn" title="Use AI to fill all missing fields and make this product ready to sell">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                </svg>
+                AI: Make Production Ready
+            </button>
+
             <!-- Duplicate Button -->
             <button type="button" onclick="duplicateProduct(<?= $productId ?>)" class="btn btn-outline btn-sm" title="Duplicate this product">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -626,6 +634,13 @@ $productAttributes = $productAttributes ?? [];
                             </div>
                         </div>
 
+                        <div class="form-group">
+                            <label for="meta_keywords" class="form-label">Meta Keywords</label>
+                            <input type="text" id="meta_keywords" name="meta_keywords" value="<?= e($product->meta_keywords ?? '') ?>"
+                                   class="form-input" maxlength="255" placeholder="e.g., processor, intel, gaming, desktop">
+                            <p class="form-help">Comma-separated keywords for SEO (auto-filled by AI)</p>
+                        </div>
+
                         <!-- SEO Preview -->
                         <div class="seo-preview">
                             <p class="text-sm text-muted mb-2">Search Engine Preview</p>
@@ -1053,6 +1068,7 @@ function generateAiContent() {
             status.classList.add('hidden');
             if (data.data.meta_title) document.getElementById('meta_title').value = data.data.meta_title;
             if (data.data.meta_description) document.getElementById('meta_description').value = data.data.meta_description;
+            if (data.data.meta_keywords && document.getElementById('meta_keywords')) document.getElementById('meta_keywords').value = data.data.meta_keywords;
             if (data.data.short_description) document.getElementById('short_description').value = data.data.short_description;
             updateSeoPreview();
             calculateQualityScore();
@@ -1086,6 +1102,84 @@ function regenerateFromSku() {
         } else {
             alert('Error: ' + data.message);
         }
+    });
+}
+
+// AI: Make Production Ready
+function makeProductionReady() {
+    const btn = document.getElementById('ai-complete-btn');
+    if (!btn || !productId) return;
+
+    if (!confirm('This will use AI to fill all missing product fields (name, descriptions, SEO, specifications, category, weight). Continue?')) return;
+
+    btn.disabled = true;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 70"/></svg> Generating...';
+
+    fetch(baseUrl + '/' + productId + '/ai-complete', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken }
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+
+        if (data.success && data.data) {
+            const d = data.data;
+
+            // Apply all AI-generated fields to form inputs
+            if (d.name && document.getElementById('name')) {
+                const nameField = document.getElementById('name');
+                if (!nameField.value || nameField.value.length < 10) {
+                    nameField.value = d.name;
+                }
+            }
+            if (d.short_description && document.getElementById('short_description')) {
+                const field = document.getElementById('short_description');
+                if (!field.value || field.value.length < 20) {
+                    field.value = d.short_description;
+                }
+            }
+            if (d.description && document.getElementById('description')) {
+                const field = document.getElementById('description');
+                if (!field.value || field.value.length < 50) {
+                    field.value = d.description;
+                }
+            }
+            if (d.meta_title && document.getElementById('meta_title')) {
+                const field = document.getElementById('meta_title');
+                if (!field.value) field.value = d.meta_title;
+            }
+            if (d.meta_description && document.getElementById('meta_description')) {
+                const field = document.getElementById('meta_description');
+                if (!field.value) field.value = d.meta_description;
+            }
+            if (d.meta_keywords && document.getElementById('meta_keywords')) {
+                const field = document.getElementById('meta_keywords');
+                if (!field.value) field.value = d.meta_keywords;
+            }
+            if (d.weight && document.getElementById('weight')) {
+                const field = document.getElementById('weight');
+                if (!field.value) field.value = d.weight;
+            }
+
+            // Update UI
+            updateSeoPreview();
+            calculateQualityScore();
+            document.querySelectorAll('.seo-field').forEach(f => updateCharCount(f));
+
+            const updatedFields = data.updates_applied || [];
+            alert('Product enhanced! ' + (data.message || updatedFields.length + ' fields updated.') +
+                  '\n\nReview the changes and click Save to keep them.');
+        } else {
+            alert('Error: ' + (data.message || 'AI generation failed'));
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        alert('Error: ' + err.message);
     });
 }
 

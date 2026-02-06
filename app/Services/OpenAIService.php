@@ -353,6 +353,173 @@ class OpenAIService
     }
 
     /**
+     * Generate a complete, production-ready product from SKU and short description.
+     *
+     * This is the comprehensive AI method that fills ALL fields needed for a
+     * product to score 100% quality and be ready to sell. Used during import
+     * and via the "Make Production Ready" button in the admin.
+     *
+     * @param string $sku Product SKU
+     * @param string $shortDescription Short description / product info from supplier
+     * @param array $context Additional context: brand, category, price, existingName
+     * @return array Complete product data or ['error' => message]
+     */
+    public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
+    {
+        if (empty($this->apiKey)) {
+            return $this->generateFallbackComplete($sku, $shortDescription, $context);
+        }
+
+        $price = $context['price'] ?? 0;
+        $brand = $context['brand'] ?? '';
+        $categoryHint = $context['category'] ?? '';
+        $existingName = $context['existingName'] ?? '';
+        $existingDescription = $context['existingDescription'] ?? '';
+
+        $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store. ";
+        $prompt .= "Create a COMPLETE, production-ready product listing from the following information.\n\n";
+        $prompt .= "SKU: {$sku}\n";
+        if ($shortDescription) {
+            $prompt .= "Supplier Description: {$shortDescription}\n";
+        }
+        if ($existingName) {
+            $prompt .= "Current Name: {$existingName}\n";
+        }
+        if ($existingDescription) {
+            $prompt .= "Current Description: " . substr($existingDescription, 0, 300) . "\n";
+        }
+        if ($brand) {
+            $prompt .= "Brand: {$brand}\n";
+        }
+        if ($categoryHint) {
+            $prompt .= "Category Hint: {$categoryHint}\n";
+        }
+        if ($price > 0) {
+            $prompt .= "Price: R" . number_format((float)$price, 2) . " (South African Rand)\n";
+        }
+
+        $prompt .= "\nSKU PATTERNS TO RECOGNIZE:\n";
+        $prompt .= "- Intel: 'BX80' prefix = boxed processor. 12400=i5, 14100=i3, 13700=i7, 13900=i9. Suffixes: K=unlocked, F=no iGPU, KF=both\n";
+        $prompt .= "- AMD: '100-' prefix or 'Ryzen' in code\n";
+        $prompt .= "- NVIDIA: RTX/GTX prefix. AMD: RX prefix for graphics cards\n";
+        $prompt .= "- Corsair: 'CM', 'CP', 'CC' prefixes for memory/PSU/cases\n";
+
+        $prompt .= "\nGenerate ALL of the following fields in JSON format:\n";
+        $prompt .= "1. name: Professional product name (e.g., 'Intel Core i5-12400F Processor' NOT just the SKU)\n";
+        $prompt .= "2. short_description: Compelling 1-2 sentence summary highlighting key selling points (max 160 chars)\n";
+        $prompt .= "3. description: Detailed HTML product description with features and benefits (3-4 paragraphs, use <p>, <ul>, <li>, <strong> tags)\n";
+        $prompt .= "4. meta_title: SEO-optimized page title (max 70 chars, include brand + product + key feature)\n";
+        $prompt .= "5. meta_description: SEO meta description (max 160 chars, include call-to-action)\n";
+        $prompt .= "6. meta_keywords: Comma-separated SEO keywords (max 8 keywords relevant to the product)\n";
+        $prompt .= "7. specifications: Array of product specs as [{\"name\": \"Spec Name\", \"value\": \"Spec Value\"}] - include at least 5 specs\n";
+        $prompt .= "8. suggested_category: Best product category (e.g., 'Processors', 'Graphics Cards', 'Memory', 'Storage')\n";
+        $prompt .= "9. brand: Brand name identified from SKU/description\n";
+        $prompt .= "10. weight: Estimated product weight in kg (decimal, e.g., 0.5) - estimate based on product type\n";
+        $prompt .= "11. is_taxable: true (always true for physical products)\n";
+
+        $prompt .= "\nIMPORTANT RULES:\n";
+        $prompt .= "- NEVER use the raw SKU as the product name\n";
+        $prompt .= "- All prices are in South African Rand (ZAR / R)\n";
+        $prompt .= "- Write descriptions as if for a premium e-commerce store\n";
+        $prompt .= "- Include real, accurate specifications based on the product identified\n";
+        $prompt .= "- The description HTML should be clean and professional\n";
+        $prompt .= "- If you cannot identify the exact product, make the best educated guess based on the SKU pattern and description\n";
+        $prompt .= "\nRespond ONLY with valid JSON, no markdown code blocks, no extra text.";
+
+        try {
+            $response = $this->makeRequest('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'You are a product data specialist. Generate complete, accurate e-commerce product data. Always respond with valid JSON only, no markdown formatting.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 2500,
+                'temperature' => 0.3,
+            ]);
+
+            $content = $response['choices'][0]['message']['content'] ?? '';
+
+            // Clean up potential markdown code blocks
+            $content = preg_replace('/^```json\s*/i', '', $content);
+            $content = preg_replace('/^```\s*/i', '', $content);
+            $content = preg_replace('/\s*```$/i', '', $content);
+            $content = trim($content);
+
+            $data = json_decode($content, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log('OpenAI Complete Product: JSON parse failed - ' . json_last_error_msg());
+                return $this->generateFallbackComplete($sku, $shortDescription, $context);
+            }
+
+            // Validate: Ensure AI didn't just use the raw SKU as name
+            if (!empty($data['name'])) {
+                $aiName = trim($data['name']);
+                if (strcasecmp($aiName, $sku) === 0 || (stripos($aiName, $sku) === 0 && strlen($aiName) < strlen($sku) + 10)) {
+                    $fallback = $this->generateFallbackFromSku($sku, ['brand' => $brand, 'category' => $categoryHint, 'price' => $price]);
+                    $data['name'] = $fallback['name'];
+                }
+            }
+
+            // Ensure all expected keys exist with defaults
+            $data = array_merge([
+                'name' => $existingName ?: $sku,
+                'short_description' => '',
+                'description' => '',
+                'meta_title' => '',
+                'meta_description' => '',
+                'meta_keywords' => '',
+                'specifications' => [],
+                'suggested_category' => $categoryHint,
+                'brand' => $brand,
+                'weight' => null,
+                'is_taxable' => true,
+            ], $data);
+
+            return [
+                'success' => true,
+                'data' => $data,
+            ];
+
+        } catch (\Exception $e) {
+            error_log('OpenAI Complete Product Error: ' . $e->getMessage());
+            return $this->generateFallbackComplete($sku, $shortDescription, $context);
+        }
+    }
+
+    /**
+     * Fallback when API is unavailable - generate basic complete product data
+     */
+    private function generateFallbackComplete(string $sku, string $shortDescription, array $context): array
+    {
+        $skuData = $this->generateFallbackFromSku($sku, [
+            'brand' => $context['brand'] ?? '',
+            'category' => $context['category'] ?? '',
+            'price' => $context['price'] ?? 0,
+        ]);
+
+        $name = $context['existingName'] ?: ($skuData['name'] ?? $sku);
+        $brand = $skuData['brand'] ?? ($context['brand'] ?? '');
+
+        return [
+            'success' => true,
+            'data' => [
+                'name' => $name,
+                'short_description' => $skuData['short_description'] ?? $shortDescription,
+                'description' => $skuData['description'] ?? '',
+                'meta_title' => substr($name . ' | Buy Online at Pricetag.co.za', 0, 70),
+                'meta_description' => substr(($skuData['short_description'] ?? $shortDescription) . ' Shop now at Pricetag.co.za with fast delivery across South Africa.', 0, 160),
+                'meta_keywords' => implode(', ', array_filter([$brand, $skuData['suggested_category'] ?? '', 'buy online', 'South Africa', 'Pricetag'])),
+                'specifications' => [],
+                'suggested_category' => $skuData['suggested_category'] ?? ($context['category'] ?? ''),
+                'brand' => $brand,
+                'weight' => null,
+                'is_taxable' => true,
+            ],
+        ];
+    }
+
+    /**
      * Generate product name and description from SKU
      */
     public function generateFromSku(string $sku, array $additionalInfo = []): array

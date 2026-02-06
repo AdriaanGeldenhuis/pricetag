@@ -13,6 +13,7 @@
 
 // Section type -> partial file mapping
 $sectionMap = [
+    'hero'               => 'hero_slider',
     'hero_slider'        => 'hero_slider',
     'category_cards'     => 'category_cards',
     'categories'         => 'featured_categories',

@@ -87,22 +87,24 @@ if (!empty($allCategories)):
                 $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
             ?>
             <a href="<?= url('/categories/' . $catSlug) ?>" class="category-card-item">
-                <div class="category-card-image">
-                    <?php if (!empty($catImage)): ?>
-                    <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="<?= e($catName) ?>" loading="lazy">
-                    <?php elseif (!empty($catIcon)): ?>
-                    <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="<?= e($catName) ?>" loading="lazy">
-                    <?php else: ?>
-                    <div class="category-card-placeholder">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                        </svg>
+                <div class="category-card-ring">
+                    <div class="category-card-ring-border"></div>
+                    <div class="category-card-image">
+                        <?php if (!empty($catImage)): ?>
+                        <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="<?= e($catName) ?>" loading="lazy">
+                        <?php elseif (!empty($catIcon)): ?>
+                        <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="<?= e($catName) ?>" loading="lazy">
+                        <?php else: ?>
+                        <div class="category-card-placeholder">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="3" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="14" width="7" height="7"></rect>
+                                <rect x="3" y="14" width="7" height="7"></rect>
+                            </svg>
+                        </div>
+                        <?php endif; ?>
                     </div>
-                    <?php endif; ?>
-                    <div class="category-card-overlay"></div>
                 </div>
                 <div class="category-card-content">
                     <span class="category-card-name"><?= e($catName) ?></span>
@@ -111,14 +113,17 @@ if (!empty($allCategories)):
             <?php endforeach; ?>
             <!-- View All Card -->
             <a href="<?= url('/categories') ?>" class="category-card-item category-card-view-all">
-                <div class="category-card-image">
-                    <div class="category-card-view-all-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                        </svg>
+                <div class="category-card-ring">
+                    <div class="category-card-ring-border"></div>
+                    <div class="category-card-image">
+                        <div class="category-card-view-all-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="14" width="7" height="7"></rect>
+                                <rect x="3" y="14" width="7" height="7"></rect>
+                            </svg>
+                        </div>
                     </div>
                 </div>
                 <div class="category-card-content">
@@ -569,7 +574,7 @@ if (!empty($allCategories)):
     background-color: var(--color-background-secondary);
     border-bottom: var(--border-1) solid var(--color-border);
     position: relative;
-    padding: var(--space-6) 0;
+    padding: var(--space-8) 0;
 }
 
 .category-cards-container {
@@ -587,71 +592,182 @@ if (!empty($allCategories)):
 
 .category-cards-scroll {
     display: flex;
-    gap: var(--space-4);
+    gap: var(--space-6);
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding: var(--space-2) 0;
+    padding: var(--space-4) var(--space-2);
+    align-items: flex-start;
+}
+
+@media (min-width: 768px) {
+    .category-cards-scroll {
+        gap: var(--space-8);
+    }
 }
 
 .category-cards-scroll::-webkit-scrollbar {
     display: none;
 }
 
+/* Card items - now vertical layout with circle on top */
 .category-card-item {
-    flex: 0 0 180px;
+    flex: 0 0 auto;
     scroll-snap-align: start;
-    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-decoration: none;
+    transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    padding: var(--space-2);
     border-radius: var(--radius-2xl);
-    overflow: hidden;
-    transition: var(--transition-all);
-    background: var(--color-background-elevated);
-    border: var(--border-1) solid var(--color-border);
+    border: none;
+    background: transparent;
+    width: 130px;
 }
 
 @media (min-width: 640px) {
     .category-card-item {
-        flex: 0 0 200px;
+        width: 150px;
     }
 }
 
 @media (min-width: 1024px) {
     .category-card-item {
-        flex: 0 0 220px;
+        width: 160px;
     }
 }
 
 .category-card-item:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-    border-color: var(--color-primary);
+    transform: translateY(-6px);
 }
 
+/* 3D Ring container */
+.category-card-ring {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--space-3);
+}
+
+@media (min-width: 640px) {
+    .category-card-ring {
+        width: 120px;
+        height: 120px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .category-card-ring {
+        width: 130px;
+        height: 130px;
+    }
+}
+
+/* 3D Ring border effect */
+.category-card-ring-border {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    padding: 3px;
+    background: conic-gradient(
+        from 0deg,
+        rgba(239, 68, 68, 0.9),
+        rgba(249, 115, 22, 0.9),
+        rgba(234, 179, 8, 0.9),
+        rgba(34, 197, 94, 0.9),
+        rgba(59, 130, 246, 0.9),
+        rgba(168, 85, 247, 0.9),
+        rgba(239, 68, 68, 0.9)
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: ringRotate 4s linear infinite;
+    filter: blur(0.5px);
+    opacity: 0.85;
+    transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.category-card-item:hover .category-card-ring-border {
+    opacity: 1;
+    filter: blur(0px);
+    animation-duration: 2s;
+}
+
+/* Outer glow effect */
+.category-card-ring::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: conic-gradient(
+        from 0deg,
+        rgba(239, 68, 68, 0.15),
+        rgba(249, 115, 22, 0.15),
+        rgba(234, 179, 8, 0.15),
+        rgba(34, 197, 94, 0.15),
+        rgba(59, 130, 246, 0.15),
+        rgba(168, 85, 247, 0.15),
+        rgba(239, 68, 68, 0.15)
+    );
+    filter: blur(8px);
+    animation: ringRotate 4s linear infinite;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    z-index: -1;
+}
+
+.category-card-item:hover .category-card-ring::before {
+    opacity: 1;
+}
+
+/* Inner shadow for 3D depth */
+.category-card-ring::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    box-shadow:
+        inset 0 2px 8px rgba(0, 0, 0, 0.4),
+        inset 0 -1px 4px rgba(255, 255, 255, 0.05),
+        0 2px 12px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    z-index: 1;
+}
+
+@keyframes ringRotate {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Circular image inside the ring */
 .category-card-image {
     position: relative;
-    width: 100%;
-    aspect-ratio: 4/3;
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    border-radius: 50%;
     overflow: hidden;
     background: linear-gradient(145deg, var(--color-background-alt) 0%, var(--color-background) 100%);
+    z-index: 2;
 }
 
 .category-card-image img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform var(--duration-500) var(--ease-out);
+    object-position: center;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border-radius: 50%;
 }
 
 .category-card-item:hover .category-card-image img {
-    transform: scale(1.1);
-}
-
-.category-card-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
-    pointer-events: none;
+    transform: scale(1.15);
 }
 
 .category-card-placeholder {
@@ -663,9 +779,11 @@ if (!empty($allCategories)):
     color: var(--color-text-muted);
 }
 
+/* Card text content */
 .category-card-content {
-    padding: var(--space-4);
+    padding: 0 var(--space-1);
     text-align: center;
+    width: 100%;
 }
 
 .category-card-name {
@@ -676,6 +794,7 @@ if (!empty($allCategories)):
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: color 0.3s ease;
 }
 
 @media (min-width: 768px) {
@@ -708,6 +827,20 @@ if (!empty($allCategories)):
 
 .category-card-view-all .category-card-name {
     color: var(--color-primary);
+}
+
+.category-card-view-all .category-card-ring-border {
+    background: conic-gradient(
+        from 0deg,
+        var(--color-primary),
+        var(--color-primary-600),
+        var(--color-primary-400),
+        var(--color-primary-600),
+        var(--color-primary)
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
 }
 
 /* Scroll Buttons */

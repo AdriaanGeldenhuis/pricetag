@@ -1,86 +1,27 @@
 <?php
-declare(strict_types=1);
-
 /**
- * Page Controller
- * Pricetag.co.za - Enterprise E-commerce Platform
- *
- * Handles static pages and CMS content.
+ * Seed CMS Pages
+ * Run: php database/seed-pages.php
  */
 
-namespace App\Controllers;
+// Bootstrap the application
+chdir(dirname(__DIR__));
+require_once __DIR__ . '/../bootstrap.php';
 
-use App\Core\Controller;
+use App\Core\Database;
 
-class PageController extends Controller
-{
-    /**
-     * Show a CMS page by slug
-     */
-    public function show(string $slug): void
-    {
-        $db = db();
+$db = Database::getInstance();
 
-        $page = $db->query("
-            SELECT * FROM pages
-            WHERE slug = ? AND status = 'published'
-        ", [$slug])->fetch();
-
-        // Fallback to built-in pages if not in database
-        if (!$page) {
-            $page = $this->getBuiltInPage($slug);
-        }
-
-        if (!$page) {
-            http_response_code(404);
-            $this->layout('main');
-            $this->view('errors/404');
-            return;
-        }
-
-        $this->layout('main');
-        $this->view('pages/cms-page', [
-            'meta_title' => $page['meta_title'] ?: $page['title'] . ' | ' . config('app.name'),
-            'meta_description' => $page['meta_description'] ?: truncate(strip_tags($page['content']), 160),
-            'page' => $page,
-        ]);
-    }
-
-    /**
-     * Offline page for PWA
-     */
-    public function offline(): void
-    {
-        include APP_PATH . '/Views/pages/offline.php';
-        exit;
-    }
-
-    /**
-     * Get built-in page content for known support pages
-     */
-    private function getBuiltInPage(string $slug): ?array
-    {
-        $pages = $this->getBuiltInPages();
-        return $pages[$slug] ?? null;
-    }
-
-    /**
-     * Built-in support pages (used when not in database)
-     */
-    private function getBuiltInPages(): array
-    {
-        $appName = config('app.name');
-
-        return [
-            'shipping' => [
-                'title' => 'Shipping Information',
-                'slug' => 'shipping',
-                'excerpt' => 'Everything you need to know about our shipping options, delivery times, and costs.',
-                'meta_title' => "Shipping Information | {$appName}",
-                'meta_description' => "Learn about {$appName} shipping options, delivery times, costs, and tracking. We deliver across South Africa.",
-                'template' => 'default',
-                'updated_at' => date('Y-m-d H:i:s'),
-                'content' => <<<'HTML'
+$pages = [
+    // ===================== SHIPPING INFO =====================
+    [
+        'title' => 'Shipping Information',
+        'slug' => 'shipping',
+        'excerpt' => 'Everything you need to know about our shipping options, delivery times, and costs.',
+        'meta_title' => 'Shipping Information | Pricetag',
+        'meta_description' => 'Learn about Pricetag shipping options, delivery times, costs, and tracking. We deliver across South Africa.',
+        'template' => 'default',
+        'content' => <<<'HTML'
 <h2>Shipping Options</h2>
 <p>We offer reliable shipping across South Africa through trusted courier partners. All orders are carefully packaged to ensure your items arrive safely.</p>
 
@@ -123,17 +64,17 @@ class PageController extends Controller
 <h2>Damaged or Missing Items</h2>
 <p>If your package arrives damaged or items are missing, please contact us within <strong>48 hours</strong> of delivery. Take photos of the damaged packaging and items, and email them to <a href="mailto:info@pricetag.co.za">info@pricetag.co.za</a> with your order number.</p>
 HTML
-            ],
+    ],
 
-            'returns' => [
-                'title' => 'Returns & Refunds',
-                'slug' => 'returns',
-                'excerpt' => 'Our returns policy, how to request a return, and refund processing times.',
-                'meta_title' => "Returns & Refunds Policy | {$appName}",
-                'meta_description' => "Learn about {$appName} return and refund policies. Easy 30-day returns on most items.",
-                'template' => 'default',
-                'updated_at' => date('Y-m-d H:i:s'),
-                'content' => <<<'HTML'
+    // ===================== RETURNS & REFUNDS =====================
+    [
+        'title' => 'Returns & Refunds',
+        'slug' => 'returns',
+        'excerpt' => 'Our returns policy, how to request a return, and refund processing times.',
+        'meta_title' => 'Returns & Refunds Policy | Pricetag',
+        'meta_description' => 'Learn about Pricetag return and refund policies. Easy 30-day returns on most items.',
+        'template' => 'default',
+        'content' => <<<'HTML'
 <h2>Return Policy Overview</h2>
 <p>We want you to be completely satisfied with your purchase. If you're not happy with your order, you can return most items within <strong>30 days</strong> of delivery for a full refund or exchange.</p>
 
@@ -184,17 +125,17 @@ HTML
 <h2>Return Shipping Costs</h2>
 <p>For change-of-mind returns, the customer is responsible for return shipping costs. For defective items or incorrect orders, Pricetag covers all return shipping costs.</p>
 HTML
-            ],
+    ],
 
-            'faq' => [
-                'title' => 'Frequently Asked Questions',
-                'slug' => 'faq',
-                'excerpt' => 'Find answers to the most commonly asked questions about shopping at Pricetag.',
-                'meta_title' => "FAQ - Frequently Asked Questions | {$appName}",
-                'meta_description' => "Find answers to common questions about orders, shipping, returns, payments, and more at {$appName}.",
-                'template' => 'faq',
-                'updated_at' => date('Y-m-d H:i:s'),
-                'content' => <<<'HTML'
+    // ===================== FAQ =====================
+    [
+        'title' => 'Frequently Asked Questions',
+        'slug' => 'faq',
+        'excerpt' => 'Find answers to the most commonly asked questions about shopping at Pricetag.',
+        'meta_title' => 'FAQ - Frequently Asked Questions | Pricetag',
+        'meta_description' => 'Find answers to common questions about orders, shipping, returns, payments, and more at Pricetag.',
+        'template' => 'faq',
+        'content' => <<<'HTML'
 <h2>Orders & Shopping</h2>
 
 <div class="faq-item">
@@ -303,17 +244,17 @@ HTML
 </div>
 </div>
 HTML
-            ],
+    ],
 
-            'track-order' => [
-                'title' => 'Track Your Order',
-                'slug' => 'track-order',
-                'excerpt' => 'Enter your order number to check the status of your delivery.',
-                'meta_title' => "Track Order | {$appName}",
-                'meta_description' => "Track your {$appName} order status. Enter your order number to see real-time delivery updates.",
-                'template' => 'default',
-                'updated_at' => date('Y-m-d H:i:s'),
-                'content' => <<<'HTML'
+    // ===================== TRACK ORDER =====================
+    [
+        'title' => 'Track Your Order',
+        'slug' => 'track-order',
+        'excerpt' => 'Enter your order number to check the status of your delivery.',
+        'meta_title' => 'Track Order | Pricetag',
+        'meta_description' => 'Track your Pricetag order status. Enter your order number to see real-time delivery updates.',
+        'template' => 'default',
+        'content' => <<<'HTML'
 <h2>Track Your Order</h2>
 <p>Enter your order number below to check the current status of your delivery. Your order number can be found in your confirmation email or in your <a href="/account">account dashboard</a>.</p>
 
@@ -353,17 +294,17 @@ document.getElementById('track-order-input').addEventListener('keypress', functi
 });
 </script>
 HTML
-            ],
+    ],
 
-            'privacy' => [
-                'title' => 'Privacy Policy',
-                'slug' => 'privacy',
-                'excerpt' => 'How we collect, use, and protect your personal information.',
-                'meta_title' => "Privacy Policy | {$appName}",
-                'meta_description' => "{$appName} privacy policy. Learn how we collect, use, and protect your personal data in accordance with POPIA.",
-                'template' => 'default',
-                'updated_at' => date('Y-m-d H:i:s'),
-                'content' => <<<'HTML'
+    // ===================== PRIVACY POLICY =====================
+    [
+        'title' => 'Privacy Policy',
+        'slug' => 'privacy',
+        'excerpt' => 'How we collect, use, and protect your personal information.',
+        'meta_title' => 'Privacy Policy | Pricetag',
+        'meta_description' => 'Pricetag privacy policy. Learn how we collect, use, and protect your personal data in accordance with POPIA.',
+        'template' => 'default',
+        'content' => <<<'HTML'
 <h2>Introduction</h2>
 <p>Pricetag ("we", "our", "us") is committed to protecting your personal information and your right to privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website and make purchases, in accordance with the Protection of Personal Information Act (POPIA).</p>
 
@@ -427,17 +368,17 @@ HTML
 <h2>Contact Us</h2>
 <p>If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us at <a href="mailto:info@pricetag.co.za">info@pricetag.co.za</a> or through our <a href="/contact">Contact Us</a> page.</p>
 HTML
-            ],
+    ],
 
-            'terms' => [
-                'title' => 'Terms of Service',
-                'slug' => 'terms',
-                'excerpt' => 'The terms and conditions governing your use of Pricetag.',
-                'meta_title' => "Terms of Service | {$appName}",
-                'meta_description' => "{$appName} terms and conditions. Read our terms of service for using our e-commerce platform.",
-                'template' => 'default',
-                'updated_at' => date('Y-m-d H:i:s'),
-                'content' => <<<'HTML'
+    // ===================== TERMS OF SERVICE =====================
+    [
+        'title' => 'Terms of Service',
+        'slug' => 'terms',
+        'excerpt' => 'The terms and conditions governing your use of Pricetag.',
+        'meta_title' => 'Terms of Service | Pricetag',
+        'meta_description' => 'Pricetag terms and conditions. Read our terms of service for using our e-commerce platform.',
+        'template' => 'default',
+        'content' => <<<'HTML'
 <h2>Agreement to Terms</h2>
 <p>By accessing and using the Pricetag website ("Site"), you agree to be bound by these Terms of Service. If you do not agree with any part of these terms, please do not use our Site.</p>
 
@@ -490,7 +431,42 @@ HTML
 <h2>Contact</h2>
 <p>For questions about these Terms of Service, please contact us at <a href="mailto:info@pricetag.co.za">info@pricetag.co.za</a> or via our <a href="/contact">Contact Us</a> page.</p>
 HTML
-            ],
-        ];
+    ],
+];
+
+// Insert pages
+$stmt = $db->prepare("
+    INSERT INTO pages (title, slug, content, excerpt, meta_title, meta_description, template, status, published_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'published', NOW(), NOW(), NOW())
+    ON DUPLICATE KEY UPDATE
+        title = VALUES(title),
+        content = VALUES(content),
+        excerpt = VALUES(excerpt),
+        meta_title = VALUES(meta_title),
+        meta_description = VALUES(meta_description),
+        template = VALUES(template),
+        status = 'published',
+        published_at = COALESCE(published_at, NOW()),
+        updated_at = NOW()
+");
+
+$count = 0;
+foreach ($pages as $page) {
+    try {
+        $stmt->execute([
+            $page['title'],
+            $page['slug'],
+            $page['content'],
+            $page['excerpt'],
+            $page['meta_title'],
+            $page['meta_description'],
+            $page['template'],
+        ]);
+        $count++;
+        echo "  [OK] {$page['title']} (/{$page['slug']})\n";
+    } catch (\PDOException $e) {
+        echo "  [FAIL] {$page['title']}: {$e->getMessage()}\n";
     }
 }
+
+echo "\nDone! Seeded {$count} pages.\n";

@@ -1076,17 +1076,38 @@ function generateAiContent() {
         btn.disabled = false;
         if (data.success) {
             status.classList.add('hidden');
-            if (data.data.meta_title) document.getElementById('meta_title').value = data.data.meta_title;
-            if (data.data.meta_description) document.getElementById('meta_description').value = data.data.meta_description;
-            if (data.data.meta_keywords && document.getElementById('meta_keywords')) document.getElementById('meta_keywords').value = data.data.meta_keywords;
-            if (data.data.short_description) document.getElementById('short_description').value = data.data.short_description;
+            const d = data.data;
+
+            // Helper to set field value and fire events
+            function setField(id, value) {
+                const field = document.getElementById(id);
+                if (field && value) {
+                    field.value = value;
+                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                    field.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+
+            // Apply ALL returned fields
+            setField('meta_title', d.meta_title);
+            setField('meta_description', d.meta_description);
+            setField('meta_keywords', d.meta_keywords);
+            setField('short_description', d.short_description);
+            setField('description', d.description);
+
             updateSeoPreview();
             calculateQualityScore();
+            document.querySelectorAll('.seo-field').forEach(f => updateCharCount(f));
             alert('AI content generated! Review and save.');
         } else {
             statusText.textContent = 'Error: ' + data.message;
             status.className = 'alert alert-danger';
         }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        statusText.textContent = 'Error: ' + err.message;
+        status.className = 'alert alert-danger';
     });
 }
 
@@ -1105,14 +1126,60 @@ function regenerateFromSku() {
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> AI from SKU';
         if (data.success && data.data) {
             const d = data.data;
+
+            // Helper to set field value and fire events
+            function setField(id, value) {
+                const field = document.getElementById(id);
+                if (field && value) {
+                    field.value = value;
+                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                    field.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+
             // Apply all AI-generated fields
-            if (d.name) document.getElementById('name').value = d.name;
-            if (d.short_description) document.getElementById('short_description').value = d.short_description;
-            if (d.description) document.getElementById('description').value = d.description;
-            if (d.meta_title && document.getElementById('meta_title')) document.getElementById('meta_title').value = d.meta_title;
-            if (d.meta_description && document.getElementById('meta_description')) document.getElementById('meta_description').value = d.meta_description;
-            if (d.meta_keywords && document.getElementById('meta_keywords')) document.getElementById('meta_keywords').value = d.meta_keywords;
-            if (d.weight && document.getElementById('weight')) document.getElementById('weight').value = d.weight;
+            setField('name', d.name);
+            setField('short_description', d.short_description);
+            setField('description', d.description);
+            setField('meta_title', d.meta_title);
+            setField('meta_description', d.meta_description);
+            setField('meta_keywords', d.meta_keywords);
+            setField('weight', d.weight);
+
+            // Apply specifications if returned
+            if (d.specifications && Array.isArray(d.specifications) && d.specifications.length > 0) {
+                const container = document.getElementById('specifications-container');
+                if (container) {
+                    const noSpecsMsg = document.getElementById('no-specs-msg');
+                    if (noSpecsMsg) noSpecsMsg.remove();
+
+                    const existingNames = new Set();
+                    container.querySelectorAll('input[name="spec_name[]"]').forEach(input => {
+                        if (input.value.trim()) existingNames.add(input.value.trim().toLowerCase());
+                    });
+
+                    d.specifications.forEach(spec => {
+                        const specName = spec.name || spec.spec_name || '';
+                        const specValue = spec.value || spec.spec_value || '';
+                        if (!specName || !specValue) return;
+                        if (existingNames.has(specName.toLowerCase())) return;
+
+                        const row = document.createElement('div');
+                        row.className = 'spec-row';
+                        row.innerHTML = `
+                            <input type="text" name="spec_name[]" value="${specName.replace(/"/g, '&quot;')}" class="form-input" placeholder="Name">
+                            <input type="text" name="spec_value[]" value="${specValue.replace(/"/g, '&quot;')}" class="form-input" placeholder="Value">
+                            <button type="button" onclick="removeSpecification(this)" class="btn btn-danger btn-icon btn-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        `;
+                        container.appendChild(row);
+                    });
+                }
+            }
+
             updateSeoPreview();
             calculateQualityScore();
             document.querySelectorAll('.seo-field').forEach(f => updateCharCount(f));
@@ -1151,34 +1218,70 @@ function makeProductionReady() {
         if (data.success && data.data) {
             const d = data.data;
 
-            // Apply ALL AI-generated fields (AI uses verified pattern matching for names)
-            if (d.name) {
-                const nameField = document.getElementById('name');
-                if (nameField) nameField.value = d.name;
+            // Helper to set field value and fire events for auto-save
+            function setField(id, value) {
+                const field = document.getElementById(id);
+                if (field && value) {
+                    field.value = value;
+                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                    field.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             }
-            if (d.short_description) {
-                const field = document.getElementById('short_description');
-                if (field) field.value = d.short_description;
-            }
-            if (d.description) {
-                const field = document.getElementById('description');
-                if (field) field.value = d.description;
-            }
-            if (d.meta_title) {
-                const field = document.getElementById('meta_title');
-                if (field) field.value = d.meta_title;
-            }
-            if (d.meta_description) {
-                const field = document.getElementById('meta_description');
-                if (field) field.value = d.meta_description;
-            }
-            if (d.meta_keywords) {
-                const field = document.getElementById('meta_keywords');
-                if (!field.value) field.value = d.meta_keywords;
-            }
-            if (d.weight && document.getElementById('weight')) {
-                const field = document.getElementById('weight');
-                if (!field.value) field.value = d.weight;
+
+            // Apply ALL AI-generated fields
+            setField('name', d.name);
+            setField('short_description', d.short_description);
+            setField('description', d.description);
+            setField('meta_title', d.meta_title);
+            setField('meta_description', d.meta_description);
+            setField('meta_keywords', d.meta_keywords);
+            setField('weight', d.weight);
+
+            // Apply specifications to the Attributes tab
+            if (d.specifications && Array.isArray(d.specifications) && d.specifications.length > 0) {
+                const container = document.getElementById('specifications-container');
+                if (container) {
+                    // Remove the "no specs" placeholder
+                    const noSpecsMsg = document.getElementById('no-specs-msg');
+                    if (noSpecsMsg) noSpecsMsg.remove();
+
+                    // Clear existing empty specs, keep ones with values
+                    const existingRows = container.querySelectorAll('.spec-row');
+                    existingRows.forEach(row => {
+                        const nameInput = row.querySelector('input[name="spec_name[]"]');
+                        const valueInput = row.querySelector('input[name="spec_value[]"]');
+                        if (nameInput && valueInput && !nameInput.value.trim() && !valueInput.value.trim()) {
+                            row.remove();
+                        }
+                    });
+
+                    // Collect existing spec names to avoid duplicates
+                    const existingNames = new Set();
+                    container.querySelectorAll('input[name="spec_name[]"]').forEach(input => {
+                        if (input.value.trim()) existingNames.add(input.value.trim().toLowerCase());
+                    });
+
+                    // Add new specs from AI
+                    d.specifications.forEach(spec => {
+                        const specName = spec.name || spec.spec_name || '';
+                        const specValue = spec.value || spec.spec_value || '';
+                        if (!specName || !specValue) return;
+                        if (existingNames.has(specName.toLowerCase())) return;
+
+                        const row = document.createElement('div');
+                        row.className = 'spec-row';
+                        row.innerHTML = `
+                            <input type="text" name="spec_name[]" value="${specName.replace(/"/g, '&quot;')}" class="form-input" placeholder="Name">
+                            <input type="text" name="spec_value[]" value="${specValue.replace(/"/g, '&quot;')}" class="form-input" placeholder="Value">
+                            <button type="button" onclick="removeSpecification(this)" class="btn btn-danger btn-icon btn-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        `;
+                        container.appendChild(row);
+                    });
+                }
             }
 
             // Update UI
@@ -1187,8 +1290,20 @@ function makeProductionReady() {
             document.querySelectorAll('.seo-field').forEach(f => updateCharCount(f));
 
             const updatedFields = data.updates_applied || [];
-            alert('Product enhanced! ' + (data.message || updatedFields.length + ' fields updated.') +
-                  '\n\nReview the changes and click Save to keep them.');
+            let msg = 'Product enhanced! ' + (data.message || updatedFields.length + ' fields updated.');
+            if (d.specifications && d.specifications.length > 0) {
+                msg += '\n' + d.specifications.length + ' specifications added.';
+            }
+            if (data.images_generated > 0) {
+                msg += '\n' + data.images_generated + ' images downloaded.';
+            }
+            msg += '\n\nReview the changes and click Save to keep them.';
+            alert(msg);
+
+            // If images were generated, reload the media section
+            if (data.images_generated > 0) {
+                window.location.reload();
+            }
         } else {
             alert('Error: ' + (data.message || 'AI generation failed'));
         }

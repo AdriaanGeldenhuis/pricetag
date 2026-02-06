@@ -160,14 +160,17 @@
     position: static;
 }
 
-/* Full-width dropdown */
+/* Override .nav-item position:relative for the mega menu parent */
+.main-nav .nav-item:first-child {
+    position: static;
+}
+
+/* Full-width dropdown - positioned relative to .main-nav */
 .mega-menu {
     position: absolute;
     top: 100%;
     left: 0;
     right: 0;
-    width: 100vw;
-    margin-left: calc(-50vw + 50%);
     padding: 0;
     background: linear-gradient(180deg, #1a1a24 0%, #14141c 60%, #111118 100%);
     border-top: none;

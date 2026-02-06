@@ -1541,32 +1541,17 @@ class ProductController extends Controller
                     continue; // Skip new
                 }
 
-                // Generate slug
-                $slug = slugify($name ?: $sku);
-                $baseSlug = $slug;
-                $counter = 1;
-                while (true) {
-                    $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? AND id != ?");
-                    $stmt->execute([$slug, $existingId ?: 0]);
-                    if (!$stmt->fetch()) break;
-                    $slug = $baseSlug . '-' . (++$counter);
-                    if ($counter > 100) {
-                        $slug = $baseSlug . '-' . uniqid();
-                        break;
-                    }
-                }
-
                 // Get vendor ID
                 $vendorId = null;
                 if (!empty($row['vendor'])) {
                     $vendorId = $vendorLookup[strtolower(trim($row['vendor']))] ?? null;
                 }
 
-                // Prepare product data
+                // Prepare product data (slug is set later after AI name processing)
                 $productData = [
                     'sku' => $sku,
                     'name' => $name,
-                    'slug' => $slug,
+                    'slug' => '', // Will be set after AI processing
                     'description' => $row['description'] ?? '',
                     'short_description' => $shortDesc,
                     'price' => $price,
@@ -1615,13 +1600,27 @@ class ProductController extends Controller
                     }
 
                     // Auto-set brand if detected
-                    if (empty($brandValue) && !empty($aiResult['brand'])) {
+                    if (!empty($aiResult['brand']) && empty($brandValue)) {
                         $brandValue = $aiResult['brand'];
                     }
-
-                    // Update slug based on new name
-                    $productData['slug'] = slugify($productData['name']);
                 }
+
+                // Generate unique slug AFTER name is finalized (whether from AI or original)
+                $finalName = $productData['name'] ?: $sku;
+                $slug = slugify($finalName);
+                $baseSlug = $slug;
+                $counter = 1;
+                while (true) {
+                    $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? AND id != ?");
+                    $stmt->execute([$slug, $existingId ?: 0]);
+                    if (!$stmt->fetch()) break;
+                    $slug = $baseSlug . '-' . (++$counter);
+                    if ($counter > 100) {
+                        $slug = $baseSlug . '-' . uniqid();
+                        break;
+                    }
+                }
+                $productData['slug'] = $slug;
 
                 if ($existingId) {
                     // Update

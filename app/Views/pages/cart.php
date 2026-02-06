@@ -102,9 +102,13 @@ $recentlyViewed = Product::recentlyViewed(4);
                         <p class="cart-page-item-variant"><?= e($item['variant_name']) ?></p>
                         <?php endif; ?>
 
-                        <?php if (!empty($item['options'])): ?>
+                        <?php
+                        $opts = $item['options'] ?? [];
+                        if (is_string($opts)) { $opts = json_decode($opts, true) ?: []; }
+                        ?>
+                        <?php if (!empty($opts) && is_array($opts)): ?>
                         <p class="cart-page-item-options">
-                            <?= e(implode(', ', array_map(fn($k, $v) => "$k: $v", array_keys($item['options']), $item['options']))) ?>
+                            <?= e(implode(', ', array_map(fn($k, $v) => "$k: $v", array_keys($opts), $opts))) ?>
                         </p>
                         <?php endif; ?>
 

@@ -75,9 +75,47 @@ class HomepageController extends Controller
     {
         $db = Database::getInstance();
 
-        $stmt = $db->prepare("UPDATE home_sections SET title=?, is_active=? WHERE id=?");
+        // Build config JSON from section-specific form fields
+        $config = [];
+
+        // Testimonials config
+        if (!empty($_POST['testimonial_names'])) {
+            $testimonials = [];
+            $names = $_POST['testimonial_names'] ?? [];
+            $titles = $_POST['testimonial_titles'] ?? [];
+            $contents = $_POST['testimonial_contents'] ?? [];
+            $ratings = $_POST['testimonial_ratings'] ?? [];
+
+            foreach ($names as $i => $name) {
+                if (trim($name) !== '' || trim($contents[$i] ?? '') !== '') {
+                    $testimonials[] = [
+                        'name' => trim($name),
+                        'title' => trim($titles[$i] ?? ''),
+                        'content' => trim($contents[$i] ?? ''),
+                        'rating' => (int) ($ratings[$i] ?? 5),
+                    ];
+                }
+            }
+            $config['testimonials'] = $testimonials;
+        }
+
+        // Newsletter config
+        if (isset($_POST['show_name_field'])) {
+            $config['show_name_field'] = 1;
+        }
+        if (!empty($_POST['subtitle'])) {
+            $config['subtitle'] = trim($_POST['subtitle']);
+        }
+
+        // Generic config fields
+        if (!empty($_POST['limit'])) {
+            $config['limit'] = (int) $_POST['limit'];
+        }
+
+        $stmt = $db->prepare("UPDATE home_sections SET title=?, config=?, is_active=? WHERE id=?");
         $stmt->execute([
             $_POST['title'] ?? '',
+            json_encode($config),
             isset($_POST['is_active']) ? 1 : 0,
             $id
         ]);
@@ -194,6 +232,11 @@ class HomepageController extends Controller
                 'name' => 'Promotional Banners',
                 'icon' => 'columns',
                 'description' => 'Display promotional banners from Banner Manager (homepage_middle)',
+            ],
+            'testimonials' => [
+                'name' => 'Testimonials',
+                'icon' => 'message-circle',
+                'description' => 'Customer testimonials and reviews with star ratings',
             ],
             'newsletter' => [
                 'name' => 'Newsletter Signup',

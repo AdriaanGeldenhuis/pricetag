@@ -26,6 +26,7 @@ $sectionMap = [
     'trending_products'  => 'product_grid',
     'trust_badges'       => 'trust_badges',
     'promo_banner'       => 'promo_banner',
+    'testimonials'       => 'testimonials',
     'newsletter'         => 'newsletter',
     'recently_viewed'    => 'recently_viewed',
 ];

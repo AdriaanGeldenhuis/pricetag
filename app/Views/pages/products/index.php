@@ -186,6 +186,73 @@
                 <?php echo \App\Core\View::pagination($pagination, url('/products')); ?>
                 <?php endif; ?>
             </main>
+
+            <!-- Right Sidebar - Banners & Promotions -->
+            <aside class="shop-sidebar-right page-sidebar-right">
+                <?php $sidebarLocation = 'sidebar'; include APP_PATH . '/Views/components/sidebar-banners.php'; ?>
+
+                <!-- Static Widgets (fallback when no banners configured) -->
+                <div class="sidebar-static-widget sidebar-widget-featured">
+                    <span class="sidebar-widget-badge">Hot Deal</span>
+                    <div class="sidebar-widget-title">Flash Sale</div>
+                    <p class="sidebar-widget-text">Up to 50% off selected items</p>
+                    <a href="<?php echo url('/products?on_sale=1'); ?>" class="sidebar-widget-cta">Shop Now</a>
+                </div>
+
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
+                    <h4 class="sidebar-widget-title">New Arrivals</h4>
+                    <p class="sidebar-widget-text">Check out our latest products</p>
+                    <a href="<?php echo url('/products?sort=newest'); ?>" class="sidebar-widget-link">
+                        Browse New
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </a>
+                </div>
+
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                    </div>
+                    <h4 class="sidebar-widget-title">Stay Updated</h4>
+                    <p class="sidebar-widget-text">Get exclusive deals & updates</p>
+                    <form class="sidebar-newsletter-form" onsubmit="event.preventDefault()">
+                        <input type="email" placeholder="Your email" class="sidebar-newsletter-input">
+                        <button type="submit" class="sidebar-newsletter-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <h4 class="sidebar-widget-title">Need Help?</h4>
+                    <p class="sidebar-widget-text">Our support team is here for you</p>
+                    <a href="<?php echo url('/contact'); ?>" class="sidebar-widget-link">
+                        Contact Us
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </a>
+                </div>
+            </aside>
         </div>
     </div>
 </div>
@@ -253,7 +320,7 @@
     margin: 0;
 }
 
-/* Shop Layout - Sidebar + Main */
+/* Shop Layout - Left Sidebar + Main + Right Sidebar */
 .shop-layout {
     display: grid;
     grid-template-columns: 1fr;
@@ -268,7 +335,24 @@
 
 @media (min-width: 1440px) {
     .shop-layout {
-        grid-template-columns: 300px 1fr;
+        grid-template-columns: 280px 1fr 260px;
+    }
+}
+
+/* Right sidebar hidden on smaller screens */
+.shop-sidebar-right {
+    display: none;
+}
+
+@media (min-width: 1440px) {
+    .shop-sidebar-right {
+        display: flex;
+        position: sticky;
+        top: calc(var(--header-height) + var(--space-4) + 48px);
+        max-height: calc(100vh - var(--header-height) - 80px);
+        overflow-y: auto;
+        align-self: start;
+        scrollbar-width: thin;
     }
 }
 

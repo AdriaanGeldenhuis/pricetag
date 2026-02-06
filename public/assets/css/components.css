@@ -438,6 +438,16 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-lg);
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-menu-toggle:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 @media (min-width: 1024px) {

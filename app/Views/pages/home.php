@@ -380,30 +380,47 @@ if (!empty($allCategories)):
 </section>
 
 <!-- Newsletter -->
-<section class="newsletter-section py-16">
+<section class="newsletter-section">
+    <div class="newsletter-bg-effects">
+        <div class="newsletter-orb newsletter-orb-1"></div>
+        <div class="newsletter-orb newsletter-orb-2"></div>
+        <div class="newsletter-orb newsletter-orb-3"></div>
+        <div class="newsletter-grid-lines"></div>
+    </div>
     <div class="container">
-        <div class="newsletter-content text-center">
-            <div class="newsletter-icon">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                    <polyline points="22,6 12,13 2,6"/>
+        <div class="newsletter-content">
+            <div class="newsletter-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
                 </svg>
+                <span>Free to join</span>
             </div>
-            <h2 class="newsletter-title">Stay in the Loop</h2>
-            <p class="newsletter-text">Subscribe for exclusive deals, new arrivals, and insider-only discounts</p>
+            <h2 class="newsletter-title">Stay in the <span class="newsletter-title-accent">Loop</span></h2>
+            <p class="newsletter-text">Get exclusive deals, new arrivals, and insider-only discounts delivered straight to your inbox.</p>
             <form id="newsletter-form" class="newsletter-form" action="<?= url('/newsletter/subscribe') ?>" method="POST">
                 <?= csrfField() ?>
                 <div class="newsletter-input-group">
-                    <input type="email"
-                           name="email"
-                           id="newsletter-email"
-                           placeholder="Enter your email address"
-                           required
-                           pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
-                           class="newsletter-input"
-                           aria-label="Email address">
-                    <button type="submit" class="btn btn-accent btn-lg newsletter-btn">
+                    <div class="newsletter-input-wrapper">
+                        <svg class="newsletter-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                            <polyline points="22,6 12,13 2,6"/>
+                        </svg>
+                        <input type="email"
+                               name="email"
+                               id="newsletter-email"
+                               placeholder="Enter your email address"
+                               required
+                               pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                               class="newsletter-input"
+                               aria-label="Email address">
+                    </div>
+                    <button type="submit" class="newsletter-btn">
                         <span class="newsletter-btn-text">Subscribe</span>
+                        <svg class="newsletter-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
                         <span class="newsletter-btn-loading" style="display: none;">
                             <svg class="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10" opacity="0.25"></circle>
@@ -414,8 +431,30 @@ if (!empty($allCategories)):
                 </div>
                 <p class="newsletter-error" id="newsletter-error" style="display: none;"></p>
                 <p class="newsletter-success" id="newsletter-success" style="display: none;">Thanks for subscribing!</p>
-                <p class="newsletter-privacy">We respect your privacy. Unsubscribe at any time.</p>
             </form>
+            <div class="newsletter-trust">
+                <div class="newsletter-trust-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <span>No spam, ever</span>
+                </div>
+                <div class="newsletter-trust-divider"></div>
+                <div class="newsletter-trust-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span>Privacy respected</span>
+                </div>
+                <div class="newsletter-trust-divider"></div>
+                <div class="newsletter-trust-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <span>Unsubscribe anytime</span>
+                </div>
+            </div>
         </div>
     </div>
 </section>
@@ -1188,92 +1227,327 @@ if (!empty($allCategories)):
 }
 
 /* Newsletter */
+/* Newsletter Section - Stay in the Loop */
 .newsletter-section {
-    background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-800) 100%);
-    color: white;
+    position: relative;
+    overflow: hidden;
+    padding: 80px 0;
+    background: linear-gradient(160deg, #0a0a0f 0%, #0f1118 30%, #111827 60%, #0a0a0f 100%);
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.newsletter-icon {
+/* Animated background orbs */
+.newsletter-bg-effects {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.newsletter-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.35;
+}
+
+.newsletter-orb-1 {
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(239, 68, 68, 0.4) 0%, transparent 70%);
+    top: -100px;
+    right: -50px;
+    animation: orbFloat1 8s ease-in-out infinite;
+}
+
+.newsletter-orb-2 {
+    width: 350px;
+    height: 350px;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.35) 0%, transparent 70%);
+    bottom: -80px;
+    left: -60px;
+    animation: orbFloat2 10s ease-in-out infinite;
+}
+
+.newsletter-orb-3 {
+    width: 250px;
+    height: 250px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: orbFloat3 12s ease-in-out infinite;
+}
+
+@keyframes orbFloat1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-30px, 20px) scale(1.1); }
+}
+
+@keyframes orbFloat2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(25px, -15px) scale(1.05); }
+}
+
+@keyframes orbFloat3 {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.15); }
+}
+
+/* Subtle grid overlay */
+.newsletter-grid-lines {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 80%);
+}
+
+/* Content */
+.newsletter-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    max-width: 560px;
+    margin: 0 auto;
+}
+
+/* Badge */
+.newsletter-badge {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 80px;
-    height: 80px;
-    background: rgba(255, 255, 255, 0.1);
+    gap: 6px;
+    padding: 6px 14px;
     border-radius: var(--radius-full);
-    margin-bottom: var(--space-4);
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    color: #4ade80;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin-bottom: var(--space-5);
 }
 
+/* Title */
 .newsletter-title {
-    font-size: var(--text-2xl);
-    font-weight: var(--font-bold);
-    margin-bottom: var(--space-2);
+    font-size: 2rem;
+    font-weight: 800;
+    color: #f1f5f9;
+    margin-bottom: var(--space-3);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
 }
 
+@media (min-width: 640px) {
+    .newsletter-title {
+        font-size: 2.5rem;
+    }
+}
+
+.newsletter-title-accent {
+    background: linear-gradient(135deg, #ef4444 0%, #f97316 50%, #eab308 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Subtitle */
 .newsletter-text {
     font-size: var(--text-base);
-    opacity: 0.9;
-    margin-bottom: var(--space-6);
-    max-width: 500px;
-    margin-left: auto;
-    margin-right: auto;
+    color: #94a3b8;
+    line-height: 1.6;
+    margin-bottom: var(--space-8);
 }
 
+@media (min-width: 640px) {
+    .newsletter-text {
+        font-size: 1.1rem;
+    }
+}
+
+/* Form */
 .newsletter-form {
-    max-width: 500px;
-    margin: 0 auto;
+    margin-bottom: var(--space-6);
 }
 
 .newsletter-input-group {
     display: flex;
-    gap: var(--space-3);
+    gap: 0;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 5px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.newsletter-input-group:focus-within {
+    border-color: rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.08), 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.newsletter-input-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-left: var(--space-4);
+}
+
+.newsletter-input-icon {
+    flex-shrink: 0;
+    color: #64748b;
+    transition: color 0.3s ease;
+}
+
+.newsletter-input-group:focus-within .newsletter-input-icon {
+    color: #ef4444;
 }
 
 .newsletter-input {
     flex: 1;
-    padding: var(--space-3) var(--space-4);
-    font-size: var(--text-base);
-    background: white;
+    padding: 14px 8px;
+    font-size: 15px;
+    background: transparent;
     border: none;
-    border-radius: var(--radius-lg);
-    color: var(--color-neutral-900);
+    color: #f1f5f9;
+    outline: none;
 }
 
 .newsletter-input::placeholder {
-    color: var(--color-neutral-400);
-}
-
-.newsletter-input:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
+    color: #475569;
 }
 
 .newsletter-btn {
     flex-shrink: 0;
-    padding: var(--space-3) var(--space-6);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 28px;
+    font-size: 15px;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    letter-spacing: 0.01em;
+    position: relative;
+    overflow: hidden;
 }
 
+.newsletter-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    border-radius: inherit;
+}
+
+.newsletter-btn:hover::before {
+    opacity: 1;
+}
+
+.newsletter-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.35);
+}
+
+.newsletter-btn:active {
+    transform: translateY(0);
+}
+
+.newsletter-btn-text,
+.newsletter-btn-arrow,
+.newsletter-btn-loading {
+    position: relative;
+    z-index: 1;
+}
+
+.newsletter-btn-arrow {
+    transition: transform 0.3s ease;
+}
+
+.newsletter-btn:hover .newsletter-btn-arrow {
+    transform: translateX(3px);
+}
+
+/* Messages */
 .newsletter-error {
     margin-top: var(--space-3);
     font-size: var(--text-sm);
-    color: var(--color-accent);
+    color: #f87171;
+    text-align: center;
 }
 
 .newsletter-success {
     margin-top: var(--space-3);
     font-size: var(--text-sm);
-    color: var(--color-accent);
+    color: #4ade80;
+    text-align: center;
 }
 
-.newsletter-privacy {
-    margin-top: var(--space-4);
-    font-size: var(--text-xs);
-    opacity: 0.7;
+/* Trust indicators */
+.newsletter-trust {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
 }
 
+.newsletter-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.newsletter-trust-item svg {
+    color: #475569;
+}
+
+.newsletter-trust-divider {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: #334155;
+}
+
+/* Responsive */
 @media (max-width: 640px) {
+    .newsletter-section {
+        padding: 60px 0;
+    }
+
     .newsletter-input-group {
         flex-direction: column;
+        border-radius: 14px;
+        padding: 4px;
+    }
+
+    .newsletter-input-wrapper {
+        padding: var(--space-1) var(--space-3);
+    }
+
+    .newsletter-btn {
+        justify-content: center;
+        border-radius: 10px;
+    }
+
+    .newsletter-trust-divider {
+        display: none;
+    }
+
+    .newsletter-trust {
+        gap: var(--space-3);
     }
 
     .countdown-timer {

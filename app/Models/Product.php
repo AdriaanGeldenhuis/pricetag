@@ -147,6 +147,18 @@ class Product extends Model
             $where[] = "(manage_stock = 0 OR stock_quantity > 0)";
         }
 
+        // Attribute filters
+        if (!empty($filters['attributes']) && is_array($filters['attributes'])) {
+            foreach ($filters['attributes'] as $attrId => $valueIds) {
+                if (!empty($valueIds) && is_array($valueIds)) {
+                    $placeholders = implode(',', array_fill(0, count($valueIds), '?'));
+                    $where[] = "id IN (SELECT product_id FROM product_attributes WHERE attribute_id = ? AND attribute_value_id IN ($placeholders))";
+                    $params[] = $attrId;
+                    $params = array_merge($params, $valueIds);
+                }
+            }
+        }
+
         // Build query
         $whereClause = implode(' AND ', $where);
 

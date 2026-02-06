@@ -119,6 +119,36 @@
                             </div>
                         </div>
 
+                        <!-- Dynamic Attribute Filters (shown when a category is selected) -->
+                        <?php foreach ($availableFilters['attributes'] ?? [] as $attr): ?>
+                        <?php if (!empty($attr['values'])): ?>
+                        <div class="filter-section">
+                            <h4 class="filter-section-title">
+                                <span><?= e($attr['name']) ?></span>
+                                <svg class="filter-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </h4>
+                            <div class="filter-section-content">
+                                <?php foreach ($attr['values'] as $val): ?>
+                                <label class="filter-checkbox-item">
+                                    <input type="checkbox" name="attr[<?= $attr['id'] ?>][]"
+                                           value="<?= $val['id'] ?>"
+                                           class="filter-checkbox-input"
+                                           <?= in_array($val['id'], $filters['attributes'][$attr['id']] ?? []) ? 'checked' : '' ?>>
+                                    <span class="filter-checkbox-custom">
+                                        <?php if ($attr['type'] === 'color' && $val['color_code']): ?>
+                                        <span class="filter-color-swatch" style="background-color: <?= e($val['color_code']) ?>"></span>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="filter-checkbox-label"><?= e($val['value']) ?></span>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        <?php endforeach; ?>
+
                         <button type="submit" class="filter-apply-btn">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -448,6 +478,10 @@
 
 .filter-section.collapsed .filter-toggle-icon {
     transform: rotate(-90deg);
+}
+
+.filter-section.collapsed .filter-section-content {
+    display: none;
 }
 
 .filter-section-content {
@@ -902,8 +936,8 @@ document.addEventListener('DOMContentLoaded', function() {
             minDisplay.textContent = formatPrice(minVal);
             maxDisplay.textContent = formatPrice(maxVal);
 
-            minInput.value = minVal > 0 ? minVal : '';
-            maxInput.value = maxVal < max ? maxVal : '';
+            minInput.value = minVal;
+            maxInput.value = maxVal;
         }
 
         priceMin.addEventListener('input', updateSlider);

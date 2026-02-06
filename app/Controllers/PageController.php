@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 
 class PageController extends Controller
 {
@@ -19,12 +20,14 @@ class PageController extends Controller
      */
     public function show(string $slug): void
     {
-        $db = db();
+        $db = Database::getInstance();
 
-        $page = $db->query("
+        $stmt = $db->prepare("
             SELECT * FROM pages
             WHERE slug = ? AND status = 'published'
-        ", [$slug])->fetch();
+        ");
+        $stmt->execute([$slug]);
+        $page = $stmt->fetch();
 
         // Fallback to built-in pages if not in database
         if (!$page) {

@@ -1,380 +1,542 @@
-<!-- AI Shopping Assistant Widget -->
-<div id="ai-assistant" class="ai-assistant">
-    <!-- Toggle Button -->
-    <button type="button" class="ai-assistant-toggle" id="ai-toggle" aria-label="Open AI Assistant">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ai-icon-chat">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+<!-- Taggy - AI Shopping Assistant Widget -->
+<div id="ai-assistant" class="taggy">
+    <!-- Toggle Button with price tag icon -->
+    <button type="button" class="taggy-toggle" id="ai-toggle" aria-label="Chat with Taggy">
+        <svg class="taggy-icon-open" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
         </svg>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ai-icon-close" style="display: none;">
+        <svg class="taggy-icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
+        <span class="taggy-pulse"></span>
     </button>
 
     <!-- Chat Window -->
-    <div class="ai-assistant-window" id="ai-window" hidden>
-        <div class="ai-assistant-header">
-            <div class="flex items-center gap-3">
-                <div class="ai-avatar">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                        <line x1="9" y1="9" x2="9.01" y2="9"/>
-                        <line x1="15" y1="9" x2="15.01" y2="9"/>
+    <div class="taggy-window" id="ai-window" hidden>
+        <!-- Header -->
+        <div class="taggy-header">
+            <div class="taggy-header-info">
+                <div class="taggy-avatar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+                        <line x1="7" y1="7" x2="7.01" y2="7"/>
                     </svg>
                 </div>
                 <div>
-                    <h3 class="font-semibold text-sm">Shopping Assistant</h3>
-                    <p class="text-xs text-muted">Ask me anything</p>
+                    <h3 class="taggy-name">Taggy</h3>
+                    <span class="taggy-status"><span class="taggy-status-dot"></span>Online &mdash; here to help</span>
                 </div>
             </div>
-            <button type="button" class="ai-close-btn" id="ai-close">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="taggy-close-btn" id="ai-close" aria-label="Close Taggy">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
                     <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
             </button>
         </div>
 
-        <div class="ai-assistant-messages" id="ai-messages">
+        <!-- Messages area -->
+        <div class="taggy-messages" id="ai-messages">
             <!-- Welcome message -->
-            <div class="ai-message ai-message-assistant">
-                <div class="ai-message-content">
-                    Hi there! I'm your shopping assistant. I can help you find products, answer questions about orders, or provide information about our store. How can I help you today?
+            <div class="taggy-msg taggy-msg-bot">
+                <div class="taggy-msg-avatar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                    </svg>
+                </div>
+                <div class="taggy-msg-bubble">
+                    Hey! I'm <strong>Taggy</strong>, your personal shopping sidekick. I know our entire store inside out &mdash; ask me about products, prices, orders, shipping, or anything else. What can I find for you?
                 </div>
             </div>
 
             <!-- Quick suggestions -->
-            <div class="ai-suggestions" id="ai-suggestions">
-                <button type="button" class="ai-suggestion-btn" data-message="Show me your best sellers">Best sellers</button>
-                <button type="button" class="ai-suggestion-btn" data-message="What's on sale?">On sale</button>
-                <button type="button" class="ai-suggestion-btn" data-message="How do I track my order?">Track order</button>
-                <button type="button" class="ai-suggestion-btn" data-message="What are your shipping options?">Shipping info</button>
+            <div class="taggy-suggestions" id="ai-suggestions">
+                <button type="button" class="taggy-chip" data-message="Show me your best sellers">Best sellers</button>
+                <button type="button" class="taggy-chip" data-message="What deals do you have on sale right now?">Deals &amp; sales</button>
+                <button type="button" class="taggy-chip" data-message="How do I track my order?">Track my order</button>
+                <button type="button" class="taggy-chip" data-message="What are your shipping options and costs?">Shipping info</button>
+                <button type="button" class="taggy-chip" data-message="What is your return and refund policy?">Returns &amp; refunds</button>
+                <button type="button" class="taggy-chip" data-message="What payment methods do you accept?">Payment methods</button>
             </div>
         </div>
 
-        <div class="ai-assistant-input">
-            <form id="ai-form">
-                <div class="ai-input-wrapper">
-                    <input type="text" id="ai-input" placeholder="Type your message..." autocomplete="off">
-                    <button type="submit" class="ai-send-btn" id="ai-send">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="22" y1="2" x2="11" y2="13"/>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                        </svg>
-                    </button>
-                </div>
+        <!-- Input area -->
+        <div class="taggy-input-area">
+            <form id="ai-form" class="taggy-form">
+                <input type="text" id="ai-input" class="taggy-input" placeholder="Ask Taggy anything..." autocomplete="off" />
+                <button type="submit" class="taggy-send" id="ai-send" aria-label="Send message">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                    </svg>
+                </button>
             </form>
+            <div class="taggy-powered">Powered by Taggy AI</div>
         </div>
     </div>
 </div>
 
 <style>
-.ai-assistant {
+/* ============================================
+   TAGGY - AI Shopping Assistant
+   A one-of-a-kind assistant for Pricetag.co.za
+   ============================================ */
+
+/* --- Container --- */
+.taggy {
     position: fixed;
-    bottom: var(--space-6);
-    right: var(--space-6);
+    bottom: var(--space-5);
+    right: var(--space-5);
     z-index: var(--z-modal);
+    font-family: var(--font-sans);
 }
 
-.ai-assistant-toggle {
-    width: 56px;
-    height: 56px;
+/* --- Toggle Button --- */
+.taggy-toggle {
+    position: relative;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-    color: white;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent, var(--color-primary-dark)) 100%);
+    color: #fff;
     border: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: var(--shadow-lg);
-    transition: transform var(--duration-200), box-shadow var(--duration-200);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 0 0 rgba(139, 43, 43, 0.4);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
-.ai-assistant-toggle:hover {
-    transform: scale(1.05);
-    box-shadow: var(--shadow-xl);
+.taggy-toggle:hover {
+    transform: scale(1.08) translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(139, 43, 43, 0.3);
 }
 
-.ai-assistant-toggle.is-open .ai-icon-chat {
-    display: none;
-}
+.taggy-toggle.is-open .taggy-icon-open { display: none; }
+.taggy-toggle.is-open .taggy-icon-close { display: block !important; }
 
-.ai-assistant-toggle.is-open .ai-icon-close {
-    display: block;
-}
-
-.ai-assistant-window {
+/* Pulse ring animation on toggle */
+.taggy-pulse {
     position: absolute;
-    bottom: 70px;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid var(--color-primary);
+    opacity: 0;
+    animation: taggyPulse 3s ease-out infinite;
+}
+
+.taggy-toggle.is-open .taggy-pulse,
+.taggy-toggle:hover .taggy-pulse {
+    animation: none;
+    opacity: 0;
+}
+
+@keyframes taggyPulse {
+    0% { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* --- Chat Window --- */
+.taggy-window {
+    position: absolute;
+    bottom: 74px;
     right: 0;
     width: 380px;
-    max-width: calc(100vw - var(--space-8));
-    height: 500px;
-    max-height: calc(100vh - 150px);
+    max-width: calc(100vw - 32px);
+    height: 520px;
+    max-height: calc(100vh - 140px);
     background: var(--color-background);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-2xl);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: slideUp var(--duration-300) ease-out;
+    animation: taggySlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.ai-assistant-window[hidden] {
+.taggy-window[hidden] {
     display: none;
 }
 
-.ai-assistant-header {
-    padding: var(--space-4);
+@keyframes taggySlideUp {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* --- Header --- */
+.taggy-header {
+    padding: var(--space-4) var(--space-4);
     background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-    color: white;
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 
-.ai-avatar {
+.taggy-header-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.taggy-avatar {
     width: 36px;
     height: 36px;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.taggy-name {
+    font-size: var(--text-base);
+    font-weight: var(--font-bold);
+    margin: 0;
+    letter-spacing: 0.02em;
+}
+
+.taggy-status {
+    font-size: 11px;
+    opacity: 0.85;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.taggy-status-dot {
+    width: 7px;
+    height: 7px;
+    background: #34d399;
     border-radius: 50%;
+    display: inline-block;
+    animation: taggyStatusPulse 2s ease-in-out infinite;
+}
+
+@keyframes taggyStatusPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.taggy-close-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    cursor: pointer;
+    padding: var(--space-1-5);
+    border-radius: var(--radius-md);
+    opacity: 0.8;
+    transition: opacity 0.2s, background 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.ai-close-btn {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    padding: var(--space-1);
-    opacity: 0.8;
-    transition: opacity var(--duration-200);
-}
-
-.ai-close-btn:hover {
+.taggy-close-btn:hover {
     opacity: 1;
+    background: rgba(255, 255, 255, 0.2);
 }
 
-.ai-assistant-messages {
+/* --- Messages Area --- */
+.taggy-messages {
     flex: 1;
     overflow-y: auto;
     padding: var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
 }
 
-.ai-message {
-    max-width: 85%;
-    animation: fadeIn var(--duration-200) ease-out;
+.taggy-messages::-webkit-scrollbar {
+    width: 4px;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+.taggy-messages::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-.ai-message-user {
-    align-self: flex-end;
+.taggy-messages::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 4px;
 }
 
-.ai-message-assistant {
+/* --- Message Bubbles --- */
+.taggy-msg {
+    max-width: 88%;
+    display: flex;
+    gap: var(--space-2);
+    animation: taggyFadeIn 0.3s ease-out;
+}
+
+@keyframes taggyFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.taggy-msg-bot {
     align-self: flex-start;
 }
 
-.ai-message-content {
+.taggy-msg-user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.taggy-msg-avatar {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    margin-top: 2px;
+}
+
+.taggy-msg-user .taggy-msg-avatar {
+    display: none;
+}
+
+.taggy-msg-bubble {
     padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-xl);
     font-size: var(--text-sm);
-    line-height: 1.5;
+    line-height: 1.6;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
-.ai-message-user .ai-message-content {
-    background: var(--color-primary);
-    color: white;
-    border-bottom-right-radius: var(--radius-sm);
-}
-
-.ai-message-assistant .ai-message-content {
-    background: var(--color-neutral-100);
+.taggy-msg-bot .taggy-msg-bubble {
+    background: var(--color-background-elevated);
     color: var(--color-text);
-    border-bottom-left-radius: var(--radius-sm);
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm);
+    border: 1px solid var(--color-border-light);
 }
 
-.ai-suggestions {
+.taggy-msg-user .taggy-msg-bubble {
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: #fff;
+    border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl);
+}
+
+/* --- Quick Suggestion Chips --- */
+.taggy-suggestions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
+    gap: 6px;
+    padding: var(--space-1) 0 0 34px;
 }
 
-.ai-suggestion-btn {
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-background);
+.taggy-chip {
+    padding: 6px 14px;
+    background: transparent;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
-    font-size: var(--text-xs);
+    font-size: 12px;
+    color: var(--color-text-secondary);
     cursor: pointer;
-    transition: all var(--duration-200);
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    font-family: var(--font-sans);
 }
 
-.ai-suggestion-btn:hover {
+.taggy-chip:hover {
     background: var(--color-primary);
-    color: white;
+    color: #fff;
     border-color: var(--color-primary);
+    transform: translateY(-1px);
 }
 
-.ai-assistant-input {
-    padding: var(--space-4);
+/* --- Input Area --- */
+.taggy-input-area {
+    padding: var(--space-3) var(--space-4) var(--space-3);
     border-top: 1px solid var(--color-border-light);
+    flex-shrink: 0;
+    background: var(--color-background);
 }
 
-.ai-input-wrapper {
+.taggy-form {
     display: flex;
+    align-items: center;
     gap: var(--space-2);
-}
-
-.ai-input-wrapper input {
-    flex: 1;
-    padding: var(--space-3) var(--space-4);
+    background: var(--color-background-input, var(--color-background-secondary));
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
-    font-size: var(--text-sm);
-    outline: none;
-    transition: border-color var(--duration-200);
+    padding: 4px 4px 4px var(--space-4);
+    transition: border-color 0.2s;
 }
 
-.ai-input-wrapper input:focus {
+.taggy-form:focus-within {
     border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(139, 43, 43, 0.1);
 }
 
-.ai-send-btn {
-    width: 44px;
-    height: 44px;
+.taggy-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: var(--space-2) 0;
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    outline: none;
+    font-family: var(--font-sans);
+    min-width: 0;
+}
+
+.taggy-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+.taggy-send {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
     border-radius: 50%;
-    background: var(--color-primary);
-    color: white;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: #fff;
     border: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background var(--duration-200);
+    transition: transform 0.2s, opacity 0.2s;
 }
 
-.ai-send-btn:hover {
-    background: var(--color-primary-dark);
+.taggy-send:hover {
+    transform: scale(1.05);
 }
 
-.ai-send-btn:disabled {
-    background: var(--color-neutral-300);
+.taggy-send:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
+    transform: none;
 }
 
-.ai-typing {
+.taggy-powered {
+    text-align: center;
+    font-size: 10px;
+    color: var(--color-text-muted);
+    margin-top: 6px;
+    letter-spacing: 0.03em;
+    opacity: 0.6;
+}
+
+/* --- Typing Indicator --- */
+.taggy-typing {
     display: flex;
-    gap: 4px;
+    align-items: center;
+    gap: 5px;
     padding: var(--space-3) var(--space-4);
 }
 
-.ai-typing span {
-    width: 8px;
-    height: 8px;
-    background: var(--color-neutral-400);
+.taggy-typing span {
+    width: 7px;
+    height: 7px;
+    background: var(--color-text-muted);
     border-radius: 50%;
-    animation: typing 1.4s infinite ease-in-out;
+    animation: taggyBounce 1.4s infinite ease-in-out;
 }
 
-.ai-typing span:nth-child(2) { animation-delay: 0.2s; }
-.ai-typing span:nth-child(3) { animation-delay: 0.4s; }
+.taggy-typing span:nth-child(2) { animation-delay: 0.16s; }
+.taggy-typing span:nth-child(3) { animation-delay: 0.32s; }
 
-@keyframes typing {
-    0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-10px); }
+@keyframes taggyBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-8px); opacity: 1; }
 }
 
-/* Product cards in chat */
-.ai-products {
+/* --- Product Cards in Chat --- */
+.taggy-products {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
     margin-top: var(--space-2);
 }
 
-.ai-product-card {
+.taggy-product-card {
     display: flex;
     gap: var(--space-3);
-    padding: var(--space-2);
-    background: white;
+    padding: var(--space-2-5) var(--space-3);
+    background: var(--color-background);
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-border-light);
     text-decoration: none;
     color: inherit;
-    transition: border-color var(--duration-200);
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
-.ai-product-card:hover {
+.taggy-product-card:hover {
     border-color: var(--color-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-.ai-product-card img {
+.taggy-product-card img {
     width: 48px;
     height: 48px;
     border-radius: var(--radius-md);
     object-fit: cover;
 }
 
-.ai-product-info {
+.taggy-product-info {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
 }
 
-.ai-product-name {
+.taggy-product-name {
     font-size: var(--text-sm);
     font-weight: var(--font-medium);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: var(--color-text);
 }
 
-.ai-product-price {
+.taggy-product-price {
     font-size: var(--text-sm);
     color: var(--color-primary);
-    font-weight: var(--font-semibold);
+    font-weight: var(--font-bold);
 }
 
+/* --- Responsive --- */
 @media (max-width: 480px) {
-    .ai-assistant {
-        bottom: var(--space-4);
-        right: var(--space-4);
+    .taggy {
+        bottom: var(--space-3);
+        right: var(--space-3);
     }
 
-    .ai-assistant-window {
-        width: calc(100vw - var(--space-8));
-        height: calc(100vh - 200px);
-        bottom: 65px;
+    .taggy-window {
+        width: calc(100vw - 24px);
+        height: calc(100vh - 180px);
+        bottom: 70px;
+        right: -4px;
+    }
+
+    .taggy-suggestions {
+        padding-left: 0;
     }
 }
 </style>
 
 <script>
 (function() {
-    const assistant = {
+    const taggy = {
         window: document.getElementById('ai-window'),
         toggle: document.getElementById('ai-toggle'),
         close: document.getElementById('ai-close'),
@@ -389,12 +551,19 @@
             this.close.addEventListener('click', () => this.closeWindow());
             this.form.addEventListener('submit', (e) => this.handleSubmit(e));
 
-            // Suggestion buttons
-            document.querySelectorAll('.ai-suggestion-btn').forEach(btn => {
+            // Quick suggestion chips
+            this.suggestions.querySelectorAll('.taggy-chip').forEach(btn => {
                 btn.addEventListener('click', () => {
                     this.input.value = btn.dataset.message;
                     this.handleSubmit(new Event('submit'));
                 });
+            });
+
+            // Close on Escape
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !this.window.hidden) {
+                    this.closeWindow();
+                }
             });
         },
 
@@ -417,25 +586,20 @@
             const message = this.input.value.trim();
             if (!message) return;
 
-            // Hide suggestions after first message
+            // Hide suggestion chips after first interaction
             if (this.suggestions) {
                 this.suggestions.style.display = 'none';
             }
 
-            // Add user message
             this.addMessage(message, 'user');
             this.input.value = '';
             this.input.disabled = true;
-
-            // Show typing indicator
             this.showTyping();
 
             try {
                 const response = await fetch('<?= url('/api/assistant') ?>', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: message,
                         conversation_id: this.conversationId
@@ -446,14 +610,14 @@
                 this.hideTyping();
 
                 if (data.error) {
-                    this.addMessage(data.error, 'assistant');
+                    this.addMessage(data.error, 'bot');
                 } else {
                     this.conversationId = data.conversation_id;
-                    this.addMessage(data.response, 'assistant', data.products);
+                    this.addMessage(data.response, 'bot', data.products);
                 }
             } catch (error) {
                 this.hideTyping();
-                this.addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
+                this.addMessage("Oops! Something went wrong on my end. Give it another shot, or try rephrasing your question.", 'bot');
             }
 
             this.input.disabled = false;
@@ -462,22 +626,32 @@
 
         addMessage(content, type, products = []) {
             const div = document.createElement('div');
-            div.className = `ai-message ai-message-${type}`;
+            div.className = `taggy-msg taggy-msg-${type}`;
 
-            let html = `<div class="ai-message-content">${this.escapeHtml(content)}</div>`;
+            let html = '';
 
-            // Add product cards if available
+            if (type === 'bot') {
+                html += `<div class="taggy-msg-avatar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                    </svg>
+                </div>`;
+            }
+
+            html += `<div class="taggy-msg-bubble">${this.formatMessage(content)}</div>`;
+
+            // Product recommendation cards
             if (products && products.length > 0) {
-                html += '<div class="ai-products">';
+                html += '<div class="taggy-products">';
                 products.forEach(product => {
                     html += `
-                        <a href="<?= url('/products/') ?>${product.slug}" class="ai-product-card">
-                            <div class="ai-product-info">
-                                <div class="ai-product-name">${this.escapeHtml(product.name)}</div>
-                                <div class="ai-product-price">R${parseFloat(product.price).toFixed(2)}</div>
+                        <a href="<?= url('/products/') ?>${this.escapeHtml(product.slug)}" class="taggy-product-card">
+                            <div class="taggy-product-info">
+                                <div class="taggy-product-name">${this.escapeHtml(product.name)}</div>
+                                <div class="taggy-product-price">R${parseFloat(product.price).toFixed(2)}</div>
                             </div>
-                        </a>
-                    `;
+                        </a>`;
                 });
                 html += '</div>';
             }
@@ -487,27 +661,48 @@
             this.messages.scrollTop = this.messages.scrollHeight;
         },
 
+        formatMessage(text) {
+            // Escape HTML first, then apply formatting
+            let safe = this.escapeHtml(text);
+            // Bold: **text**
+            safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            // Bullet points
+            safe = safe.replace(/^[•\-]\s?/gm, '<span style="color:var(--color-primary);margin-right:4px;">&#8226;</span>');
+            // Line breaks
+            safe = safe.replace(/\n/g, '<br>');
+            return safe;
+        },
+
         showTyping() {
             const div = document.createElement('div');
-            div.className = 'ai-message ai-message-assistant';
-            div.id = 'ai-typing';
-            div.innerHTML = '<div class="ai-typing"><span></span><span></span><span></span></div>';
+            div.className = 'taggy-msg taggy-msg-bot';
+            div.id = 'taggy-typing';
+            div.innerHTML = `
+                <div class="taggy-msg-avatar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                    </svg>
+                </div>
+                <div class="taggy-msg-bubble">
+                    <div class="taggy-typing"><span></span><span></span><span></span></div>
+                </div>`;
             this.messages.appendChild(div);
             this.messages.scrollTop = this.messages.scrollHeight;
         },
 
         hideTyping() {
-            const typing = document.getElementById('ai-typing');
-            if (typing) typing.remove();
+            const el = document.getElementById('taggy-typing');
+            if (el) el.remove();
         },
 
         escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
-            return div.innerHTML.replace(/\n/g, '<br>');
+            return div.innerHTML;
         }
     };
 
-    document.addEventListener('DOMContentLoaded', () => assistant.init());
+    document.addEventListener('DOMContentLoaded', () => taggy.init());
 })();
 </script>

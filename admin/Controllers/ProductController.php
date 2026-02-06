@@ -471,7 +471,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Bulk action for products
+     * Bulk action for products (quick status change / delete)
      */
     public function bulkAction(): void
     {
@@ -535,6 +535,131 @@ class ProductController extends Controller
         } catch (\Throwable $e) {
             error_log("Bulk action error: " . $e->getMessage());
             $this->json(['success' => false, 'message' => 'An error occurred'], 500);
+        }
+    }
+
+    /**
+     * Bulk edit products (advanced field updates)
+     */
+    public function bulkEdit(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $ids = $input['ids'] ?? [];
+
+        if (empty($ids)) {
+            $this->json(['success' => false, 'message' => 'No products selected'], 400);
+            return;
+        }
+
+        // Sanitize IDs
+        $ids = array_map('intval', $ids);
+        $ids = array_filter($ids, fn($id) => $id > 0);
+
+        if (empty($ids)) {
+            $this->json(['success' => false, 'message' => 'No valid products selected'], 400);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        try {
+            $db->beginTransaction();
+
+            // Handle price updates
+            if (!empty($input['price_action'])) {
+                $priceValue = (float) ($input['price_value'] ?? 0);
+
+                switch ($input['price_action']) {
+                    case 'set':
+                        $stmt = $db->prepare("UPDATE products SET price = ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'increase_percent':
+                        $stmt = $db->prepare("UPDATE products SET price = price * (1 + ? / 100) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'decrease_percent':
+                        $stmt = $db->prepare("UPDATE products SET price = price * (1 - ? / 100) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'increase_fixed':
+                        $stmt = $db->prepare("UPDATE products SET price = price + ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'decrease_fixed':
+                        $stmt = $db->prepare("UPDATE products SET price = GREATEST(0, price - ?) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                }
+            }
+
+            // Handle stock updates
+            if (!empty($input['stock_action'])) {
+                $stockValue = (int) ($input['stock_value'] ?? 0);
+
+                switch ($input['stock_action']) {
+                    case 'set':
+                        $stmt = $db->prepare("UPDATE products SET stock_quantity = ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$stockValue], $ids));
+                        break;
+                    case 'add':
+                        $stmt = $db->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$stockValue], $ids));
+                        break;
+                    case 'subtract':
+                        $stmt = $db->prepare("UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - ?) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$stockValue], $ids));
+                        break;
+                }
+            }
+
+            // Handle vendor update
+            if (isset($input['vendor_id'])) {
+                $vendorId = $input['vendor_id'] === '' ? null : (int) $input['vendor_id'];
+                $stmt = $db->prepare("UPDATE products SET vendor_id = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([$vendorId], $ids));
+            }
+
+            // Handle status update
+            if (!empty($input['status'])) {
+                $validStatuses = ['active', 'draft', 'inactive'];
+                if (in_array($input['status'], $validStatuses)) {
+                    $stmt = $db->prepare("UPDATE products SET status = ? WHERE id IN ($placeholders)");
+                    $stmt->execute(array_merge([$input['status']], $ids));
+                }
+            }
+
+            // Handle flags
+            if (isset($input['is_featured'])) {
+                $stmt = $db->prepare("UPDATE products SET is_featured = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([(int) $input['is_featured']], $ids));
+            }
+            if (isset($input['is_new'])) {
+                $stmt = $db->prepare("UPDATE products SET is_new = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([(int) $input['is_new']], $ids));
+            }
+            if (isset($input['is_on_sale'])) {
+                $stmt = $db->prepare("UPDATE products SET is_on_sale = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([(int) $input['is_on_sale']], $ids));
+            }
+
+            $db->commit();
+
+            $this->json([
+                'success' => true,
+                'message' => count($ids) . ' product(s) updated successfully'
+            ]);
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log("Bulk edit error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'An error occurred while updating products'], 500);
         }
     }
 
@@ -961,6 +1086,192 @@ class ProductController extends Controller
                 'suggested_category' => $result['suggested_category'] ?? $categoryName,
             ],
         ]);
+    }
+
+    /**
+     * Duplicate a product (AJAX)
+     */
+    public function duplicate(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        try {
+            $db->beginTransaction();
+
+            // Generate unique slug
+            $baseSlug = $product->slug . '-copy';
+            $slug = $baseSlug;
+            $counter = 1;
+            while (true) {
+                $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? LIMIT 1");
+                $stmt->execute([$slug]);
+                if (!$stmt->fetch()) break;
+                $slug = $baseSlug . '-' . (++$counter);
+                if ($counter > 100) {
+                    $slug = $baseSlug . '-' . uniqid();
+                    break;
+                }
+            }
+
+            // Generate unique SKU
+            $baseSku = $product->sku . '-COPY';
+            $newSku = $baseSku;
+            $counter = 1;
+            while (true) {
+                $stmt = $db->prepare("SELECT id FROM products WHERE sku = ? LIMIT 1");
+                $stmt->execute([$newSku]);
+                if (!$stmt->fetch()) break;
+                $newSku = $baseSku . '-' . (++$counter);
+                if ($counter > 100) {
+                    $newSku = $baseSku . '-' . uniqid();
+                    break;
+                }
+            }
+
+            // Create duplicate product
+            $newProduct = Product::create([
+                'sku' => $newSku,
+                'name' => $product->name . ' (Copy)',
+                'slug' => $slug,
+                'description' => $product->description,
+                'short_description' => $product->short_description,
+                'type' => $product->type ?? 'simple',
+                'status' => 'draft', // Always start as draft
+                'price' => $product->price,
+                'compare_price' => $product->compare_price,
+                'cost_price' => $product->cost_price,
+                'manage_stock' => $product->manage_stock,
+                'stock_quantity' => $product->stock_quantity,
+                'low_stock_threshold' => $product->low_stock_threshold,
+                'weight' => $product->weight,
+                'length' => $product->length,
+                'width' => $product->width,
+                'height' => $product->height,
+                'vendor_id' => $product->vendor_id,
+                'meta_title' => $product->meta_title,
+                'meta_description' => $product->meta_description,
+                'is_featured' => 0,
+                'is_new' => 0,
+                'is_on_sale' => $product->is_on_sale,
+            ]);
+
+            // Copy categories
+            $stmt = $db->prepare("SELECT category_id, is_primary FROM product_categories WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $categories = $stmt->fetchAll();
+            foreach ($categories as $cat) {
+                $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
+                $stmt->execute([$newProduct->id, $cat['category_id'], $cat['is_primary']]);
+            }
+
+            // Copy attributes
+            $stmt = $db->prepare("SELECT attribute_id, attribute_value_id, custom_value FROM product_attributes WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $attributes = $stmt->fetchAll();
+            foreach ($attributes as $attr) {
+                $stmt = $db->prepare("INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id, custom_value) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$newProduct->id, $attr['attribute_id'], $attr['attribute_value_id'], $attr['custom_value']]);
+            }
+
+            // Copy specifications
+            $stmt = $db->prepare("SELECT spec_name, spec_value, sort_order FROM product_specifications WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $specs = $stmt->fetchAll();
+            foreach ($specs as $spec) {
+                $stmt = $db->prepare("INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$newProduct->id, $spec['spec_name'], $spec['spec_value'], $spec['sort_order']]);
+            }
+
+            // Copy images (reference same files, don't duplicate actual files)
+            $stmt = $db->prepare("SELECT path, alt_text, is_primary, sort_order FROM product_images WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $images = $stmt->fetchAll();
+            foreach ($images as $img) {
+                $stmt = $db->prepare("INSERT INTO product_images (product_id, path, alt_text, is_primary, sort_order) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$newProduct->id, $img['path'], $img['alt_text'], $img['is_primary'], $img['sort_order']]);
+            }
+
+            $db->commit();
+
+            $this->json([
+                'success' => true,
+                'product_id' => $newProduct->id,
+                'message' => 'Product duplicated successfully'
+            ]);
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log("Product duplication error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'Failed to duplicate product']);
+        }
+    }
+
+    /**
+     * Autosave product (AJAX)
+     */
+    public function autosave(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        if (empty($data)) {
+            $this->json(['success' => false, 'message' => 'No data provided']);
+            return;
+        }
+
+        // Only update safe fields
+        $allowedFields = [
+            'name', 'description', 'short_description', 'price', 'compare_price',
+            'cost_price', 'stock_quantity', 'weight', 'meta_title', 'meta_description'
+        ];
+
+        $updates = [];
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) {
+                $product->$field = $data[$field];
+                $updates[] = $field;
+            }
+        }
+
+        if (empty($updates)) {
+            $this->json(['success' => false, 'message' => 'No valid fields to update']);
+            return;
+        }
+
+        try {
+            $product->save();
+            $this->json([
+                'success' => true,
+                'message' => 'Auto-saved',
+                'updated_fields' => $updates,
+                'saved_at' => date('H:i:s')
+            ]);
+        } catch (\Throwable $e) {
+            error_log("Autosave error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'Failed to save']);
+        }
     }
 
     /**

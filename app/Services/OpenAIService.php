@@ -65,16 +65,29 @@ class OpenAIService
         $storeName = $context['store_name'] ?? 'Pricetag';
         $currency = $context['currency'] ?? 'ZAR';
 
-        $prompt = "You are a friendly and helpful shopping assistant for {$storeName}, a South African e-commerce store. ";
-        $prompt .= "Your job is to help customers find products, answer questions about the store, and provide excellent customer service.\n\n";
+        $prompt = "You are **Taggy**, the AI shopping assistant for {$storeName} (pricetag.co.za), a South African e-commerce store.\n\n";
 
-        $prompt .= "Guidelines:\n";
-        $prompt .= "- Be friendly, professional, and concise\n";
-        $prompt .= "- All prices are in {$currency} (South African Rand)\n";
-        $prompt .= "- If asked about products, recommend from the available inventory\n";
-        $prompt .= "- If you don't know something specific, offer to help find the information\n";
-        $prompt .= "- Never make up product information - only reference products you know about\n";
-        $prompt .= "- For order issues, suggest contacting customer support\n\n";
+        $prompt .= "YOUR PERSONALITY:\n";
+        $prompt .= "- You are warm, witty, and genuinely helpful — like a knowledgeable friend who works at the store\n";
+        $prompt .= "- Keep answers concise but complete — no fluff, just value\n";
+        $prompt .= "- Use a casual-professional tone. Friendly but never sloppy\n";
+        $prompt .= "- When listing info, use bullet points with • for readability\n";
+        $prompt .= "- If you don't know something specific, say so honestly and offer alternatives\n\n";
+
+        $prompt .= "STORE KNOWLEDGE:\n";
+        $prompt .= "- All prices are in {$currency} (South African Rand, symbol: R)\n";
+        $prompt .= "- Shipping: Nationwide delivery across South Africa. Standard 3-5 business days. Free shipping on orders over R500. Express delivery available in major metros (1-2 days, R150)\n";
+        $prompt .= "- Returns: 30-day return policy. Items must be unused, in original packaging. Contact support to initiate. Refunds processed within 5-7 business days after receiving the return\n";
+        $prompt .= "- Payment: Visa, MasterCard, EFT bank transfers, Cash on Delivery (select areas), Instant EFT via Ozow\n";
+        $prompt .= "- Customer support: info@pricetag.co.za / 011 100 2232 / Mon-Fri 8am-5pm\n";
+        $prompt .= "- Order tracking: Customers can track via 'My Orders' in their account page, or use the tracking number emailed after dispatch\n\n";
+
+        $prompt .= "RULES:\n";
+        $prompt .= "- NEVER make up product info — only reference products provided in context below\n";
+        $prompt .= "- When recommending products, mention the name and price\n";
+        $prompt .= "- For order-specific issues (cancellation, damaged items), direct to customer support\n";
+        $prompt .= "- If asked about competitor prices or stores, stay neutral — focus on our value\n";
+        $prompt .= "- Always sign off helpfully: offer to help with anything else\n\n";
 
         // Add user context
         if (!empty($context['user'])) {
@@ -775,38 +788,123 @@ class OpenAIService
     }
 
     /**
-     * Fallback response when API is unavailable
+     * Fallback response when API is unavailable.
+     * Taggy answers comprehensively with keyword matching across many topics.
      */
     private function getFallbackResponse(string $message, array $context): array
     {
-        $lowerMessage = strtolower($message);
+        $q = strtolower($message);
+        $storeName = $context['store_name'] ?? 'Pricetag';
+        $name = $context['user']['name'] ?? 'there';
+        $products = $context['relevant_products'] ?? [];
 
-        // Simple keyword-based responses
-        if (str_contains($lowerMessage, 'hello') || str_contains($lowerMessage, 'hi')) {
-            $name = $context['user']['name'] ?? 'there';
-            $response = "Hello {$name}! Welcome to " . ($context['store_name'] ?? 'Pricetag') . ". How can I help you today?";
-        } elseif (str_contains($lowerMessage, 'order') || str_contains($lowerMessage, 'track')) {
-            $response = "To track your order, please go to your account page and click on 'My Orders'. If you need further assistance with an order, please contact our customer support.";
-        } elseif (str_contains($lowerMessage, 'shipping') || str_contains($lowerMessage, 'delivery')) {
-            $response = "We offer nationwide delivery across South Africa. Standard delivery takes 3-5 business days. Free shipping is available on orders over R500.";
-        } elseif (str_contains($lowerMessage, 'return') || str_contains($lowerMessage, 'refund')) {
-            $response = "We have a 30-day return policy. Items must be unused and in original packaging. Please contact customer support to initiate a return.";
-        } elseif (str_contains($lowerMessage, 'payment') || str_contains($lowerMessage, 'pay')) {
-            $response = "We accept credit/debit cards (Visa, MasterCard), EFT bank transfers, and Cash on Delivery in select areas.";
-        } elseif (!empty($context['relevant_products'])) {
-            $response = "Here are some products you might be interested in:\n\n";
-            foreach (array_slice($context['relevant_products'], 0, 3) as $product) {
-                $response .= "• " . $product['name'] . " - R" . number_format($product['price'], 2) . "\n";
+        // --- Greetings ---
+        if (preg_match('/\b(hello|hi|hey|howzit|good\s*(morning|afternoon|evening)|sup)\b/', $q)) {
+            $response = "Hey {$name}! Welcome to {$storeName} — I'm Taggy, your personal shopping sidekick. I can help you with:\n\n• Finding products & deals\n• Tracking your order\n• Shipping & delivery info\n• Returns & refunds\n• Payment options\n\nWhat can I help you with?";
+        }
+
+        // --- Order tracking ---
+        elseif (preg_match('/\b(track|tracking|order\s*status|where.*(order|package|parcel)|my\s*order|dispatch)\b/', $q)) {
+            $response = "Here's how to track your order:\n\n• Log in to your account and go to **My Orders**\n• Click on the order to see its current status and tracking number\n• Once dispatched, you'll also get a tracking email with a direct link\n\nIf your order hasn't moved in a while or something seems off, reach out to our team at info@pricetag.co.za or call 011 100 2232 (Mon-Fri, 8am-5pm) and we'll sort it out.";
+        }
+
+        // --- Shipping & delivery ---
+        elseif (preg_match('/\b(ship|shipping|deliver|delivery|courier|postage|dispatch|how\s*long)\b/', $q)) {
+            $response = "Here's the full breakdown on delivery:\n\n• **Standard delivery**: 3-5 business days nationwide — R75\n• **Express delivery**: 1-2 business days in major metros — R150\n• **Free shipping**: On all orders over R500!\n\nWe ship to all provinces in South Africa. You'll get a tracking number by email once your order is dispatched.\n\nNeed anything else?";
+        }
+
+        // --- Returns & refunds ---
+        elseif (preg_match('/\b(return|refund|exchange|send\s*back|money\s*back|broken|damaged|defective|warranty)\b/', $q)) {
+            $response = "Our return policy is straightforward:\n\n• **30-day returns** — from the date you receive your order\n• Items must be **unused** and in the **original packaging**\n• To start a return, email info@pricetag.co.za with your order number\n• Refunds are processed within **5-7 business days** after we receive the item\n• **Damaged or defective** items? We'll cover return shipping — just send us a photo of the issue\n\nIs there something specific you'd like to return?";
+        }
+
+        // --- Payment methods ---
+        elseif (preg_match('/\b(pay|payment|card|visa|mastercard|eft|credit|debit|cash\s*on|cod|ozow|how.*pay)\b/', $q)) {
+            $response = "We offer several convenient payment options:\n\n• **Credit/Debit cards** — Visa & MasterCard (secured by 3D Secure)\n• **EFT** — Direct bank transfer\n• **Instant EFT** — Via Ozow (immediate confirmation)\n• **Cash on Delivery** — Available in select metro areas\n\nAll transactions are SSL-encrypted and 100% secure. Which method works best for you?";
+        }
+
+        // --- Best sellers / popular ---
+        elseif (preg_match('/\b(best\s*sell|popular|top\s*product|trending|most\s*bought|hot|recommend)\b/', $q)) {
+            if (!empty($products)) {
+                $response = "Here are some of our most popular picks right now:\n\n";
+                foreach (array_slice($products, 0, 5) as $p) {
+                    $response .= "• **{$p['name']}** — R" . number_format($p['price'], 2) . "\n";
+                }
+                $response .= "\nWant me to find something more specific? Just tell me what you're looking for.";
+            } else {
+                $response = "Our best sellers change fast! Browse the homepage for featured picks, or tell me what kind of product you're after and I'll help you find the best options.";
             }
-            $response .= "\nWould you like more details on any of these?";
-        } else {
-            $response = "Thank you for your message! I'm here to help you with product questions, order tracking, or any other inquiries. What would you like to know?";
+        }
+
+        // --- Sales & deals ---
+        elseif (preg_match('/\b(sale|deal|discount|promo|coupon|voucher|special|cheap|bargain|on\s*sale|clearance)\b/', $q)) {
+            if (!empty($products)) {
+                $response = "Great timing — here are some deals worth checking out:\n\n";
+                foreach (array_slice($products, 0, 5) as $p) {
+                    $response .= "• **{$p['name']}** — R" . number_format($p['price'], 2) . "\n";
+                }
+                $response .= "\nKeep an eye on our homepage for flash sales, or sign up for our newsletter to get exclusive discount codes!";
+            } else {
+                $response = "We regularly run sales and specials! Check our homepage for current deals, or sign up for our newsletter to get exclusive discount codes delivered straight to your inbox.\n\nIs there a specific product category you're hunting deals in?";
+            }
+        }
+
+        // --- Contact / support ---
+        elseif (preg_match('/\b(contact|support|email|phone|call|speak|reach|help\s*line|customer\s*service|complaint)\b/', $q)) {
+            $response = "Here's how to reach our team:\n\n• **Email**: info@pricetag.co.za\n• **Phone**: 011 100 2232\n• **Hours**: Monday to Friday, 8am - 5pm\n\nFor quick questions, I'm right here! For order-specific issues, the team above can pull up your details and sort things out.";
+        }
+
+        // --- Account related ---
+        elseif (preg_match('/\b(account|sign\s*up|register|log\s*in|login|password|reset|forgot)\b/', $q)) {
+            $response = "Here's what you need to know about your account:\n\n• **Sign up**: Click 'Register' at the top of the page — it only takes a minute\n• **Log in**: Use your email and password at the login page\n• **Forgot password?**: Click 'Forgot Password' on the login page and we'll email you a reset link\n• **Benefits**: Track orders, save addresses, faster checkout, and order history\n\nHaving trouble accessing your account? Drop a line to info@pricetag.co.za and we'll help.";
+        }
+
+        // --- Store hours / about ---
+        elseif (preg_match('/\b(hours|open|close|about|who\s*are|store\s*info|where\s*are|location|address)\b/', $q)) {
+            $response = "{$storeName} is an online store — we're always open for browsing and ordering, 24/7!\n\n• **Customer support hours**: Mon-Fri, 8am-5pm\n• **Processing**: Orders placed before 2pm on weekdays are dispatched same day\n\nWe're proudly South African, serving customers nationwide. Anything else you'd like to know?";
+        }
+
+        // --- Price / cost questions ---
+        elseif (preg_match('/\b(how\s*much|price|cost|expensive|budget|affordable)\b/', $q)) {
+            if (!empty($products)) {
+                $response = "Here's what I found that might match:\n\n";
+                foreach (array_slice($products, 0, 5) as $p) {
+                    $response .= "• **{$p['name']}** — R" . number_format($p['price'], 2) . "\n";
+                }
+                $response .= "\nAll prices include VAT. Free shipping on orders over R500! Want me to narrow it down?";
+            } else {
+                $response = "All our prices include VAT and are displayed in South African Rand (R). Free shipping on orders over R500!\n\nTell me what product you're interested in and I'll get you the exact pricing.";
+            }
+        }
+
+        // --- Thank you ---
+        elseif (preg_match('/\b(thank|thanks|cheers|appreciate|ta)\b/', $q)) {
+            $response = "You're welcome! Happy to help. If anything else comes up, just ask — I'm always here. Happy shopping!";
+        }
+
+        // --- Goodbye ---
+        elseif (preg_match('/\b(bye|goodbye|see\s*you|later|ciao|cheers)\b/', $q)) {
+            $response = "Cheers, {$name}! Happy shopping and come back anytime. Taggy's always here if you need me!";
+        }
+
+        // --- Product search (catch-all with products) ---
+        elseif (!empty($products)) {
+            $response = "Based on what you're looking for, here are some options:\n\n";
+            foreach (array_slice($products, 0, 5) as $p) {
+                $response .= "• **{$p['name']}** — R" . number_format($p['price'], 2) . "\n";
+            }
+            $response .= "\nWant more details on any of these, or should I search for something else?";
+        }
+
+        // --- General fallback ---
+        else {
+            $response = "Great question! I want to make sure I give you the right answer. Here's what I can help with:\n\n• **Products** — finding, comparing, and recommending\n• **Orders** — tracking and status updates\n• **Shipping** — delivery times, costs, and free shipping\n• **Returns** — our 30-day return policy\n• **Payments** — accepted methods and security\n• **Account** — sign up, login, password reset\n\nTry asking about any of these, or tell me what product you're after!";
         }
 
         return [
             'message' => $response,
             'conversation_id' => $this->generateConversationId(),
-            'products' => $context['relevant_products'] ?? [],
+            'products' => $products,
         ];
     }
 }

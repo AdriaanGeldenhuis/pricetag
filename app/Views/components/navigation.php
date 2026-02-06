@@ -50,101 +50,94 @@
                 </a>
 
                 <?php if (!empty($item['is_mega'])): ?>
-                <!-- Mega Menu - Contained Width -->
+                <!-- Mega Menu - Full Width Premium -->
                 <div class="mega-menu" role="menu">
+                    <div class="mega-menu-shimmer"></div>
                     <div class="mega-menu-inner">
-                        <!-- Categories Section -->
-                        <div class="mega-menu-categories">
-                            <div class="mega-menu-header">
-                                <h3 class="mega-menu-section-title">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <rect x="3" y="3" width="7" height="7"></rect>
-                                        <rect x="14" y="3" width="7" height="7"></rect>
-                                        <rect x="14" y="14" width="7" height="7"></rect>
-                                        <rect x="3" y="14" width="7" height="7"></rect>
-                                    </svg>
-                                    Shop by Category
-                                </h3>
-                                <a href="<?= url('/categories') ?>" class="mega-menu-view-all-link">
-                                    View All
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                                        <polyline points="12 5 19 12 12 19"></polyline>
-                                    </svg>
-                                </a>
-                            </div>
-                            <div class="mega-menu-category-grid">
-                                <?php
-                                // Use menu categories (filtered by show_in_menu)
-                                foreach ($menuCategories as $category):
-                                    $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
-                                    $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
-                                    $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
-                                    $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
-                                    $catCount = is_array($category) ? ($category['product_count'] ?? 0) : ($category->product_count ?? 0);
-                                ?>
-                                <a href="<?= url('/categories/' . $catSlug) ?>" class="mega-menu-category-item" role="menuitem">
-                                    <span class="mega-menu-category-icon">
+                        <!-- Header -->
+                        <div class="mega-menu-header">
+                            <h3 class="mega-menu-section-title">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="7" height="7"></rect>
+                                    <rect x="14" y="3" width="7" height="7"></rect>
+                                    <rect x="14" y="14" width="7" height="7"></rect>
+                                    <rect x="3" y="14" width="7" height="7"></rect>
+                                </svg>
+                                Shop by Category
+                            </h3>
+                            <a href="<?= url('/categories') ?>" class="mega-menu-view-all-link">
+                                Browse All Categories
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    <polyline points="12 5 19 12 12 19"></polyline>
+                                </svg>
+                            </a>
+                        </div>
+
+                        <!-- Category Grid -->
+                        <div class="mega-menu-category-grid">
+                            <?php
+                            $catIndex = 0;
+                            foreach ($menuCategories as $category):
+                                $catIcon = is_array($category) ? ($category['icon'] ?? '') : ($category->icon ?? '');
+                                $catSlug = is_array($category) ? ($category['slug'] ?? '') : ($category->slug ?? '');
+                                $catImage = is_array($category) ? ($category['image'] ?? '') : ($category->image ?? '');
+                                $catName = is_array($category) ? ($category['name'] ?? '') : ($category->name ?? '');
+                                $catCount = is_array($category) ? ($category['product_count'] ?? 0) : ($category->product_count ?? 0);
+                            ?>
+                            <a href="<?= url('/categories/' . $catSlug) ?>" class="mega-cat-card" role="menuitem" style="--cat-i: <?= $catIndex ?>">
+                                <span class="mega-cat-ring">
+                                    <span class="mega-cat-ring-inner">
                                         <?php if (!empty($catImage)): ?>
-                                        <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="" width="32" height="32">
+                                        <img src="<?= url('storage/uploads/' . e($catImage)) ?>" alt="" loading="lazy">
                                         <?php elseif (!empty($catIcon)): ?>
-                                        <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="" width="32" height="32">
+                                        <img src="<?= url('storage/uploads/' . e($catIcon)) ?>" alt="" loading="lazy">
                                         <?php else: ?>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <rect x="3" y="3" width="7" height="7"></rect>
-                                            <rect x="14" y="3" width="7" height="7"></rect>
-                                            <rect x="14" y="14" width="7" height="7"></rect>
-                                            <rect x="3" y="14" width="7" height="7"></rect>
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                                            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                                            <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                                            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
                                         </svg>
                                         <?php endif; ?>
                                     </span>
-                                    <span class="mega-menu-category-name"><?= e($catName) ?></span>
-                                    <?php if (!empty($catCount)): ?>
-                                    <span class="mega-menu-category-count"><?= $catCount ?></span>
-                                    <?php endif; ?>
-                                </a>
-                                <?php endforeach; ?>
-                            </div>
+                                </span>
+                                <span class="mega-cat-name"><?= e($catName) ?></span>
+                                <?php if (!empty($catCount)): ?>
+                                <span class="mega-cat-count"><?= $catCount ?> items</span>
+                                <?php endif; ?>
+                            </a>
+                            <?php $catIndex++; endforeach; ?>
                         </div>
 
-                        <!-- Promo Banners Section -->
+                        <!-- Bottom Promo Strip -->
                         <div class="mega-menu-promos">
-                            <?php if (!empty($megaMenuPromos)): ?>
-                            <?php foreach (array_slice($megaMenuPromos, 0, 2) as $promo): ?>
-                            <div class="mega-menu-promo-card" style="<?= !empty($promo['bg_color']) ? 'background-color:' . e($promo['bg_color']) : '' ?>">
-                                <?php if (!empty($promo['image'])): ?>
-                                <img src="<?= e($promo['image']) ?>" alt="" class="mega-menu-promo-img">
-                                <?php endif; ?>
-                                <div class="mega-menu-promo-content">
-                                    <?php if (!empty($promo['badge'])): ?>
-                                    <span class="mega-menu-promo-badge"><?= e($promo['badge']) ?></span>
-                                    <?php endif; ?>
-                                    <div class="mega-menu-promo-title"><?= e($promo['title']) ?></div>
-                                    <p class="mega-menu-promo-text"><?= e($promo['subtitle'] ?? '') ?></p>
-                                    <a href="<?= url($promo['url'] ?? '/products') ?>" class="btn btn-sm btn-primary">Shop Now</a>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
-                            <?php else: ?>
-                            <!-- Default promos -->
-                            <div class="mega-menu-promo-card mega-menu-promo-featured">
-                                <div class="mega-menu-promo-glow"></div>
-                                <div class="mega-menu-promo-content">
-                                    <span class="mega-menu-promo-badge">Featured</span>
-                                    <div class="mega-menu-promo-title">New Collection</div>
-                                    <p class="mega-menu-promo-text">Discover our latest arrivals</p>
-                                    <a href="<?= url('/products?featured=1') ?>" class="btn btn-sm btn-primary">Shop Now</a>
-                                </div>
-                            </div>
-                            <div class="mega-menu-promo-card mega-menu-promo-sale">
-                                <div class="mega-menu-promo-content">
-                                    <span class="mega-menu-promo-badge badge-danger">Sale</span>
-                                    <div class="mega-menu-promo-title">Up to 50% Off</div>
-                                    <p class="mega-menu-promo-text">Limited time deals</p>
-                                    <a href="<?= url('/products?on_sale=1') ?>" class="btn btn-sm btn-accent">View Deals</a>
-                                </div>
-                            </div>
-                            <?php endif; ?>
+                            <a href="<?= url('/products?featured=1') ?>" class="mega-promo-pill mega-promo-featured">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                </svg>
+                                <span>New Collection</span>
+                            </a>
+                            <a href="<?= url('/products?on_sale=1') ?>" class="mega-promo-pill mega-promo-sale">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                                    <polyline points="17 6 23 6 23 12"></polyline>
+                                </svg>
+                                <span>Hot Deals</span>
+                            </a>
+                            <a href="<?= url('/products?sort=newest') ?>" class="mega-promo-pill mega-promo-new">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                                <span>New Arrivals</span>
+                            </a>
+                            <a href="<?= url('/products?sort=popular') ?>" class="mega-promo-pill mega-promo-popular">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                                </svg>
+                                <span>Best Sellers</span>
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -156,30 +149,37 @@
 </nav>
 
 <style>
-/* Mega Menu Styles - Fixed Overflow */
+/* =========================================================================
+   MEGA MENU - Premium Full-Width Redesign
+   ========================================================================= */
 .main-nav {
     position: relative;
 }
 
 .main-nav .container {
-    position: relative;
+    position: static;
 }
 
+/* Override .nav-item position:relative for the mega menu parent */
+.main-nav .nav-item:first-child {
+    position: static;
+}
+
+/* Full-width dropdown - positioned relative to .main-nav */
 .mega-menu {
     position: absolute;
     top: 100%;
     left: 0;
     right: 0;
     padding: 0;
-    background-color: var(--color-background-secondary);
-    border: var(--border-1) solid var(--color-border);
+    background: linear-gradient(180deg, #1a1a24 0%, #14141c 60%, #111118 100%);
     border-top: none;
-    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    border-bottom: 2px solid rgba(139, 43, 43, 0.3);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), 0 0 60px rgba(139, 43, 43, 0.08);
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-10px);
-    transition: all var(--duration-200) var(--ease-out);
+    transform: translateY(-8px);
+    transition: opacity 0.25s ease, visibility 0.25s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 1000;
     overflow: hidden;
 }
@@ -190,37 +190,63 @@
     transform: translateY(0);
 }
 
+/* Top shimmer line */
+.mega-menu-shimmer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(120, 120, 140, 0.3) 15%,
+        rgba(200, 200, 220, 0.6) 30%,
+        rgba(255, 255, 255, 0.9) 50%,
+        rgba(200, 200, 220, 0.6) 70%,
+        rgba(120, 120, 140, 0.3) 85%,
+        transparent 100%);
+    background-size: 200% 100%;
+    animation: megaShimmer 4s linear infinite;
+    z-index: 2;
+}
+
+@keyframes megaShimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+
+/* Inner container */
 .mega-menu-inner {
-    display: grid;
-    grid-template-columns: 1fr 280px;
-    gap: var(--space-6);
-    padding: var(--space-6);
-    max-width: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-8);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
 }
 
-/* Categories Section */
-.mega-menu-categories {
-    min-width: 0;
-    overflow: hidden;
-}
-
+/* Header row */
 .mega-menu-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-4);
-    padding-bottom: var(--space-3);
-    border-bottom: var(--border-2) solid var(--color-primary);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .mega-menu-section-title {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-base);
+    gap: var(--space-3);
+    font-size: var(--text-lg);
     font-weight: var(--font-bold);
     color: var(--color-text);
     margin: 0;
+    letter-spacing: -0.01em;
+}
+
+.mega-menu-section-title svg {
+    color: var(--color-primary);
 }
 
 .mega-menu-view-all-link {
@@ -230,222 +256,236 @@
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: var(--color-primary);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-lg);
-    transition: var(--transition-all);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(139, 43, 43, 0.3);
+    transition: all 0.2s ease;
 }
 
 .mega-menu-view-all-link:hover {
-    background-color: var(--color-background-hover);
-    color: var(--color-accent);
-}
-
-.mega-menu-view-all-link:hover svg {
-    transform: translateX(4px);
-}
-
-.mega-menu-view-all-link svg {
-    transition: transform var(--duration-200);
-}
-
-/* Category Grid */
-.mega-menu-category-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-2);
-    max-height: 320px;
-    overflow-y: auto;
-    padding-right: var(--space-2);
-}
-
-@media (min-width: 1200px) {
-    .mega-menu-category-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-/* Custom scrollbar */
-.mega-menu-category-grid::-webkit-scrollbar {
-    width: 5px;
-}
-
-.mega-menu-category-grid::-webkit-scrollbar-track {
-    background: var(--color-background);
-    border-radius: var(--radius-full);
-}
-
-.mega-menu-category-grid::-webkit-scrollbar-thumb {
     background: var(--color-primary);
-    border-radius: var(--radius-full);
-}
-
-.mega-menu-category-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border-radius: var(--radius-lg);
-    transition: var(--transition-all);
-    background-color: transparent;
-}
-
-.mega-menu-category-item:hover {
-    background-color: var(--color-background-hover);
-}
-
-.mega-menu-category-icon {
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--color-background-elevated);
-    border-radius: var(--radius-lg);
-    flex-shrink: 0;
-    color: var(--color-text-muted);
-    transition: var(--transition-all);
-    overflow: hidden;
-}
-
-.mega-menu-category-item:hover .mega-menu-category-icon {
-    background-color: var(--color-primary);
-    color: var(--color-text);
-}
-
-.mega-menu-category-icon img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.mega-menu-category-name {
-    flex: 1;
-    font-size: var(--text-sm);
-    font-weight: var(--font-medium);
-    color: var(--color-text);
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.mega-menu-category-count {
-    font-size: 10px;
-    color: var(--color-text-muted);
-    background-color: var(--color-background-alt);
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-full);
-    flex-shrink: 0;
-}
-
-/* Promo Banners Section */
-.mega-menu-promos {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-}
-
-.mega-menu-promo-card {
-    position: relative;
-    background: linear-gradient(135deg, var(--color-background-elevated) 0%, var(--color-background-hover) 100%);
-    border-radius: var(--radius-xl);
-    padding: var(--space-5);
-    overflow: hidden;
-    border: var(--border-1) solid var(--color-border);
-    transition: var(--transition-all);
-}
-
-.mega-menu-promo-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-}
-
-.mega-menu-promo-featured {
-    background: linear-gradient(135deg, var(--color-primary) 0%, #991b1b 50%, #7f1d1d 100%);
+    color: #fff;
     border-color: var(--color-primary);
 }
 
-.mega-menu-promo-glow {
-    position: absolute;
-    top: -50%;
-    right: -50%;
+.mega-menu-view-all-link svg {
+    transition: transform 0.2s ease;
+}
+
+.mega-menu-view-all-link:hover svg {
+    transform: translateX(3px);
+}
+
+/* ---- Category Grid ---- */
+.mega-menu-category-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-3);
+}
+
+@media (min-width: 1100px) {
+    .mega-menu-category-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+@media (min-width: 1300px) {
+    .mega-menu-category-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
+}
+
+/* Category Card */
+.mega-cat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-2);
+    border-radius: var(--radius-xl);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid transparent;
+    transition: all 0.3s ease;
+    text-align: center;
+    opacity: 0;
+    animation: megaCatFadeIn 0.4s ease forwards;
+    animation-delay: calc(var(--cat-i, 0) * 0.03s);
+}
+
+@keyframes megaCatFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.mega-cat-card:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(139, 43, 43, 0.35);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 43, 43, 0.08);
+}
+
+/* Rotating metallic ring */
+.mega-cat-ring {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    padding: 2px;
+    background: conic-gradient(
+        from 0deg,
+        rgba(80, 80, 100, 0.4),
+        rgba(160, 160, 180, 0.7),
+        rgba(220, 220, 240, 0.95),
+        rgba(255, 255, 255, 1),
+        rgba(220, 220, 240, 0.95),
+        rgba(160, 160, 180, 0.7),
+        rgba(80, 80, 100, 0.4),
+        rgba(120, 120, 140, 0.5),
+        rgba(80, 80, 100, 0.4)
+    );
+    animation: megaRingSpin 8s linear infinite;
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+
+.mega-cat-card:hover .mega-cat-ring {
+    animation-duration: 3s;
+    transform: scale(1.08);
+}
+
+@keyframes megaRingSpin {
+    to { transform: rotate(360deg); }
+}
+
+.mega-cat-card:hover .mega-cat-ring {
+    animation: megaRingSpinHover 3s linear infinite;
+}
+
+@keyframes megaRingSpinHover {
+    to { transform: scale(1.08) rotate(360deg); }
+}
+
+.mega-cat-ring-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
-    pointer-events: none;
+    border-radius: 50%;
+    background: #1a1a24;
+    overflow: hidden;
+    color: var(--color-text-muted);
 }
 
-.mega-menu-promo-sale {
-    background: linear-gradient(135deg, var(--color-background-elevated) 0%, var(--color-background-alt) 100%);
-}
-
-.mega-menu-promo-img {
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 80px;
+.mega-cat-ring-inner img {
+    width: 100%;
     height: 100%;
     object-fit: cover;
-    opacity: 0.3;
-    mask-image: linear-gradient(to left, rgba(0,0,0,0.5), transparent);
-    -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,0.5), transparent);
 }
 
-.mega-menu-promo-content {
-    position: relative;
-    z-index: 1;
+.mega-cat-card:hover .mega-cat-ring-inner {
+    color: var(--color-primary);
 }
 
-.mega-menu-promo-badge {
-    display: inline-block;
-    padding: var(--space-1) var(--space-2);
-    font-size: 10px;
-    font-weight: var(--font-bold);
-    text-transform: uppercase;
-    background-color: rgba(255, 255, 255, 0.2);
-    color: var(--color-text);
-    border-radius: var(--radius-full);
-    margin-bottom: var(--space-2);
-}
-
-.mega-menu-promo-badge.badge-danger {
-    background-color: var(--color-danger);
-}
-
-.mega-menu-promo-title {
-    font-size: var(--text-lg);
-    font-weight: var(--font-bold);
-    color: var(--color-text);
-    margin-bottom: var(--space-1);
-}
-
-.mega-menu-promo-text {
+/* Category Name */
+.mega-cat-name {
     font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text);
+    line-height: 1.3;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.2s ease;
+}
+
+.mega-cat-card:hover .mega-cat-name {
+    color: #fff;
+}
+
+/* Product count */
+.mega-cat-count {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.mega-cat-card:hover .mega-cat-count {
+    opacity: 1;
+    color: var(--color-primary);
+}
+
+/* ---- Bottom Promo Strip ---- */
+.mega-menu-promos {
+    display: flex;
+    gap: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mega-promo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
     color: var(--color-text-secondary);
-    margin-bottom: var(--space-3);
-    line-height: var(--leading-relaxed);
+    transition: all 0.2s ease;
 }
 
-.mega-menu-promo-featured .mega-menu-promo-text {
-    color: rgba(255, 255, 255, 0.8);
+.mega-promo-pill:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
-/* Responsive */
+.mega-promo-featured:hover {
+    background: rgba(139, 43, 43, 0.2);
+    border-color: rgba(139, 43, 43, 0.5);
+    color: #e8a0a0;
+}
+
+.mega-promo-sale:hover {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+}
+
+.mega-promo-new:hover {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #60a5fa;
+}
+
+.mega-promo-popular:hover {
+    background: rgba(236, 72, 153, 0.15);
+    border-color: rgba(236, 72, 153, 0.4);
+    color: #f472b6;
+}
+
+/* ---- Responsive ---- */
 @media (max-width: 1024px) {
     .mega-menu-inner {
-        grid-template-columns: 1fr;
-    }
-
-    .mega-menu-promos {
-        flex-direction: row;
-    }
-
-    .mega-menu-promo-card {
-        flex: 1;
+        padding: var(--space-5) var(--space-4);
     }
 
     .mega-menu-category-grid {
         grid-template-columns: repeat(3, 1fr);
+    }
+
+    .mega-menu-promos {
+        flex-wrap: wrap;
     }
 }
 

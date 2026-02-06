@@ -1,5 +1,5 @@
 <!-- Product Page CSS -->
-<link rel="stylesheet" href="<?= asset('css/product-page.css') ?>">
+<link rel="stylesheet" href="<?= asset('css/product-page.css') ?>?v=<?= filemtime(PUBLIC_PATH . '/assets/css/product-page.css') ?>">
 
 <!-- Product Detail Page -->
 <div class="pt-page">
@@ -23,26 +23,13 @@
 
     <!-- ===== PRODUCT SHOWCASE ===== -->
     <section class="pt-showcase">
+
+        <!-- Product Content (inside container) -->
         <div class="container">
-            <div class="pt-product-page-layout">
-            <div class="pt-product-content-area">
             <div class="pt-hero">
 
-                <!-- Gallery with vertical thumbs -->
+                <!-- Gallery with thumbnails below -->
                 <div class="pt-gallery" id="pt-gallery">
-                    <?php if (count($images) > 1): ?>
-                    <div class="pt-gallery-thumbs pt-gallery-thumbs-vertical" id="pt-thumbs">
-                        <?php foreach ($images as $i => $image): ?>
-                        <button type="button"
-                                class="pt-thumb <?= $i === 0 ? 'is-active' : '' ?>"
-                                data-image="<?= url('storage/uploads/' . e($image['path'])) ?>"
-                                data-index="<?= $i ?>">
-                            <img src="<?= url('storage/uploads/' . e($image['path'])) ?>" alt="" loading="lazy">
-                        </button>
-                        <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
-
                     <div class="pt-gallery-main">
                         <?php $mainImage = $images[0] ?? null; ?>
 
@@ -70,6 +57,25 @@
                             </svg>
                         </button>
                     </div>
+
+                    <!-- Thumbnail Rings below main image -->
+                    <?php if (count($images) > 1): ?>
+                    <div class="pt-thumb-rings" id="pt-thumbs">
+                        <?php foreach ($images as $i => $image): ?>
+                        <button type="button"
+                                class="pt-thumb-ring-item <?= $i === 0 ? 'is-active' : '' ?>"
+                                data-image="<?= url('storage/uploads/' . e($image['path'])) ?>"
+                                data-index="<?= $i ?>">
+                            <div class="pt-thumb-ring">
+                                <div class="pt-thumb-ring-border"></div>
+                                <div class="pt-thumb-ring-image">
+                                    <img src="<?= url('storage/uploads/' . e($image['path'])) ?>" alt="" loading="lazy">
+                                </div>
+                            </div>
+                        </button>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Product Info -->
@@ -257,39 +263,83 @@
                 </div>
 
             </div><!-- /.pt-hero -->
-            </div><!-- /.pt-product-content-area -->
+        </div><!-- /.container -->
 
-            <!-- Product Sidebar -->
-            <aside class="pt-product-sidebar page-sidebar-right">
-                <?php $sidebarLocation = 'product_sidebar'; include APP_PATH . '/Views/components/sidebar-banners.php'; ?>
-                <div class="sidebar-static-widget">
-                    <div class="sidebar-widget-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        <!-- Right Sidebar: Widget Rings (fixed to right screen edge) -->
+        <aside class="pt-sidebar-right">
+                <?php
+                $sidebarLocation = 'product_sidebar';
+                $sidebarBanners = getBanners($sidebarLocation);
+                if (!empty($sidebarBanners)):
+                    foreach ($sidebarBanners as $sBanner):
+                ?>
+                <a href="<?= e($sBanner['url'] ?? '#') ?>" class="pt-sidebar-ring-item">
+                    <div class="pt-sidebar-ring">
+                        <div class="pt-sidebar-ring-border"></div>
+                        <div class="pt-sidebar-ring-image">
+                            <?php if (!empty($sBanner['image'])): ?>
+                            <img src="<?= url('storage/uploads/' . e($sBanner['image'])) ?>" alt="<?= e($sBanner['title'] ?? '') ?>" loading="lazy">
+                            <?php else: ?>
+                            <span class="pt-sidebar-ring-placeholder"><?= e(mb_substr($sBanner['title'] ?? '?', 0, 1)) ?></span>
+                            <?php endif; ?>
+                        </div>
                     </div>
-                    <h4 class="sidebar-widget-title">Have Questions?</h4>
-                    <p class="sidebar-widget-text">Our team is ready to help you with this product</p>
-                    <a href="<?= url('/contact') ?>" class="sidebar-widget-link">Contact Us <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
-                </div>
-                <div class="sidebar-static-widget sidebar-widget-featured">
-                    <span class="sidebar-widget-badge">Sale</span>
-                    <div class="sidebar-widget-title" style="color: #fff; position: relative; z-index: 1;">Hot Deals</div>
-                    <p class="sidebar-widget-text">Browse our latest deals and save big</p>
-                    <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-widget-cta">View Deals</a>
-                </div>
-                <div class="sidebar-static-widget">
-                    <div class="sidebar-widget-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                    <span class="pt-sidebar-ring-label"><?= e($sBanner['title'] ?? '') ?></span>
+                </a>
+                <?php
+                    endforeach;
+                endif;
+                ?>
+                <?php
+                $genericBanners = getBanners('sidebar');
+                if (!empty($genericBanners)):
+                    foreach ($genericBanners as $sBanner):
+                ?>
+                <a href="<?= e($sBanner['url'] ?? '#') ?>" class="pt-sidebar-ring-item">
+                    <div class="pt-sidebar-ring">
+                        <div class="pt-sidebar-ring-border"></div>
+                        <div class="pt-sidebar-ring-image">
+                            <?php if (!empty($sBanner['image'])): ?>
+                            <img src="<?= url('storage/uploads/' . e($sBanner['image'])) ?>" alt="<?= e($sBanner['title'] ?? '') ?>" loading="lazy">
+                            <?php else: ?>
+                            <span class="pt-sidebar-ring-placeholder"><?= e(mb_substr($sBanner['title'] ?? '?', 0, 1)) ?></span>
+                            <?php endif; ?>
+                        </div>
                     </div>
-                    <h4 class="sidebar-widget-title">Stay Updated</h4>
-                    <p class="sidebar-widget-text">Get exclusive deals in your inbox</p>
-                    <form class="sidebar-newsletter-form" onsubmit="event.preventDefault()">
-                        <input type="email" placeholder="Email" class="sidebar-newsletter-input">
-                        <button type="submit" class="sidebar-newsletter-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
-                    </form>
-                </div>
-            </aside>
-            </div><!-- /.pt-product-page-layout -->
-        </div>
+                    <span class="pt-sidebar-ring-label"><?= e($sBanner['title'] ?? '') ?></span>
+                </a>
+                <?php
+                    endforeach;
+                endif;
+                ?>
+                <a href="<?= url('/contact') ?>" class="pt-sidebar-ring-item">
+                    <div class="pt-sidebar-ring">
+                        <div class="pt-sidebar-ring-border"></div>
+                        <div class="pt-sidebar-ring-image">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        </div>
+                    </div>
+                    <span class="pt-sidebar-ring-label">Questions?</span>
+                </a>
+                <a href="<?= url('/products?on_sale=1') ?>" class="pt-sidebar-ring-item">
+                    <div class="pt-sidebar-ring">
+                        <div class="pt-sidebar-ring-border pt-sidebar-ring-border-hot"></div>
+                        <div class="pt-sidebar-ring-image pt-sidebar-ring-image-hot">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                        </div>
+                    </div>
+                    <span class="pt-sidebar-ring-label">Hot Deals</span>
+                </a>
+                <a href="<?= url('/contact') ?>" class="pt-sidebar-ring-item">
+                    <div class="pt-sidebar-ring">
+                        <div class="pt-sidebar-ring-border"></div>
+                        <div class="pt-sidebar-ring-image">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                        </div>
+                    </div>
+                    <span class="pt-sidebar-ring-label">Newsletter</span>
+                </a>
+        </aside>
     </section>
 
     <!-- ===== PRODUCT DETAILS ===== -->
@@ -553,7 +603,7 @@ function ptShowToast(message, type = 'success') {
 
 function ptInitGallery() {
     const mainImage = document.getElementById('pt-main-image');
-    const thumbs = document.querySelectorAll('.pt-thumb');
+    const thumbs = document.querySelectorAll('.pt-thumb-ring-item');
     if (!mainImage || !thumbs.length) return;
     thumbs.forEach(thumb => {
         thumb.addEventListener('click', () => {
@@ -645,7 +695,7 @@ function ptInitReviewForm() {
 
 function ptInitLightbox() {
     const lb = document.getElementById('pt-lightbox'), img = document.getElementById('pt-lightbox-image'), counter = document.getElementById('pt-lightbox-counter');
-    const mainImg = document.getElementById('pt-main-image'), thumbs = document.querySelectorAll('.pt-thumb');
+    const mainImg = document.getElementById('pt-main-image'), thumbs = document.querySelectorAll('.pt-thumb-ring-item');
     const galleryContainer = document.querySelector('.pt-gallery-image-container');
     if (!lb || !mainImg) return;
     let idx = 0;

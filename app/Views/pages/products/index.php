@@ -119,6 +119,36 @@
                             </div>
                         </div>
 
+                        <!-- Dynamic Attribute Filters (shown when a category is selected) -->
+                        <?php foreach ($availableFilters['attributes'] ?? [] as $attr): ?>
+                        <?php if (!empty($attr['values'])): ?>
+                        <div class="filter-section">
+                            <h4 class="filter-section-title">
+                                <span><?= e($attr['name']) ?></span>
+                                <svg class="filter-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </h4>
+                            <div class="filter-section-content">
+                                <?php foreach ($attr['values'] as $val): ?>
+                                <label class="filter-checkbox-item">
+                                    <input type="checkbox" name="attr[<?= $attr['id'] ?>][]"
+                                           value="<?= $val['id'] ?>"
+                                           class="filter-checkbox-input"
+                                           <?= in_array($val['id'], $filters['attributes'][$attr['id']] ?? []) ? 'checked' : '' ?>>
+                                    <span class="filter-checkbox-custom">
+                                        <?php if ($attr['type'] === 'color' && $val['color_code']): ?>
+                                        <span class="filter-color-swatch" style="background-color: <?= e($val['color_code']) ?>"></span>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="filter-checkbox-label"><?= e($val['value']) ?></span>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                        <?php endforeach; ?>
+
                         <button type="submit" class="filter-apply-btn">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -187,69 +217,71 @@
                 <?php endif; ?>
             </main>
 
-            <!-- Right Sidebar - Banners & Promotions -->
+            <!-- Right Sidebar - Ring Widgets -->
             <aside class="shop-sidebar-right page-sidebar-right">
-                <?php $sidebarLocation = 'sidebar'; include APP_PATH . '/Views/components/sidebar-banners.php'; ?>
-
-                <!-- Static Widgets (fallback when no banners configured) -->
-                <div class="sidebar-static-widget sidebar-widget-featured">
-                    <span class="sidebar-widget-badge">Hot Deal</span>
-                    <div class="sidebar-widget-title">Flash Sale</div>
-                    <p class="sidebar-widget-text">Up to 50% off selected items</p>
-                    <a href="<?php echo url('/products?on_sale=1'); ?>" class="sidebar-widget-cta">Shop Now</a>
-                </div>
-
-                <div class="sidebar-static-widget">
-                    <div class="sidebar-widget-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                        </svg>
-                    </div>
-                    <h4 class="sidebar-widget-title">New Arrivals</h4>
-                    <p class="sidebar-widget-text">Check out our latest products</p>
-                    <a href="<?php echo url('/products?sort=newest'); ?>" class="sidebar-widget-link">
-                        Browse New
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                            <polyline points="12 5 19 12 12 19"></polyline>
-                        </svg>
+                <div class="sidebar-rings-container">
+                    <?php
+                    $sidebarLocation = 'sidebar';
+                    $sidebarBanners = getBanners($sidebarLocation);
+                    if (!empty($sidebarBanners)):
+                        foreach ($sidebarBanners as $sBanner):
+                    ?>
+                    <a href="<?= e($sBanner['url'] ?? '#') ?>" class="sidebar-ring-link">
+                        <div class="sidebar-ring-wrap">
+                            <div class="sidebar-ring-border"></div>
+                            <div class="sidebar-ring-img">
+                                <?php if (!empty($sBanner['image'])): ?>
+                                <img src="<?= url('storage/uploads/' . e($sBanner['image'])) ?>" alt="<?= e($sBanner['title'] ?? '') ?>" loading="lazy">
+                                <?php else: ?>
+                                <span class="sidebar-ring-placeholder"><?= e(mb_substr($sBanner['title'] ?? '?', 0, 1)) ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <span class="sidebar-ring-label"><?= e($sBanner['title'] ?? '') ?></span>
                     </a>
-                </div>
+                    <?php
+                        endforeach;
+                    endif;
+                    ?>
 
-                <div class="sidebar-static-widget">
-                    <div class="sidebar-widget-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                            <polyline points="22,6 12,13 2,6"></polyline>
-                        </svg>
-                    </div>
-                    <h4 class="sidebar-widget-title">Stay Updated</h4>
-                    <p class="sidebar-widget-text">Get exclusive deals & updates</p>
-                    <form class="sidebar-newsletter-form" onsubmit="event.preventDefault()">
-                        <input type="email" placeholder="Your email" class="sidebar-newsletter-input">
-                        <button type="submit" class="sidebar-newsletter-btn">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="22" y1="2" x2="11" y2="13"></line>
-                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                            </svg>
-                        </button>
-                    </form>
-                </div>
+                    <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-ring-link">
+                        <div class="sidebar-ring-wrap">
+                            <div class="sidebar-ring-border sidebar-ring-border-hot"></div>
+                            <div class="sidebar-ring-img sidebar-ring-img-hot">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                            </div>
+                        </div>
+                        <span class="sidebar-ring-label">Hot Deals</span>
+                    </a>
 
-                <div class="sidebar-static-widget">
-                    <div class="sidebar-widget-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                        </svg>
-                    </div>
-                    <h4 class="sidebar-widget-title">Need Help?</h4>
-                    <p class="sidebar-widget-text">Our support team is here for you</p>
-                    <a href="<?php echo url('/contact'); ?>" class="sidebar-widget-link">
-                        Contact Us
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                            <polyline points="12 5 19 12 12 19"></polyline>
-                        </svg>
+                    <a href="<?= url('/products?sort=newest') ?>" class="sidebar-ring-link">
+                        <div class="sidebar-ring-wrap">
+                            <div class="sidebar-ring-border"></div>
+                            <div class="sidebar-ring-img">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                            </div>
+                        </div>
+                        <span class="sidebar-ring-label">New Arrivals</span>
+                    </a>
+
+                    <a href="<?= url('/contact') ?>" class="sidebar-ring-link">
+                        <div class="sidebar-ring-wrap">
+                            <div class="sidebar-ring-border"></div>
+                            <div class="sidebar-ring-img">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                            </div>
+                        </div>
+                        <span class="sidebar-ring-label">Newsletter</span>
+                    </a>
+
+                    <a href="<?= url('/contact') ?>" class="sidebar-ring-link">
+                        <div class="sidebar-ring-wrap">
+                            <div class="sidebar-ring-border"></div>
+                            <div class="sidebar-ring-img">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            </div>
+                        </div>
+                        <span class="sidebar-ring-label">Need Help?</span>
                     </a>
                 </div>
             </aside>
@@ -335,7 +367,7 @@
 
 @media (min-width: 1440px) {
     .shop-layout {
-        grid-template-columns: 280px 1fr 260px;
+        grid-template-columns: 280px 1fr 180px;
     }
 }
 
@@ -446,6 +478,10 @@
 
 .filter-section.collapsed .filter-toggle-icon {
     transform: rotate(-90deg);
+}
+
+.filter-section.collapsed .filter-section-content {
+    display: none;
 }
 
 .filter-section-content {
@@ -768,12 +804,6 @@
 
 @media (min-width: 1280px) {
     .shop-products-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-@media (min-width: 1536px) {
-    .shop-products-grid {
         grid-template-columns: repeat(5, 1fr);
     }
 }
@@ -900,8 +930,8 @@ document.addEventListener('DOMContentLoaded', function() {
             minDisplay.textContent = formatPrice(minVal);
             maxDisplay.textContent = formatPrice(maxVal);
 
-            minInput.value = minVal > 0 ? minVal : '';
-            maxInput.value = maxVal < max ? maxVal : '';
+            minInput.value = minVal;
+            maxInput.value = maxVal;
         }
 
         priceMin.addEventListener('input', updateSlider);

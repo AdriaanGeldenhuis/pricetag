@@ -22,6 +22,7 @@ class ProductController extends Controller
             'on_sale' => !empty($_GET['on_sale']),
             'in_stock' => !empty($_GET['in_stock']),
             'sort' => $_GET['sort'] ?? 'newest',
+            'attributes' => $_GET['attr'] ?? [],
         ];
 
         $query = $_GET['q'] ?? '';
@@ -29,6 +30,15 @@ class ProductController extends Controller
 
         // Get categories for filter
         $categories = Category::topLevel();
+
+        // Get available attribute filters when a category is selected
+        $availableFilters = ['attributes' => [], 'price_range' => ['min_price' => null, 'max_price' => null]];
+        if (!empty($filters['category_id'])) {
+            $selectedCategory = Category::find($filters['category_id']);
+            if ($selectedCategory) {
+                $availableFilters = $selectedCategory->getAvailableFilters();
+            }
+        }
 
         $this->layout('main');
         $this->view('pages/products/index', [
@@ -38,6 +48,7 @@ class ProductController extends Controller
             'pagination' => $result,
             'categories' => $categories,
             'filters' => $filters,
+            'availableFilters' => $availableFilters,
             'query' => $query,
         ]);
     }

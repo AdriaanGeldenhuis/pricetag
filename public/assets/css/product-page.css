@@ -73,36 +73,55 @@
     padding: var(--space-8) 0 var(--space-16);
 }
 
-/* Outer layout: 3-column (thumbs | content | sidebar) */
-.pt-product-page-layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-6);
+/* Sidebars: fixed to screen edges, outside the container */
+.pt-thumb-sidebar {
+    display: none;
 }
 
-.pt-product-content-area { min-width: 0; order: 1; }
-.pt-thumb-sidebar { order: 2; }
-.pt-sidebar-right { order: 3; display: none; }
+.pt-sidebar-right {
+    display: none;
+}
 
-@media (min-width: 1024px) {
-    .pt-product-page-layout {
-        grid-template-columns: auto 1fr auto;
-        gap: var(--space-6);
+@media (min-width: 1440px) {
+    .pt-thumb-sidebar {
+        display: flex;
+        position: fixed;
+        left: var(--space-4);
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 40;
     }
-    .pt-thumb-sidebar { order: 1; }
-    .pt-product-content-area { order: 2; }
+
     .pt-sidebar-right {
-        order: 3;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: var(--space-4);
-        position: sticky;
-        top: calc(var(--header-height) + var(--space-4));
-        max-height: calc(100vh - var(--header-height) - var(--space-8));
-        overflow-y: auto;
-        scrollbar-width: thin;
-        align-self: start;
+        gap: var(--space-3);
+        position: fixed;
+        right: var(--space-4);
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 40;
+    }
+}
+
+@media (min-width: 1600px) {
+    .pt-thumb-sidebar {
+        left: var(--space-6);
+    }
+
+    .pt-sidebar-right {
+        right: var(--space-6);
+    }
+}
+
+@media (min-width: 1920px) {
+    .pt-thumb-sidebar {
+        left: var(--space-8);
+    }
+
+    .pt-sidebar-right {
+        right: var(--space-8);
     }
 }
 
@@ -1591,39 +1610,20 @@
 @keyframes pt-spin { to { transform: rotate(360deg); } }
 
 /* =========================================================================
-   LEFT SIDEBAR — thumbnail rings
+   LEFT SIDEBAR — thumbnail rings (fixed at left edge)
    ========================================================================= */
-
-.pt-thumb-sidebar {
-    /* On mobile: horizontal ring strip below content */
-}
 
 .pt-thumb-rings {
     display: flex;
+    flex-direction: column;
     gap: var(--space-3);
-    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 80vh;
     scrollbar-width: none;
     padding: var(--space-2);
-    justify-content: center;
 }
 
 .pt-thumb-rings::-webkit-scrollbar { display: none; }
-
-@media (min-width: 1024px) {
-    .pt-thumb-sidebar {
-        position: sticky;
-        top: calc(var(--header-height) + var(--space-4));
-        align-self: start;
-    }
-
-    .pt-thumb-rings {
-        flex-direction: column;
-        overflow-x: visible;
-        overflow-y: auto;
-        max-height: calc(100vh - var(--header-height) - var(--space-8));
-        justify-content: flex-start;
-    }
-}
 
 /* Thumb ring item (button wrapper) */
 .pt-thumb-ring-item {
@@ -1642,27 +1642,27 @@
     transform: scale(1.08);
 }
 
-/* Ring container */
+/* Ring container — sized to fill the sidebar gutter */
 .pt-thumb-ring {
     position: relative;
-    width: 64px;
-    height: 64px;
+    width: 90px;
+    height: 90px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1600px) {
     .pt-thumb-ring {
-        width: 70px;
-        height: 70px;
+        width: 100px;
+        height: 100px;
     }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1920px) {
     .pt-thumb-ring {
-        width: 76px;
-        height: 76px;
+        width: 110px;
+        height: 110px;
     }
 }
 
@@ -1804,29 +1804,42 @@
     align-items: center;
     text-decoration: none;
     transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    padding: var(--space-2);
-    width: 120px;
+    padding: var(--space-1);
+    width: 130px;
 }
 
 .pt-sidebar-ring-item:hover {
     transform: translateY(-4px);
 }
 
-/* Ring container */
+/* Ring container — sized to fill the sidebar gutter */
 .pt-sidebar-ring {
     position: relative;
-    width: 90px;
-    height: 90px;
+    width: 100px;
+    height: 100px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-bottom: var(--space-2);
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 1600px) {
     .pt-sidebar-ring {
-        width: 100px;
-        height: 100px;
+        width: 110px;
+        height: 110px;
+    }
+    .pt-sidebar-ring-item {
+        width: 140px;
+    }
+}
+
+@media (min-width: 1920px) {
+    .pt-sidebar-ring {
+        width: 120px;
+        height: 120px;
+    }
+    .pt-sidebar-ring-item {
+        width: 150px;
     }
 }
 
@@ -1953,6 +1966,8 @@
 }
 
 .pt-sidebar-ring-image svg {
+    width: 36px;
+    height: 36px;
     transition: transform 0.4s ease, color 0.3s ease;
 }
 
@@ -1980,7 +1995,7 @@
 
 /* Label text below ring */
 .pt-sidebar-ring-label {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: var(--font-semibold);
     color: #c0c0d0;
     text-align: center;

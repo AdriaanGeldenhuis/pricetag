@@ -23,32 +23,30 @@
 
     <!-- ===== PRODUCT SHOWCASE ===== -->
     <section class="pt-showcase">
-        <div class="container">
-            <div class="pt-product-page-layout">
 
-            <!-- Left Sidebar: Thumbnail Rings -->
-            <div class="pt-thumb-sidebar">
-                <?php if (count($images) > 1): ?>
-                <div class="pt-thumb-rings" id="pt-thumbs">
-                    <?php foreach ($images as $i => $image): ?>
-                    <button type="button"
-                            class="pt-thumb-ring-item <?= $i === 0 ? 'is-active' : '' ?>"
-                            data-image="<?= url('storage/uploads/' . e($image['path'])) ?>"
-                            data-index="<?= $i ?>">
-                        <div class="pt-thumb-ring">
-                            <div class="pt-thumb-ring-border"></div>
-                            <div class="pt-thumb-ring-image">
-                                <img src="<?= url('storage/uploads/' . e($image['path'])) ?>" alt="" loading="lazy">
-                            </div>
+        <!-- Left Sidebar: Thumbnail Rings (fixed to left screen edge) -->
+        <div class="pt-thumb-sidebar">
+            <?php if (count($images) > 1): ?>
+            <div class="pt-thumb-rings" id="pt-thumbs">
+                <?php foreach ($images as $i => $image): ?>
+                <button type="button"
+                        class="pt-thumb-ring-item <?= $i === 0 ? 'is-active' : '' ?>"
+                        data-image="<?= url('storage/uploads/' . e($image['path'])) ?>"
+                        data-index="<?= $i ?>">
+                    <div class="pt-thumb-ring">
+                        <div class="pt-thumb-ring-border"></div>
+                        <div class="pt-thumb-ring-image">
+                            <img src="<?= url('storage/uploads/' . e($image['path'])) ?>" alt="" loading="lazy">
                         </div>
-                    </button>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
+                    </div>
+                </button>
+                <?php endforeach; ?>
             </div>
+            <?php endif; ?>
+        </div>
 
-            <!-- Center: Product Content -->
-            <div class="pt-product-content-area">
+        <!-- Center: Product Content (inside container) -->
+        <div class="container">
             <div class="pt-hero">
 
                 <!-- Gallery -->
@@ -267,10 +265,10 @@
                 </div>
 
             </div><!-- /.pt-hero -->
-            </div><!-- /.pt-product-content-area -->
+        </div><!-- /.container -->
 
-            <!-- Right Sidebar: Widget Rings -->
-            <aside class="pt-sidebar-right">
+        <!-- Right Sidebar: Widget Rings (fixed to right screen edge) -->
+        <aside class="pt-sidebar-right">
                 <?php
                 $sidebarLocation = 'product_sidebar';
                 $sidebarBanners = getBanners($sidebarLocation);
@@ -343,9 +341,7 @@
                     </div>
                     <span class="pt-sidebar-ring-label">Newsletter</span>
                 </a>
-            </aside>
-            </div><!-- /.pt-product-page-layout -->
-        </div>
+        </aside>
     </section>
 
     <!-- ===== PRODUCT DETAILS ===== -->

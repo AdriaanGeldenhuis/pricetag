@@ -404,6 +404,138 @@ class OpenAIService
             $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
         }
 
+        // ---- GIGABYTE NVIDIA GPUs: GV-N{model}{variant}-{memory}GD ----
+        // e.g. GV-N5090GAMING OC-32GD -> Gigabyte GeForce RTX 5090 Gaming OC 32GB
+        // e.g. GV-N4070EAGLE OC-12GD -> Gigabyte GeForce RTX 4070 Eagle OC 12GB
+        elseif (preg_match('/^GV-N(\d{3,4})\s*([A-Z\s]+?)[\s-]+(\d+)G/i', $cleanSku, $m)) {
+            $brand = 'Gigabyte';
+            $gpuModel = $m[1]; // 5090, 4070, etc.
+            $variant = trim($m[2]); // GAMING OC, EAGLE OC, AERO OC, WINDFORCE, etc.
+            $memory = $m[3]; // 32, 12, etc.
+
+            // Determine GPU series from model number
+            $gpuSeries = ((int)$gpuModel >= 2000) ? 'RTX' : 'GTX';
+            $variantClean = ucwords(strtolower($variant)); // "Gaming Oc" -> clean up
+
+            $name = "Gigabyte GeForce {$gpuSeries} {$gpuModel} {$variantClean} {$memory}GB";
+            $category = 'Graphics Cards';
+            $shortDesc = "Gigabyte GeForce {$gpuSeries} {$gpuModel} {$variantClean} with {$memory}GB GDDR memory for high-performance gaming.";
+            $description = "The {$name} graphics card delivers exceptional gaming and creative performance. Built with Gigabyte's advanced cooling solution for optimal thermals and low noise. Features NVIDIA Ray Tracing and DLSS for next-gen visuals.";
+        }
+
+        // ---- GIGABYTE AMD GPUs: GV-R{model}{variant}-{memory}GD ----
+        elseif (preg_match('/^GV-R(\d{3,4})\s*([A-Z\s]+?)[\s-]+(\d+)G/i', $cleanSku, $m)) {
+            $brand = 'Gigabyte';
+            $gpuModel = $m[1];
+            $variant = trim($m[2]);
+            $memory = $m[3];
+            $variantClean = ucwords(strtolower($variant));
+
+            $name = "Gigabyte Radeon RX {$gpuModel} {$variantClean} {$memory}GB";
+            $category = 'Graphics Cards';
+            $shortDesc = "Gigabyte Radeon RX {$gpuModel} {$variantClean} with {$memory}GB memory for high-performance gaming.";
+            $description = "The {$name} graphics card delivers outstanding gaming performance. Built with Gigabyte's advanced cooling for optimal thermals.";
+        }
+
+        // ---- ASUS GPUs: ROG-STRIX-RTX5090-O32G, TUF-RTX4070TI-O12G, DUAL-RTX4060-O8G ----
+        elseif (preg_match('/^(ROG[- ]?STRIX|TUF|DUAL|PRIME|PROART)[- ]?(RTX|GTX|RX)\s*(\d{4})\s*(Ti|SUPER|XT|XTX)?[- ]?O?(\d+)G/i', $cleanSku, $m)) {
+            $brand = 'ASUS';
+            $line = str_replace('-', ' ', strtoupper($m[1])); // ROG STRIX, TUF, DUAL
+            $series = strtoupper($m[2]); // RTX, GTX, RX
+            $gpuModel = $m[3];
+            $variant = !empty($m[4]) ? ' ' . ucfirst(strtolower($m[4])) : '';
+            $memory = $m[5];
+
+            $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
+            $name = "ASUS {$line} {$gpuBrand} {$series} {$gpuModel}{$variant} OC {$memory}GB";
+            $category = 'Graphics Cards';
+            $shortDesc = "ASUS {$line} {$gpuBrand} {$series} {$gpuModel}{$variant} with {$memory}GB memory. Factory overclocked for maximum performance.";
+            $description = "The {$name} features ASUS's premium {$line} design with advanced cooling and factory overclocking. Delivers exceptional performance for 4K gaming and content creation.";
+        }
+
+        // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI RTX 4070 VENTUS 3X OC 12G ----
+        elseif (preg_match('/^MSI\s*(RTX|GTX|RX)\s*(\d{4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
+            $brand = 'MSI';
+            $series = strtoupper($m[1]);
+            $gpuModel = $m[2];
+            $variant = !empty($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
+            $line = ucwords(strtolower(trim($m[4]))); // Gaming X Trio, Ventus 3X OC
+            $memory = $m[5];
+
+            $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
+            $name = "MSI {$gpuBrand} {$series} {$gpuModel}{$variant} {$line} {$memory}GB";
+            $category = 'Graphics Cards';
+            $shortDesc = "MSI {$gpuBrand} {$series} {$gpuModel}{$variant} {$line} with {$memory}GB memory for gaming and creative work.";
+            $description = "The {$name} features MSI's premium cooling and build quality. Designed for maximum performance in gaming and content creation.";
+        }
+
+        // ---- EVGA GPUs: xxG-Px-xxxx ----
+        elseif (preg_match('/^(\d{2})G-P(\d)-(\d{4})/i', $cleanSku, $m)) {
+            $brand = 'EVGA';
+            $memory = $m[1];
+            $name = "EVGA GeForce Graphics Card ({$sku})";
+            $category = 'Graphics Cards';
+            $shortDesc = "EVGA GeForce graphics card with {$memory}GB memory.";
+            $description = "EVGA graphics card. SKU: {$sku}. Known for excellent cooling and customer support.";
+        }
+
+        // ---- ZOTAC GPUs: ZT-{model} ----
+        elseif (preg_match('/^ZT-(\w+)/i', $cleanSku, $m)) {
+            $brand = 'Zotac';
+            $name = "Zotac Gaming GeForce Graphics Card ({$sku})";
+            $category = 'Graphics Cards';
+            $shortDesc = "Zotac Gaming graphics card for gaming performance.";
+            $description = "Zotac Gaming graphics card. SKU: {$sku}. Compact design with efficient cooling.";
+        }
+
+        // ---- CORSAIR products: CMx/CMK (RAM), RM/HX/AX (PSU), etc. ----
+        elseif (preg_match('/^CM([KW])(\d+)GX(\d)M(\d)([A-Z])(\d+)([A-Z]\d+)?/i', $cleanSku, $m)) {
+            $brand = 'Corsair';
+            $totalMem = $m[2];
+            $ddrGen = $m[3];
+            $modules = $m[4];
+            $speed = $m[6];
+            $perModule = (int)$totalMem / (int)$modules;
+            $name = "Corsair Vengeance DDR{$ddrGen} {$totalMem}GB ({$modules}x{$perModule}GB) {$speed}MHz";
+            $category = 'Memory / RAM';
+            $shortDesc = "Corsair Vengeance DDR{$ddrGen} {$totalMem}GB ({$modules}x{$perModule}GB) desktop memory running at {$speed}MHz.";
+            $description = "The {$name} delivers high-performance memory for gaming and productivity. XMP support for easy overclocking.";
+        }
+
+        // ---- SAMSUNG SSDs: MZ-V{gen}... ----
+        elseif (preg_match('/^MZ-/i', $cleanSku)) {
+            $brand = 'Samsung';
+            $name = "Samsung SSD ({$sku})";
+            $category = 'Storage';
+            $shortDesc = "Samsung solid-state drive for fast storage performance.";
+            $description = "Samsung SSD. SKU: {$sku}. Industry-leading performance and reliability.";
+        }
+
+        // ---- WESTERN DIGITAL / WD: WD prefix or WDS ----
+        elseif (preg_match('/^WD[S]?\d/i', $cleanSku)) {
+            $brand = 'Western Digital';
+            $name = "Western Digital Drive ({$sku})";
+            $category = 'Storage';
+            $shortDesc = "Western Digital storage drive for reliable data storage.";
+            $description = "Western Digital drive. SKU: {$sku}";
+        }
+
+        // ---- LOGITECH: prefix 910- (mice), 920- (keyboards), 981- (headsets) ----
+        elseif (preg_match('/^(910|920|981|980|993)-/i', $cleanSku, $m)) {
+            $brand = 'Logitech';
+            $prodType = match($m[1]) {
+                '910' => 'Mouse',
+                '920' => 'Keyboard',
+                '981', '980' => 'Headset',
+                '993' => 'Webcam',
+                default => 'Peripheral',
+            };
+            $name = "Logitech {$prodType} ({$sku})";
+            $category = 'Peripherals';
+            $shortDesc = "Logitech {$prodType} for computing.";
+            $description = "Logitech {$prodType}. SKU: {$sku}";
+        }
+
         $recognized = !empty($name);
 
         return [
@@ -465,23 +597,53 @@ class OpenAIService
 
         // STEP 2: Ask AI to write content FOR the identified product
         $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store.\n\n";
-        $prompt .= "Write a COMPLETE product listing for the following product:\n\n";
-        $prompt .= "PRODUCT NAME: {$productName}\n";
-        $prompt .= "SKU: {$sku}\n";
-        $prompt .= "BRAND: {$verifiedBrand}\n";
-        $prompt .= "CATEGORY: {$verifiedCategory}\n";
-        if ($shortDescription) {
-            $prompt .= "SUPPLIER INFO: {$shortDescription}\n";
-        }
-        if ($existingDescription && strlen($existingDescription) > 20) {
-            $prompt .= "EXISTING DESCRIPTION: " . substr($existingDescription, 0, 300) . "\n";
-        }
-        if ($price > 0) {
-            $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
-        }
 
-        $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is VERIFIED and CORRECT. ";
-        $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number. ***\n";
+        if ($recognized) {
+            // Pattern matched - we know the product, lock in the name
+            $prompt .= "Write a COMPLETE product listing for the following VERIFIED product:\n\n";
+            $prompt .= "PRODUCT NAME: {$productName}\n";
+            $prompt .= "SKU: {$sku}\n";
+            $prompt .= "BRAND: {$verifiedBrand}\n";
+            $prompt .= "CATEGORY: {$verifiedCategory}\n";
+            if ($shortDescription) {
+                $prompt .= "SUPPLIER INFO: {$shortDescription}\n";
+            }
+            if ($existingDescription && strlen($existingDescription) > 20) {
+                $prompt .= "EXISTING DESCRIPTION: " . substr($existingDescription, 0, 300) . "\n";
+            }
+            if ($price > 0) {
+                $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
+            }
+            $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is VERIFIED and CORRECT. ";
+            $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number. ***\n";
+        } else {
+            // Pattern NOT matched - ask AI to IDENTIFY the product from the SKU
+            $prompt .= "IDENTIFY this product from its SKU and write a COMPLETE product listing.\n\n";
+            $prompt .= "SKU: {$sku}\n";
+            if ($verifiedBrand) {
+                $prompt .= "BRAND: {$verifiedBrand}\n";
+            }
+            if ($verifiedCategory && $verifiedCategory !== 'Electronics') {
+                $prompt .= "CATEGORY: {$verifiedCategory}\n";
+            }
+            if ($existingName && $existingName !== $sku) {
+                $prompt .= "CURRENT NAME (may be inaccurate): {$existingName}\n";
+            }
+            if ($shortDescription) {
+                $prompt .= "SUPPLIER INFO: {$shortDescription}\n";
+            }
+            if ($existingDescription && strlen($existingDescription) > 20) {
+                $prompt .= "EXISTING DESCRIPTION: " . substr($existingDescription, 0, 300) . "\n";
+            }
+            if ($price > 0) {
+                $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
+            }
+            $prompt .= "\n*** CRITICAL IDENTIFICATION RULES:\n";
+            $prompt .= "1. Decode the SKU to determine the EXACT product. SKUs encode manufacturer, model, variant, and specs.\n";
+            $prompt .= "2. Common SKU formats: GV-N = Gigabyte NVIDIA GPU, GV-R = Gigabyte AMD GPU, ROG/TUF/DUAL = ASUS, ZT- = Zotac, CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital.\n";
+            $prompt .= "3. The 'name' field MUST be a proper customer-facing product name (e.g., 'Gigabyte GeForce RTX 5090 Gaming OC 32GB'), NEVER a raw SKU.\n";
+            $prompt .= "4. If you cannot identify the product, use a best guess based on the SKU pattern. NEVER use the raw SKU as the product name. ***\n";
+        }
 
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
         $prompt .= "{\n";
@@ -540,31 +702,46 @@ class OpenAIService
                 return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
             }
 
-            // STEP 3: FORCE the correct identity - AI output for name/brand/category is DISCARDED
-            $data['name'] = $productName;
-            $data['brand'] = $verifiedBrand;
+            // STEP 3: Enforce identity based on recognition status
             if ($recognized) {
+                // Pattern matched - FORCE the verified name, discard AI name
+                $data['name'] = $productName;
+                $data['brand'] = $verifiedBrand;
                 $data['suggested_category'] = $verifiedCategory;
+            } else {
+                // Pattern NOT matched - TRUST the AI name (it was asked to identify)
+                // But validate: never allow the raw SKU as the name
+                $aiName = $data['name'] ?? '';
+                if (empty($aiName) || $aiName === $sku || $aiName === $cleanSku) {
+                    // AI failed to identify - keep whatever existing name we have
+                    $data['name'] = ($existingName && $existingName !== $sku) ? $existingName : $sku;
+                }
+                // Trust AI brand/category when we didn't recognize the SKU
+                if (!empty($data['brand'])) {
+                    $verifiedBrand = $data['brand'];
+                }
             }
 
             // Ensure all keys exist
             $data = array_merge([
-                'name' => $productName,
+                'name' => $data['name'] ?? $productName,
                 'short_description' => $identity['short_description'] ?? '',
                 'description' => $identity['description'] ?? '',
                 'meta_title' => '',
                 'meta_description' => '',
                 'meta_keywords' => '',
                 'specifications' => [],
-                'suggested_category' => $verifiedCategory,
+                'suggested_category' => $data['suggested_category'] ?? $verifiedCategory,
                 'brand' => $verifiedBrand,
                 'weight' => null,
                 'is_taxable' => true,
             ], $data);
 
-            // Force name again after merge (in case AI put it in the response)
-            $data['name'] = $productName;
-            $data['brand'] = $verifiedBrand;
+            if ($recognized) {
+                // Force name again after merge for recognized products
+                $data['name'] = $productName;
+                $data['brand'] = $verifiedBrand;
+            }
 
             return ['success' => true, 'data' => $data];
 

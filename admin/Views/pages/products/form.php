@@ -740,6 +740,7 @@ $productAttributes = $productAttributes ?? [];
 const productId = <?= $productId ?>;
 const csrfToken = '<?= csrf_token() ?>';
 const baseUrl = '<?= url('/admin/products') ?>';
+const jsonHeaders = { 'X-CSRF-Token': csrfToken, 'Accept': 'application/json' };
 let autoSaveTimer = null;
 let formChanged = false;
 let variantIndex = <?= count($variants) ?>;
@@ -782,7 +783,7 @@ function autoSave() {
     fetch(baseUrl + '/' + productId + '/autosave', {
         method: 'POST',
         body: formData,
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => {
@@ -984,7 +985,7 @@ function duplicateProduct(id) {
 
     fetch(baseUrl + '/' + id + '/duplicate', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' }
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' }
     })
     .then(r => r.json())
     .then(data => {
@@ -1008,7 +1009,7 @@ function closeDeleteModal() {
 function confirmDelete() {
     fetch(baseUrl + '/' + productId, {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' }
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' }
     })
     .then(r => r.json())
     .then(data => {
@@ -1022,7 +1023,7 @@ function confirmDelete() {
 function setPrimaryImage(imageId) {
     fetch(baseUrl + '/images/' + imageId + '/primary', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => { if (data.success) location.reload(); });
@@ -1032,7 +1033,7 @@ function deleteImage(imageId) {
     if (!confirm('Delete this image?')) return;
     fetch(baseUrl + '/images/' + imageId, {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => { if (data.success) location.reload(); });
@@ -1042,7 +1043,7 @@ function deleteImage(imageId) {
 function toggleReviewApproval(id, approved) {
     fetch('<?= url('/admin/products/reviews/') ?>' + id, {
         method: 'PUT',
-        headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+        headers: { ...jsonHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_approved: approved })
     });
 }
@@ -1051,7 +1052,7 @@ function deleteReview(id) {
     if (!confirm('Delete this review?')) return;
     fetch('<?= url('/admin/products/reviews/') ?>' + id, {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => { if (data.success) document.querySelector('[data-review-id="' + id + '"]').remove(); });
@@ -1069,7 +1070,7 @@ function generateAiContent() {
 
     fetch(baseUrl + '/' + productId + '/ai-generate', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => {
@@ -1118,7 +1119,7 @@ function regenerateFromSku() {
 
     fetch(baseUrl + '/' + productId + '/ai-regenerate-sku', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => {
@@ -1208,7 +1209,7 @@ function makeProductionReady() {
 
     fetch(baseUrl + '/' + productId + '/ai-complete', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => {
@@ -1328,7 +1329,7 @@ function generateAiImages() {
 
     fetch(baseUrl + '/' + productId + '/ai-images', {
         method: 'POST',
-        headers: { 'X-CSRF-Token': csrfToken }
+        headers: jsonHeaders
     })
     .then(r => r.json())
     .then(data => {

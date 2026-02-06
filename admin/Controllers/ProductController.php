@@ -1269,7 +1269,9 @@ class ProductController extends Controller
         }
 
         // Generate AI product images (if fewer than 4 exist)
+        // Use output buffering to catch any stray PHP warnings from GD/file ops
         $imageResult = ['generated' => 0];
+        ob_start();
         try {
             $imageService = new ProductImageService();
             $imageResult = $imageService->generateProductImages($product->id, [
@@ -1283,6 +1285,7 @@ class ProductController extends Controller
         } catch (\Throwable $e) {
             error_log("AI image generation failed: " . $e->getMessage());
         }
+        ob_end_clean();
 
         // Return all AI data for client-side preview
         $this->json([
@@ -1330,24 +1333,38 @@ class ProductController extends Controller
         $categories = $product->getCategories();
         $categoryName = !empty($categories) ? $categories[0]['name'] : '';
 
-        // Get specifications
-        $stmt = $db->prepare("SELECT spec_name, spec_value FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC LIMIT 10");
-        $stmt->execute([$product->id]);
-        $specs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        // Get specifications (wrapped in try-catch in case table doesn't exist yet)
         $specArray = [];
-        foreach ($specs as $spec) {
-            $specArray[] = ['name' => $spec['spec_name'], 'value' => $spec['spec_value']];
+        try {
+            $stmt = $db->prepare("SELECT spec_name, spec_value FROM product_specifications WHERE product_id = ? ORDER BY sort_order ASC LIMIT 10");
+            $stmt->execute([$product->id]);
+            $specs = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            foreach ($specs as $spec) {
+                $specArray[] = ['name' => $spec['spec_name'], 'value' => $spec['spec_value']];
+            }
+        } catch (\Throwable $e) {
+            // Table may not exist yet
         }
 
-        $imageService = new ProductImageService();
-        $result = $imageService->generateProductImages($product->id, [
-            'name' => $product->name,
-            'brand' => $brand,
-            'sku' => $product->sku,
-            'category' => $categoryName,
-            'short_description' => $product->short_description ?? '',
-            'specifications' => $specArray,
-        ]);
+        // Use output buffering to catch any stray PHP warnings from GD/file ops
+        ob_start();
+        try {
+            $imageService = new ProductImageService();
+            $result = $imageService->generateProductImages($product->id, [
+                'name' => $product->name,
+                'brand' => $brand,
+                'sku' => $product->sku,
+                'category' => $categoryName,
+                'short_description' => $product->short_description ?? '',
+                'specifications' => $specArray,
+            ]);
+        } catch (\Throwable $e) {
+            $result = ['success' => false, 'generated' => 0, 'message' => $e->getMessage()];
+        }
+        $warnings = ob_get_clean();
+        if ($warnings) {
+            error_log("AI image generation warnings: " . $warnings);
+        }
 
         $this->json([
             'success' => $result['success'],

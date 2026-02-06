@@ -471,7 +471,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Bulk action for products
+     * Bulk action for products (quick status change / delete)
      */
     public function bulkAction(): void
     {
@@ -535,6 +535,131 @@ class ProductController extends Controller
         } catch (\Throwable $e) {
             error_log("Bulk action error: " . $e->getMessage());
             $this->json(['success' => false, 'message' => 'An error occurred'], 500);
+        }
+    }
+
+    /**
+     * Bulk edit products (advanced field updates)
+     */
+    public function bulkEdit(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $ids = $input['ids'] ?? [];
+
+        if (empty($ids)) {
+            $this->json(['success' => false, 'message' => 'No products selected'], 400);
+            return;
+        }
+
+        // Sanitize IDs
+        $ids = array_map('intval', $ids);
+        $ids = array_filter($ids, fn($id) => $id > 0);
+
+        if (empty($ids)) {
+            $this->json(['success' => false, 'message' => 'No valid products selected'], 400);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+        try {
+            $db->beginTransaction();
+
+            // Handle price updates
+            if (!empty($input['price_action'])) {
+                $priceValue = (float) ($input['price_value'] ?? 0);
+
+                switch ($input['price_action']) {
+                    case 'set':
+                        $stmt = $db->prepare("UPDATE products SET price = ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'increase_percent':
+                        $stmt = $db->prepare("UPDATE products SET price = price * (1 + ? / 100) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'decrease_percent':
+                        $stmt = $db->prepare("UPDATE products SET price = price * (1 - ? / 100) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'increase_fixed':
+                        $stmt = $db->prepare("UPDATE products SET price = price + ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                    case 'decrease_fixed':
+                        $stmt = $db->prepare("UPDATE products SET price = GREATEST(0, price - ?) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$priceValue], $ids));
+                        break;
+                }
+            }
+
+            // Handle stock updates
+            if (!empty($input['stock_action'])) {
+                $stockValue = (int) ($input['stock_value'] ?? 0);
+
+                switch ($input['stock_action']) {
+                    case 'set':
+                        $stmt = $db->prepare("UPDATE products SET stock_quantity = ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$stockValue], $ids));
+                        break;
+                    case 'add':
+                        $stmt = $db->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$stockValue], $ids));
+                        break;
+                    case 'subtract':
+                        $stmt = $db->prepare("UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - ?) WHERE id IN ($placeholders)");
+                        $stmt->execute(array_merge([$stockValue], $ids));
+                        break;
+                }
+            }
+
+            // Handle vendor update
+            if (isset($input['vendor_id'])) {
+                $vendorId = $input['vendor_id'] === '' ? null : (int) $input['vendor_id'];
+                $stmt = $db->prepare("UPDATE products SET vendor_id = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([$vendorId], $ids));
+            }
+
+            // Handle status update
+            if (!empty($input['status'])) {
+                $validStatuses = ['active', 'draft', 'inactive'];
+                if (in_array($input['status'], $validStatuses)) {
+                    $stmt = $db->prepare("UPDATE products SET status = ? WHERE id IN ($placeholders)");
+                    $stmt->execute(array_merge([$input['status']], $ids));
+                }
+            }
+
+            // Handle flags
+            if (isset($input['is_featured'])) {
+                $stmt = $db->prepare("UPDATE products SET is_featured = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([(int) $input['is_featured']], $ids));
+            }
+            if (isset($input['is_new'])) {
+                $stmt = $db->prepare("UPDATE products SET is_new = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([(int) $input['is_new']], $ids));
+            }
+            if (isset($input['is_on_sale'])) {
+                $stmt = $db->prepare("UPDATE products SET is_on_sale = ? WHERE id IN ($placeholders)");
+                $stmt->execute(array_merge([(int) $input['is_on_sale']], $ids));
+            }
+
+            $db->commit();
+
+            $this->json([
+                'success' => true,
+                'message' => count($ids) . ' product(s) updated successfully'
+            ]);
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log("Bulk edit error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'An error occurred while updating products'], 500);
         }
     }
 
@@ -894,6 +1019,259 @@ class ProductController extends Controller
             'success' => true,
             'data' => $result['data'],
         ]);
+    }
+
+    /**
+     * Regenerate product info from SKU using AI (AJAX)
+     * This is useful for fixing products that were imported with generic names
+     */
+    public function regenerateFromSku(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token']);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        if (empty($product->sku)) {
+            $this->json(['success' => false, 'message' => 'Product has no SKU']);
+            return;
+        }
+
+        $openai = new OpenAIService();
+
+        // Get product brand from attributes
+        $db = Database::getInstance();
+        $stmt = $db->prepare("
+            SELECT av.value as brand
+            FROM product_attributes pa
+            JOIN attribute_values av ON pa.attribute_value_id = av.id
+            JOIN attributes a ON av.attribute_id = a.id
+            WHERE pa.product_id = ? AND LOWER(a.name) = 'brand'
+            LIMIT 1
+        ");
+        $stmt->execute([$product->id]);
+        $brandRow = $stmt->fetch();
+        $brand = $brandRow ? $brandRow['brand'] : '';
+
+        // Get product category
+        $categories = $product->getCategories();
+        $categoryName = !empty($categories) ? $categories[0]['name'] : '';
+
+        $result = $openai->generateFromSku($product->sku, [
+            'brand' => $brand,
+            'category' => $categoryName,
+            'price' => $product->price,
+        ]);
+
+        if (empty($result['name']) || $result['name'] === $product->sku) {
+            $this->json(['success' => false, 'message' => 'Could not identify product from SKU. Try the web search option instead.']);
+            return;
+        }
+
+        // Return the generated data for preview
+        $this->json([
+            'success' => true,
+            'data' => [
+                'name' => $result['name'],
+                'short_description' => $result['short_description'] ?? '',
+                'description' => $result['description'] ?? '',
+                'brand' => $result['brand'] ?? $brand,
+                'suggested_category' => $result['suggested_category'] ?? $categoryName,
+            ],
+        ]);
+    }
+
+    /**
+     * Duplicate a product (AJAX)
+     */
+    public function duplicate(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $db = Database::getInstance();
+
+        try {
+            $db->beginTransaction();
+
+            // Generate unique slug
+            $baseSlug = $product->slug . '-copy';
+            $slug = $baseSlug;
+            $counter = 1;
+            while (true) {
+                $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? LIMIT 1");
+                $stmt->execute([$slug]);
+                if (!$stmt->fetch()) break;
+                $slug = $baseSlug . '-' . (++$counter);
+                if ($counter > 100) {
+                    $slug = $baseSlug . '-' . uniqid();
+                    break;
+                }
+            }
+
+            // Generate unique SKU
+            $baseSku = $product->sku . '-COPY';
+            $newSku = $baseSku;
+            $counter = 1;
+            while (true) {
+                $stmt = $db->prepare("SELECT id FROM products WHERE sku = ? LIMIT 1");
+                $stmt->execute([$newSku]);
+                if (!$stmt->fetch()) break;
+                $newSku = $baseSku . '-' . (++$counter);
+                if ($counter > 100) {
+                    $newSku = $baseSku . '-' . uniqid();
+                    break;
+                }
+            }
+
+            // Create duplicate product
+            $newProduct = Product::create([
+                'sku' => $newSku,
+                'name' => $product->name . ' (Copy)',
+                'slug' => $slug,
+                'description' => $product->description,
+                'short_description' => $product->short_description,
+                'type' => $product->type ?? 'simple',
+                'status' => 'draft', // Always start as draft
+                'price' => $product->price,
+                'compare_price' => $product->compare_price,
+                'cost_price' => $product->cost_price,
+                'manage_stock' => $product->manage_stock,
+                'stock_quantity' => $product->stock_quantity,
+                'low_stock_threshold' => $product->low_stock_threshold,
+                'weight' => $product->weight,
+                'length' => $product->length,
+                'width' => $product->width,
+                'height' => $product->height,
+                'vendor_id' => $product->vendor_id,
+                'meta_title' => $product->meta_title,
+                'meta_description' => $product->meta_description,
+                'is_featured' => 0,
+                'is_new' => 0,
+                'is_on_sale' => $product->is_on_sale,
+            ]);
+
+            // Copy categories
+            $stmt = $db->prepare("SELECT category_id, is_primary FROM product_categories WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $categories = $stmt->fetchAll();
+            foreach ($categories as $cat) {
+                $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
+                $stmt->execute([$newProduct->id, $cat['category_id'], $cat['is_primary']]);
+            }
+
+            // Copy attributes
+            $stmt = $db->prepare("SELECT attribute_id, attribute_value_id, custom_value FROM product_attributes WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $attributes = $stmt->fetchAll();
+            foreach ($attributes as $attr) {
+                $stmt = $db->prepare("INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id, custom_value) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$newProduct->id, $attr['attribute_id'], $attr['attribute_value_id'], $attr['custom_value']]);
+            }
+
+            // Copy specifications
+            $stmt = $db->prepare("SELECT spec_name, spec_value, sort_order FROM product_specifications WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $specs = $stmt->fetchAll();
+            foreach ($specs as $spec) {
+                $stmt = $db->prepare("INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$newProduct->id, $spec['spec_name'], $spec['spec_value'], $spec['sort_order']]);
+            }
+
+            // Copy images (reference same files, don't duplicate actual files)
+            $stmt = $db->prepare("SELECT path, alt_text, is_primary, sort_order FROM product_images WHERE product_id = ?");
+            $stmt->execute([$product->id]);
+            $images = $stmt->fetchAll();
+            foreach ($images as $img) {
+                $stmt = $db->prepare("INSERT INTO product_images (product_id, path, alt_text, is_primary, sort_order) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$newProduct->id, $img['path'], $img['alt_text'], $img['is_primary'], $img['sort_order']]);
+            }
+
+            $db->commit();
+
+            $this->json([
+                'success' => true,
+                'product_id' => $newProduct->id,
+                'message' => 'Product duplicated successfully'
+            ]);
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log("Product duplication error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'Failed to duplicate product']);
+        }
+    }
+
+    /**
+     * Autosave product (AJAX)
+     */
+    public function autosave(string $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->json(['success' => false, 'message' => 'Invalid security token'], 403);
+            return;
+        }
+
+        $product = Product::find((int) $id);
+
+        if (!$product) {
+            $this->json(['success' => false, 'message' => 'Product not found']);
+            return;
+        }
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        if (empty($data)) {
+            $this->json(['success' => false, 'message' => 'No data provided']);
+            return;
+        }
+
+        // Only update safe fields
+        $allowedFields = [
+            'name', 'description', 'short_description', 'price', 'compare_price',
+            'cost_price', 'stock_quantity', 'weight', 'meta_title', 'meta_description'
+        ];
+
+        $updates = [];
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) {
+                $product->$field = $data[$field];
+                $updates[] = $field;
+            }
+        }
+
+        if (empty($updates)) {
+            $this->json(['success' => false, 'message' => 'No valid fields to update']);
+            return;
+        }
+
+        try {
+            $product->save();
+            $this->json([
+                'success' => true,
+                'message' => 'Auto-saved',
+                'updated_fields' => $updates,
+                'saved_at' => date('H:i:s')
+            ]);
+        } catch (\Throwable $e) {
+            error_log("Autosave error: " . $e->getMessage());
+            $this->json(['success' => false, 'message' => 'Failed to save']);
+        }
     }
 
     /**
@@ -1410,6 +1788,9 @@ class ProductController extends Controller
             $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
             $aiFields = json_decode($_POST['ai_fields'] ?? '[]', true);
 
+            // Debug: Log import settings
+            error_log("Import started - AI Generate: " . ($aiGenerate ? 'YES' : 'NO') . ", Products: " . count($data));
+
             $db = Database::getInstance();
         $created = 0;
         $updated = 0;
@@ -1433,7 +1814,23 @@ class ProductController extends Controller
             try {
                 $sku = trim($row['sku'] ?? '');
                 $name = trim($row['name'] ?? '');
-                $price = (float) ($row['price'] ?? 0);
+
+                // Parse price - handle South African format with space as thousands separator
+                // e.g., "1 392.78" or "R1 392.78" or "1,392.78"
+                $priceStr = $row['price'] ?? '0';
+                $priceStr = preg_replace('/^R\s*/i', '', $priceStr); // Remove R prefix
+                $priceStr = str_replace([' ', ','], ['', ''], $priceStr); // Remove spaces and commas
+                $price = (float) $priceStr;
+
+                // Also parse cost_price the same way
+                $costPriceStr = $row['cost_price'] ?? '';
+                if (!empty($costPriceStr)) {
+                    $costPriceStr = preg_replace('/^R\s*/i', '', $costPriceStr);
+                    $costPriceStr = str_replace([' ', ','], ['', ''], $costPriceStr);
+                }
+
+                // Get short_description - this often has the REAL product name in it
+                $shortDesc = trim($row['short_description'] ?? $row['short_descriptions'] ?? '');
 
                 if (empty($sku)) {
                     if (!$skipErrors) {
@@ -1455,8 +1852,73 @@ class ProductController extends Controller
                     continue; // Skip new
                 }
 
-                // Generate slug
-                $slug = slugify($name ?: $sku);
+                // Get vendor ID
+                $vendorId = null;
+                if (!empty($row['vendor'])) {
+                    $vendorId = $vendorLookup[strtolower(trim($row['vendor']))] ?? null;
+                }
+
+                // Prepare product data (slug is set later after AI name processing)
+                $productData = [
+                    'sku' => $sku,
+                    'name' => $name,
+                    'slug' => '', // Will be set after AI processing
+                    'description' => $row['description'] ?? '',
+                    'short_description' => $shortDesc,
+                    'price' => $price,
+                    'compare_price' => !empty($row['compare_price']) ? (float) str_replace([' ', ',', 'R'], '', $row['compare_price']) : null,
+                    'cost_price' => !empty($costPriceStr) ? (float) $costPriceStr : null,
+                    'stock_quantity' => (int) ($row['stock'] ?? 0),
+                    'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
+                    'vendor_id' => $vendorId,
+                    'status' => $row['status'] ?? 'active',
+                ];
+
+                // Store brand for attribute handling
+                $brandValue = $row['brand'] ?? null;
+
+                // AI Generate if enabled - use short_description and SKU to generate proper product name
+                if ($aiGenerate) {
+                    $openai = new OpenAIService();
+
+                    // FIRST: Try to extract product name from short_description if it looks like product info
+                    // e.g., "Intel Core i5 12400 Up to 4.4 GHz; 6 Core..." -> "Intel Core i5-12400 Processor"
+                    $extractedName = $this->extractProductNameFromDescription($shortDesc, $sku);
+
+                    if (!empty($extractedName)) {
+                        $productData['name'] = $extractedName;
+                        error_log("AI Import: Extracted name '{$extractedName}' from short_description for SKU {$sku}");
+                    } else {
+                        // FALLBACK: Use OpenAI/pattern matching from SKU
+                        $aiResult = $openai->generateFromSku($sku, [
+                            'brand' => $brandValue,
+                            'category' => $row['category'] ?? '',
+                            'price' => $price,
+                            'short_description' => $shortDesc
+                        ]);
+
+                        error_log("AI Import for SKU {$sku}: " . json_encode($aiResult));
+
+                        if (!empty($aiResult['name']) && strcasecmp($aiResult['name'], $sku) !== 0) {
+                            $productData['name'] = $aiResult['name'];
+                            error_log("AI Import: Set name to '{$aiResult['name']}' for SKU {$sku}");
+                        }
+
+                        // Apply AI description if we don't have one
+                        if (empty($productData['description']) && !empty($aiResult['description'])) {
+                            $productData['description'] = $aiResult['description'];
+                        }
+                    }
+
+                    // Auto-set brand if detected
+                    if (!empty($aiResult['brand']) && empty($brandValue)) {
+                        $brandValue = $aiResult['brand'];
+                    }
+                }
+
+                // Generate unique slug AFTER name is finalized (whether from AI or original)
+                $finalName = $productData['name'] ?: $sku;
+                $slug = slugify($finalName);
                 $baseSlug = $slug;
                 $counter = 1;
                 while (true) {
@@ -1469,63 +1931,7 @@ class ProductController extends Controller
                         break;
                     }
                 }
-
-                // Get vendor ID
-                $vendorId = null;
-                if (!empty($row['vendor'])) {
-                    $vendorId = $vendorLookup[strtolower(trim($row['vendor']))] ?? null;
-                }
-
-                // Prepare product data
-                $productData = [
-                    'sku' => $sku,
-                    'name' => $name,
-                    'slug' => $slug,
-                    'description' => $row['description'] ?? '',
-                    'short_description' => $row['short_description'] ?? '',
-                    'price' => $price,
-                    'compare_price' => !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
-                    'cost_price' => !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
-                    'stock_quantity' => (int) ($row['stock'] ?? 0),
-                    'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
-                    'vendor_id' => $vendorId,
-                    'status' => $row['status'] ?? 'active',
-                ];
-
-                // Store brand for attribute handling
-                $brandValue = $row['brand'] ?? null;
-
-                // AI Generate if enabled - use OpenAI for proper product identification from SKU
-                if ($aiGenerate) {
-                    $openai = new OpenAIService();
-                    $aiResult = $openai->generateFromSku($sku, [
-                        'brand' => $brandValue,
-                        'category' => $row['category'] ?? '',
-                        'price' => $price
-                    ]);
-
-                    // ALWAYS use AI-generated name from SKU when AI is enabled
-                    // The whole point is to generate proper names from SKU codes
-                    if (!empty($aiResult['name']) && $aiResult['name'] !== $sku) {
-                        $productData['name'] = $aiResult['name'];
-                    }
-
-                    // Apply AI values for description fields if empty or requested
-                    if (empty($productData['description']) || in_array('description', $aiFields)) {
-                        $productData['description'] = $aiResult['description'] ?? '';
-                    }
-                    if (empty($productData['short_description']) || in_array('short_description', $aiFields)) {
-                        $productData['short_description'] = $aiResult['short_description'] ?? substr($productData['description'], 0, 150);
-                    }
-
-                    // Auto-set brand if detected by AI
-                    if (empty($brandValue) && !empty($aiResult['brand'])) {
-                        $brandValue = $aiResult['brand'];
-                    }
-
-                    // Update slug based on new AI-generated name
-                    $productData['slug'] = slugify($productData['name']);
-                }
+                $productData['slug'] = $slug;
 
                 if ($existingId) {
                     // Update
@@ -1616,6 +2022,73 @@ class ProductController extends Controller
         }
         $desc .= "High quality product available at competitive prices. Order now for fast delivery.";
         return $desc;
+    }
+
+    /**
+     * Extract a proper product name from short_description
+     * e.g., "Intel Core i5 12400 Up to 4.4 GHz; 6 Core..." -> "Intel Core i5-12400 Processor"
+     * e.g., "Intel Celeron G6900 LGA 1700 3.4 GHz..." -> "Intel Celeron G6900 Processor"
+     */
+    private function extractProductNameFromDescription(string $shortDesc, string $sku): ?string
+    {
+        if (empty($shortDesc)) {
+            return null;
+        }
+
+        // Intel Core patterns: "Intel Core i5 12400", "Intel Core i7-12700K", "Intel® Core™ i9 14900KF"
+        if (preg_match('/Intel[®™\s]*Core[®™\s]*(i[3579])[\s\-]*(\d{4,5})([A-Z]*)/i', $shortDesc, $matches)) {
+            $tier = strtolower($matches[1]); // i3, i5, i7, i9
+            $model = $matches[2]; // 12400, 14900
+            $suffix = strtoupper($matches[3] ?? ''); // K, KF, F, etc.
+
+            $name = "Intel Core " . ucfirst($tier) . "-" . $model;
+            if ($suffix) {
+                $name .= $suffix;
+            }
+            $name .= " Processor";
+            return $name;
+        }
+
+        // Intel Celeron: "Intel Celeron G6900"
+        if (preg_match('/Intel[®™\s]*Celeron[®™\s]*(G\d{4})/i', $shortDesc, $matches)) {
+            return "Intel Celeron " . strtoupper($matches[1]) . " Processor";
+        }
+
+        // Intel Pentium: "Intel Pentium Gold G7400"
+        if (preg_match('/Intel[®™\s]*Pentium[®™\s]*(Gold\s*)?(G\d{4})/i', $shortDesc, $matches)) {
+            $gold = !empty($matches[1]) ? 'Gold ' : '';
+            return "Intel Pentium " . $gold . strtoupper($matches[2]) . " Processor";
+        }
+
+        // Intel Core Ultra: "Intel Core Ultra 5/7/9"
+        if (preg_match('/Intel[®™\s]*Core[®™\s]*Ultra\s*(\d)\s*(\d{3}[A-Z]*)/i', $shortDesc, $matches)) {
+            return "Intel Core Ultra " . $matches[1] . " " . strtoupper($matches[2]) . " Processor";
+        }
+
+        // AMD Ryzen: "AMD Ryzen 5 5600X", "Ryzen 7 7800X3D"
+        if (preg_match('/(?:AMD\s*)?Ryzen\s*(\d)\s*(\d{4})([A-Z0-9]*)/i', $shortDesc, $matches)) {
+            $tier = $matches[1];
+            $model = $matches[2];
+            $suffix = strtoupper($matches[3] ?? '');
+            return "AMD Ryzen " . $tier . " " . $model . $suffix . " Processor";
+        }
+
+        // NVIDIA GeForce: "GeForce RTX 4090", "RTX 4080 Ti"
+        if (preg_match('/(GeForce\s*)?(RTX|GTX)\s*(\d{4})(\s*Ti|\s*SUPER)?/i', $shortDesc, $matches)) {
+            $series = strtoupper($matches[2]);
+            $model = $matches[3];
+            $variant = isset($matches[4]) ? ' ' . trim(ucfirst(strtolower($matches[4]))) : '';
+            return "NVIDIA GeForce " . $series . " " . $model . $variant . " Graphics Card";
+        }
+
+        // AMD Radeon: "Radeon RX 7900 XTX"
+        if (preg_match('/Radeon\s*(RX)\s*(\d{4})(\s*XT[X]?)?/i', $shortDesc, $matches)) {
+            $model = $matches[2];
+            $variant = isset($matches[3]) ? ' ' . strtoupper(trim($matches[3])) : '';
+            return "AMD Radeon RX " . $model . $variant . " Graphics Card";
+        }
+
+        return null;
     }
 
     /**

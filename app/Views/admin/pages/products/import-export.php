@@ -263,7 +263,7 @@
                 <label class="option-checkbox">
                     <input type="checkbox" id="aiGenerateAll">
                     <span class="checkmark"></span>
-                    AI Generate missing names/descriptions
+                    <strong>AI Generate from SKU</strong> - Replace names with proper product names (e.g., BX8071514600K → Intel Core i5-14600K)
                 </label>
             </div>
 
@@ -1575,7 +1575,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Create form data
         const formData = new FormData();
-        formData.append('csrf_token', '<?= csrf_token() ?>');
+        formData.append('_token', '<?= csrf_token() ?>');
         formData.append('data', JSON.stringify(importData));
         formData.append('update_existing', document.getElementById('updateExisting').checked ? '1' : '0');
         formData.append('create_new', document.getElementById('createNew').checked ? '1' : '0');

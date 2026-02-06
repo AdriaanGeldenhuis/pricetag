@@ -1128,34 +1128,28 @@ function makeProductionReady() {
         if (data.success && data.data) {
             const d = data.data;
 
-            // Apply all AI-generated fields to form inputs
-            if (d.name && document.getElementById('name')) {
+            // Apply ALL AI-generated fields (AI uses verified pattern matching for names)
+            if (d.name) {
                 const nameField = document.getElementById('name');
-                if (!nameField.value || nameField.value.length < 10) {
-                    nameField.value = d.name;
-                }
+                if (nameField) nameField.value = d.name;
             }
-            if (d.short_description && document.getElementById('short_description')) {
+            if (d.short_description) {
                 const field = document.getElementById('short_description');
-                if (!field.value || field.value.length < 20) {
-                    field.value = d.short_description;
-                }
+                if (field) field.value = d.short_description;
             }
-            if (d.description && document.getElementById('description')) {
+            if (d.description) {
                 const field = document.getElementById('description');
-                if (!field.value || field.value.length < 50) {
-                    field.value = d.description;
-                }
+                if (field) field.value = d.description;
             }
-            if (d.meta_title && document.getElementById('meta_title')) {
+            if (d.meta_title) {
                 const field = document.getElementById('meta_title');
-                if (!field.value) field.value = d.meta_title;
+                if (field) field.value = d.meta_title;
             }
-            if (d.meta_description && document.getElementById('meta_description')) {
+            if (d.meta_description) {
                 const field = document.getElementById('meta_description');
-                if (!field.value) field.value = d.meta_description;
+                if (field) field.value = d.meta_description;
             }
-            if (d.meta_keywords && document.getElementById('meta_keywords')) {
+            if (d.meta_keywords) {
                 const field = document.getElementById('meta_keywords');
                 if (!field.value) field.value = d.meta_keywords;
             }

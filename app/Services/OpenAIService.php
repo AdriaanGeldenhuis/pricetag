@@ -366,64 +366,95 @@ class OpenAIService
      */
     public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
     {
-        if (empty($this->apiKey)) {
-            return $this->generateFallbackComplete($sku, $shortDescription, $context);
-        }
-
         $price = $context['price'] ?? 0;
         $brand = $context['brand'] ?? '';
         $categoryHint = $context['category'] ?? '';
         $existingName = $context['existingName'] ?? '';
         $existingDescription = $context['existingDescription'] ?? '';
 
+        // STEP 1: Always run local pattern matching FIRST - this is accurate for known SKU patterns
+        $patternData = $this->generateFallbackFromSku($sku, [
+            'brand' => $brand,
+            'category' => $categoryHint,
+            'price' => $price,
+        ]);
+
+        // The pattern matcher returns the SKU as name when it can't identify the product
+        $patternRecognized = !empty($patternData['name']) && $patternData['name'] !== $sku;
+        $verifiedName = $patternRecognized ? $patternData['name'] : '';
+        $verifiedBrand = $patternData['brand'] ?? $brand;
+        $verifiedCategory = $patternData['suggested_category'] ?? $categoryHint;
+
+        error_log("AI Complete: SKU={$sku}, Pattern name='{$verifiedName}', Pattern recognized=" . ($patternRecognized ? 'YES' : 'NO'));
+
+        if (empty($this->apiKey)) {
+            return $this->generateFallbackComplete($sku, $shortDescription, $context, $patternData);
+        }
+
+        // STEP 2: Build AI prompt, passing the verified name as a HARD CONSTRAINT when we have one
         $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store. ";
         $prompt .= "Create a COMPLETE, production-ready product listing from the following information.\n\n";
         $prompt .= "SKU: {$sku}\n";
+
+        // If pattern matching identified the product, tell the AI explicitly
+        if ($patternRecognized) {
+            $prompt .= "\nPRODUCT IDENTIFIED: {$verifiedName}\n";
+            $prompt .= "BRAND: {$verifiedBrand}\n";
+            $prompt .= "CATEGORY: {$verifiedCategory}\n";
+            $prompt .= "*** The product name above has been verified from the SKU. You MUST use this EXACT product name. Do NOT change or guess a different model number. ***\n\n";
+        }
+
         if ($shortDescription) {
             $prompt .= "Supplier Description: {$shortDescription}\n";
         }
-        if ($existingName) {
+        if ($existingName && !$patternRecognized) {
             $prompt .= "Current Name: {$existingName}\n";
         }
         if ($existingDescription) {
             $prompt .= "Current Description: " . substr($existingDescription, 0, 300) . "\n";
         }
-        if ($brand) {
+        if ($brand && !$patternRecognized) {
             $prompt .= "Brand: {$brand}\n";
         }
-        if ($categoryHint) {
+        if ($categoryHint && !$patternRecognized) {
             $prompt .= "Category Hint: {$categoryHint}\n";
         }
         if ($price > 0) {
             $prompt .= "Price: R" . number_format((float)$price, 2) . " (South African Rand)\n";
         }
 
-        $prompt .= "\nSKU PATTERNS TO RECOGNIZE:\n";
-        $prompt .= "- Intel: 'BX80' prefix = boxed processor. 12400=i5, 14100=i3, 13700=i7, 13900=i9. Suffixes: K=unlocked, F=no iGPU, KF=both\n";
-        $prompt .= "- AMD: '100-' prefix or 'Ryzen' in code\n";
-        $prompt .= "- NVIDIA: RTX/GTX prefix. AMD: RX prefix for graphics cards\n";
-        $prompt .= "- Corsair: 'CM', 'CP', 'CC' prefixes for memory/PSU/cases\n";
+        if (!$patternRecognized) {
+            $prompt .= "\nSKU PATTERNS TO RECOGNIZE:\n";
+            $prompt .= "- Intel: 'BX80' prefix = boxed processor, last 5 digits = model number. Examples: BX8071514900 = i9-14900, BX8071512400F = i5-12400F, BX8071514100 = i3-14100\n";
+            $prompt .= "- Intel tier: x9xx=i9, x7xx=i7, x4xx/x5xx/x6xx=i5, x1xx=i3. Suffixes: K=unlocked, F=no iGPU, KF=both\n";
+            $prompt .= "- AMD: '100-' prefix or 'Ryzen' in code\n";
+            $prompt .= "- NVIDIA: RTX/GTX prefix. AMD: RX prefix for graphics cards\n";
+            $prompt .= "- Corsair: 'CM'=memory, 'CP'=PSU, 'CC'=cases\n";
+        }
 
         $prompt .= "\nGenerate ALL of the following fields in JSON format:\n";
-        $prompt .= "1. name: Professional product name (e.g., 'Intel Core i5-12400F Processor' NOT just the SKU)\n";
+        if ($patternRecognized) {
+            $prompt .= "1. name: Use EXACTLY \"{$verifiedName}\" - do NOT change this\n";
+        } else {
+            $prompt .= "1. name: Professional product name (e.g., 'Intel Core i9-14900 Processor' NOT just the SKU). Extract the model number from the SKU digits.\n";
+        }
         $prompt .= "2. short_description: Compelling 1-2 sentence summary highlighting key selling points (max 160 chars)\n";
         $prompt .= "3. description: Detailed HTML product description with features and benefits (3-4 paragraphs, use <p>, <ul>, <li>, <strong> tags)\n";
         $prompt .= "4. meta_title: SEO-optimized page title (max 70 chars, include brand + product + key feature)\n";
         $prompt .= "5. meta_description: SEO meta description (max 160 chars, include call-to-action)\n";
         $prompt .= "6. meta_keywords: Comma-separated SEO keywords (max 8 keywords relevant to the product)\n";
-        $prompt .= "7. specifications: Array of product specs as [{\"name\": \"Spec Name\", \"value\": \"Spec Value\"}] - include at least 5 specs\n";
+        $prompt .= "7. specifications: Array of product specs as [{\"name\": \"Spec Name\", \"value\": \"Spec Value\"}] - include at least 5 real specs\n";
         $prompt .= "8. suggested_category: Best product category (e.g., 'Processors', 'Graphics Cards', 'Memory', 'Storage')\n";
-        $prompt .= "9. brand: Brand name identified from SKU/description\n";
-        $prompt .= "10. weight: Estimated product weight in kg (decimal, e.g., 0.5) - estimate based on product type\n";
-        $prompt .= "11. is_taxable: true (always true for physical products)\n";
+        $prompt .= "9. brand: Brand name\n";
+        $prompt .= "10. weight: Estimated product weight in kg (decimal, e.g., 0.5)\n";
+        $prompt .= "11. is_taxable: true\n";
 
         $prompt .= "\nIMPORTANT RULES:\n";
         $prompt .= "- NEVER use the raw SKU as the product name\n";
+        $prompt .= "- NEVER guess a different model number than what the SKU encodes\n";
         $prompt .= "- All prices are in South African Rand (ZAR / R)\n";
         $prompt .= "- Write descriptions as if for a premium e-commerce store\n";
         $prompt .= "- Include real, accurate specifications based on the product identified\n";
-        $prompt .= "- The description HTML should be clean and professional\n";
-        $prompt .= "- If you cannot identify the exact product, make the best educated guess based on the SKU pattern and description\n";
         $prompt .= "\nRespond ONLY with valid JSON, no markdown code blocks, no extra text.";
 
         try {
@@ -449,29 +480,38 @@ class OpenAIService
 
             if (json_last_error() !== JSON_ERROR_NONE) {
                 error_log('OpenAI Complete Product: JSON parse failed - ' . json_last_error_msg());
-                return $this->generateFallbackComplete($sku, $shortDescription, $context);
+                return $this->generateFallbackComplete($sku, $shortDescription, $context, $patternData);
             }
 
-            // Validate: Ensure AI didn't just use the raw SKU as name
-            if (!empty($data['name'])) {
-                $aiName = trim($data['name']);
-                if (strcasecmp($aiName, $sku) === 0 || (stripos($aiName, $sku) === 0 && strlen($aiName) < strlen($sku) + 10)) {
-                    $fallback = $this->generateFallbackFromSku($sku, ['brand' => $brand, 'category' => $categoryHint, 'price' => $price]);
-                    $data['name'] = $fallback['name'];
+            // STEP 3: Validate AI output - ALWAYS prefer pattern-matched name over AI name
+            if ($patternRecognized) {
+                // Force the verified name - AI cannot be trusted with model numbers
+                $data['name'] = $verifiedName;
+                $data['brand'] = $verifiedBrand;
+                if (!empty($verifiedCategory)) {
+                    $data['suggested_category'] = $verifiedCategory;
+                }
+            } else {
+                // No pattern match - validate AI didn't just use raw SKU
+                if (!empty($data['name'])) {
+                    $aiName = trim($data['name']);
+                    if (strcasecmp($aiName, $sku) === 0 || (stripos($aiName, $sku) === 0 && strlen($aiName) < strlen($sku) + 10)) {
+                        $data['name'] = $existingName ?: $sku;
+                    }
                 }
             }
 
             // Ensure all expected keys exist with defaults
             $data = array_merge([
-                'name' => $existingName ?: $sku,
+                'name' => $verifiedName ?: ($existingName ?: $sku),
                 'short_description' => '',
                 'description' => '',
                 'meta_title' => '',
                 'meta_description' => '',
                 'meta_keywords' => '',
                 'specifications' => [],
-                'suggested_category' => $categoryHint,
-                'brand' => $brand,
+                'suggested_category' => $verifiedCategory ?: $categoryHint,
+                'brand' => $verifiedBrand ?: $brand,
                 'weight' => null,
                 'is_taxable' => true,
             ], $data);
@@ -483,22 +523,24 @@ class OpenAIService
 
         } catch (\Exception $e) {
             error_log('OpenAI Complete Product Error: ' . $e->getMessage());
-            return $this->generateFallbackComplete($sku, $shortDescription, $context);
+            return $this->generateFallbackComplete($sku, $shortDescription, $context, $patternData);
         }
     }
 
     /**
      * Fallback when API is unavailable - generate basic complete product data
      */
-    private function generateFallbackComplete(string $sku, string $shortDescription, array $context): array
+    private function generateFallbackComplete(string $sku, string $shortDescription, array $context, ?array $patternData = null): array
     {
-        $skuData = $this->generateFallbackFromSku($sku, [
+        $skuData = $patternData ?? $this->generateFallbackFromSku($sku, [
             'brand' => $context['brand'] ?? '',
             'category' => $context['category'] ?? '',
             'price' => $context['price'] ?? 0,
         ]);
 
-        $name = $context['existingName'] ?: ($skuData['name'] ?? $sku);
+        // Use pattern-matched name if available, otherwise existing name, otherwise SKU
+        $patternName = ($skuData['name'] ?? '') !== $sku ? ($skuData['name'] ?? '') : '';
+        $name = $patternName ?: ($context['existingName'] ?? $sku);
         $brand = $skuData['brand'] ?? ($context['brand'] ?? '');
 
         return [

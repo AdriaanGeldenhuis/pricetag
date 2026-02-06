@@ -1153,31 +1153,27 @@ class ProductController extends Controller
         // Build update array - only update fields that need improvement
         $updates = [];
 
-        // Name - update if current name looks like a SKU
-        if (!empty($aiData['name']) && (
-            $product->name === $product->sku ||
-            strlen($product->name) < 10 ||
-            preg_match('/^[A-Z0-9\-]+$/', $product->name)
-        )) {
+        // Name - always update from AI since it uses verified pattern matching
+        if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
             $updates['name'] = $aiData['name'];
         }
 
-        // Descriptions
-        if (!empty($aiData['description']) && (empty($product->description) || strlen($product->description) < 50)) {
+        // Descriptions - always update from AI (AI generates better content)
+        if (!empty($aiData['description'])) {
             $updates['description'] = $aiData['description'];
         }
-        if (!empty($aiData['short_description']) && (empty($product->short_description) || strlen($product->short_description) < 20)) {
+        if (!empty($aiData['short_description'])) {
             $updates['short_description'] = $aiData['short_description'];
         }
 
-        // SEO fields - always update if empty
-        if (!empty($aiData['meta_title']) && empty($product->meta_title)) {
+        // SEO fields - always update from AI
+        if (!empty($aiData['meta_title'])) {
             $updates['meta_title'] = substr($aiData['meta_title'], 0, 255);
         }
-        if (!empty($aiData['meta_description']) && empty($product->meta_description)) {
+        if (!empty($aiData['meta_description'])) {
             $updates['meta_description'] = $aiData['meta_description'];
         }
-        if (!empty($aiData['meta_keywords']) && empty($product->meta_keywords)) {
+        if (!empty($aiData['meta_keywords'])) {
             $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
         }
 

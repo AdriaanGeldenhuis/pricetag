@@ -65,6 +65,22 @@ class HomeController extends Controller
         // Get testimonials
         $testimonials = [];
 
+        // Get promo banners (homepage_middle location)
+        $promoBanners = [];
+        try {
+            $stmt = $db->query("
+                SELECT * FROM banners
+                WHERE location = 'homepage_middle' AND is_active = 1
+                AND (starts_at IS NULL OR starts_at <= NOW())
+                AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY sort_order
+                LIMIT 4
+            ");
+            $promoBanners = $stmt->fetchAll();
+        } catch (\PDOException $e) {
+            // Table doesn't exist yet
+        }
+
         $this->layout('main');
         $this->view('pages/home', [
             'meta_title' => config('seo.defaults.title'),
@@ -79,6 +95,7 @@ class HomeController extends Controller
             'onSaleProducts' => $onSaleProducts,
             'flashSale' => $flashSale,
             'testimonials' => $testimonials,
+            'promoBanners' => $promoBanners,
         ]);
     }
 

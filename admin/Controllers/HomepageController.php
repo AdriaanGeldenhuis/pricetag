@@ -147,35 +147,68 @@ class HomepageController extends Controller
         return [
             'hero_slider' => [
                 'name' => 'Hero Slider',
+                'icon' => 'image',
                 'description' => 'Main hero banner slider at the top of the homepage',
             ],
+            'category_cards' => [
+                'name' => 'Category Ring Cards',
+                'icon' => 'grid',
+                'description' => 'Horizontal scrollable category cards with silver ring thumbnails',
+            ],
             'categories' => [
-                'name' => 'Categories Grid',
-                'description' => 'Display category cards in a grid layout',
+                'name' => 'Category Spotlight Grid',
+                'icon' => 'layout',
+                'description' => 'Featured categories in a grid layout with icons',
             ],
             'featured_products' => [
                 'name' => 'Featured Products',
-                'description' => 'Showcase featured products',
+                'icon' => 'star',
+                'description' => 'Showcase hand-picked featured products in a carousel',
             ],
             'new_arrivals' => [
                 'name' => 'New Arrivals',
-                'description' => 'Display newest products',
+                'icon' => 'package',
+                'description' => 'Automatically displays the newest products added',
             ],
             'best_sellers' => [
                 'name' => 'Best Sellers',
-                'description' => 'Show top selling products',
+                'icon' => 'trending-up',
+                'description' => 'Show top selling and most popular products',
+            ],
+            'deals_countdown' => [
+                'name' => 'Hot Deals + Countdown',
+                'icon' => 'clock',
+                'description' => 'On-sale products with live countdown timer for flash sales',
+            ],
+            'trending_products' => [
+                'name' => 'Trending Products Grid',
+                'icon' => 'zap',
+                'description' => 'Trending/popular products displayed in a grid layout',
             ],
             'trust_badges' => [
                 'name' => 'Trust Badges',
-                'description' => 'Display trust indicators like free shipping, secure payment',
+                'icon' => 'shield',
+                'description' => 'Trust indicators (free shipping, secure payment, etc.)',
+            ],
+            'promo_banner' => [
+                'name' => 'Promotional Banners',
+                'icon' => 'columns',
+                'description' => 'Display promotional banners from Banner Manager (homepage_middle)',
             ],
             'newsletter' => [
                 'name' => 'Newsletter Signup',
-                'description' => 'Email newsletter subscription form',
+                'icon' => 'mail',
+                'description' => 'Email newsletter subscription with animated background',
+            ],
+            'recently_viewed' => [
+                'name' => 'Recently Viewed',
+                'icon' => 'eye',
+                'description' => 'Shows products the visitor recently viewed (browser-based)',
             ],
             'custom' => [
-                'name' => 'Custom Section',
-                'description' => 'Custom HTML content section',
+                'name' => 'Custom HTML',
+                'icon' => 'code',
+                'description' => 'Custom HTML/CSS content section for anything else',
             ],
         ];
     }

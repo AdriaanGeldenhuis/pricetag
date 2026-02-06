@@ -608,12 +608,33 @@ if (!empty($allCategories)):
     transform: scale(1.2);
 }
 
-/* Category Cards Bar */
+/* Category Cards Bar - Glossy Silver */
 .category-cards-bar {
-    background-color: var(--color-background-secondary);
-    border-bottom: var(--border-1) solid var(--color-border);
     position: relative;
     padding: var(--space-8) 0;
+    background: linear-gradient(180deg, #141418 0%, #18181f 40%, #1a1a24 70%, #141418 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+}
+
+/* Glossy sheen overlay */
+.category-cards-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, transparent 0%, rgba(200, 200, 220, 0.02) 30%, rgba(255, 255, 255, 0.04) 50%, rgba(200, 200, 220, 0.02) 70%, transparent 100%);
+    pointer-events: none;
+}
+
+/* Silver shimmer line at top */
+.category-cards-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(180, 180, 200, 0.1) 20%, rgba(220, 220, 240, 0.3) 50%, rgba(180, 180, 200, 0.1) 80%, transparent 100%);
 }
 
 .category-cards-container {
@@ -650,7 +671,7 @@ if (!empty($allCategories)):
     display: none;
 }
 
-/* Card items - now vertical layout with circle on top */
+/* Card items */
 .category-card-item {
     flex: 0 0 auto;
     scroll-snap-align: start;
@@ -707,55 +728,59 @@ if (!empty($allCategories)):
     }
 }
 
-/* 3D Ring border effect */
+/* Silver metallic ring border */
 .category-card-ring-border {
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    padding: 3px;
+    padding: 2px;
     background: conic-gradient(
         from 0deg,
-        rgba(239, 68, 68, 0.9),
-        rgba(249, 115, 22, 0.9),
-        rgba(234, 179, 8, 0.9),
-        rgba(34, 197, 94, 0.9),
-        rgba(59, 130, 246, 0.9),
-        rgba(168, 85, 247, 0.9),
-        rgba(239, 68, 68, 0.9)
+        rgba(120, 120, 140, 0.5),
+        rgba(200, 200, 220, 0.9),
+        rgba(255, 255, 255, 1),
+        rgba(200, 200, 220, 0.9),
+        rgba(140, 140, 160, 0.5),
+        rgba(90, 90, 110, 0.4),
+        rgba(160, 160, 180, 0.7),
+        rgba(220, 220, 240, 0.95),
+        rgba(255, 255, 255, 1),
+        rgba(200, 200, 220, 0.8),
+        rgba(120, 120, 140, 0.5)
     );
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
-    animation: ringRotate 4s linear infinite;
-    filter: blur(0.5px);
-    opacity: 0.85;
-    transition: opacity 0.3s ease, filter 0.3s ease;
+    animation: ringRotate 8s linear infinite;
+    opacity: 0.6;
+    transition: opacity 0.4s ease;
 }
 
 .category-card-item:hover .category-card-ring-border {
     opacity: 1;
-    filter: blur(0px);
-    animation-duration: 2s;
+    animation-duration: 4s;
 }
 
-/* Outer glow effect */
+/* Silver outer glow */
 .category-card-ring::before {
     content: '';
     position: absolute;
-    inset: -4px;
+    inset: -5px;
     border-radius: 50%;
     background: conic-gradient(
         from 0deg,
-        rgba(239, 68, 68, 0.15),
-        rgba(249, 115, 22, 0.15),
-        rgba(234, 179, 8, 0.15),
-        rgba(34, 197, 94, 0.15),
-        rgba(59, 130, 246, 0.15),
-        rgba(168, 85, 247, 0.15),
-        rgba(239, 68, 68, 0.15)
+        rgba(180, 180, 200, 0.05),
+        rgba(220, 220, 240, 0.12),
+        rgba(255, 255, 255, 0.15),
+        rgba(220, 220, 240, 0.12),
+        rgba(180, 180, 200, 0.05),
+        rgba(140, 140, 160, 0.03),
+        rgba(200, 200, 220, 0.1),
+        rgba(240, 240, 255, 0.14),
+        rgba(180, 180, 200, 0.05)
     );
-    filter: blur(8px);
-    animation: ringRotate 4s linear infinite;
+    filter: blur(10px);
+    animation: ringRotate 8s linear infinite;
     opacity: 0;
     transition: opacity 0.4s ease;
     z-index: -1;
@@ -769,12 +794,12 @@ if (!empty($allCategories)):
 .category-card-ring::after {
     content: '';
     position: absolute;
-    inset: 3px;
+    inset: 2px;
     border-radius: 50%;
     box-shadow:
-        inset 0 2px 8px rgba(0, 0, 0, 0.4),
-        inset 0 -1px 4px rgba(255, 255, 255, 0.05),
-        0 2px 12px rgba(0, 0, 0, 0.3);
+        inset 0 3px 10px rgba(0, 0, 0, 0.5),
+        inset 0 -2px 6px rgba(255, 255, 255, 0.04),
+        0 2px 8px rgba(0, 0, 0, 0.4);
     pointer-events: none;
     z-index: 1;
 }
@@ -785,15 +810,16 @@ if (!empty($allCategories)):
     }
 }
 
-/* Circular image inside the ring */
+/* Circular image - glossy dark background */
 .category-card-image {
     position: relative;
-    width: calc(100% - 8px);
-    height: calc(100% - 8px);
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
     border-radius: 50%;
     overflow: hidden;
-    background: linear-gradient(145deg, var(--color-background-alt) 0%, var(--color-background) 100%);
+    background: linear-gradient(145deg, #1e1e28 0%, #12121a 50%, #0e0e14 100%);
     z-index: 2;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .category-card-image img {
@@ -815,7 +841,7 @@ if (!empty($allCategories)):
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text-muted);
+    color: #64748b;
 }
 
 /* Card text content */
@@ -828,7 +854,7 @@ if (!empty($allCategories)):
 .category-card-name {
     font-size: var(--text-sm);
     font-weight: var(--font-semibold);
-    color: var(--color-text);
+    color: #c0c0d0;
     display: block;
     white-space: nowrap;
     overflow: hidden;
@@ -843,12 +869,12 @@ if (!empty($allCategories)):
 }
 
 .category-card-item:hover .category-card-name {
-    color: var(--color-primary);
+    color: #f1f5f9;
 }
 
 /* View All Card */
 .category-card-view-all .category-card-image {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-700) 100%);
+    background: linear-gradient(145deg, #1e1e28 0%, #12121a 100%);
 }
 
 .category-card-view-all-icon {
@@ -857,32 +883,36 @@ if (!empty($allCategories)):
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text);
+    color: #94a3b8;
 }
 
 .category-card-view-all:hover .category-card-image {
-    background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-800) 100%);
+    background: linear-gradient(145deg, #252530 0%, #18181f 100%);
+}
+
+.category-card-view-all:hover .category-card-view-all-icon {
+    color: #e2e8f0;
 }
 
 .category-card-view-all .category-card-name {
-    color: var(--color-primary);
+    color: #94a3b8;
 }
 
 .category-card-view-all .category-card-ring-border {
     background: conic-gradient(
         from 0deg,
-        var(--color-primary),
-        var(--color-primary-600),
-        var(--color-primary-400),
-        var(--color-primary-600),
-        var(--color-primary)
+        rgba(120, 120, 140, 0.4),
+        rgba(180, 180, 200, 0.7),
+        rgba(220, 220, 240, 0.8),
+        rgba(180, 180, 200, 0.7),
+        rgba(120, 120, 140, 0.4)
     );
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
 }
 
-/* Scroll Buttons */
+/* Scroll Buttons - Glossy silver */
 .category-scroll-btn {
     position: absolute;
     top: 50%;
@@ -893,13 +923,13 @@ if (!empty($allCategories)):
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-background-elevated);
-    border: var(--border-1) solid var(--color-border);
+    background: linear-gradient(145deg, #22222c, #18181f);
+    border: 1px solid rgba(200, 200, 220, 0.12);
     border-radius: var(--radius-full);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    color: var(--color-text);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    color: #94a3b8;
     cursor: pointer;
-    transition: var(--transition-all);
+    transition: all 0.3s ease;
     opacity: 0;
 }
 
@@ -908,9 +938,10 @@ if (!empty($allCategories)):
 }
 
 .category-scroll-btn:hover {
-    background: var(--color-primary);
-    color: white;
-    border-color: var(--color-primary);
+    background: linear-gradient(145deg, #2a2a36, #1e1e28);
+    border-color: rgba(220, 220, 240, 0.25);
+    color: #e2e8f0;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 12px rgba(200, 200, 220, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .category-scroll-prev {

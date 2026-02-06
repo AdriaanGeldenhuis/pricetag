@@ -2428,9 +2428,15 @@ a.footer-contact-item:hover svg {
    ========================================================================= */
 
 .page-sidebar-right {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+@media (min-width: 1440px) {
+  .page-sidebar-right {
+    display: flex;
+  }
 }
 
 .page-sidebar-right .sidebar-static-widget {
@@ -2589,13 +2595,10 @@ a.footer-contact-item:hover svg {
   transform: scale(1.05);
 }
 
-/* Mobile: hide right sidebar, show as horizontal scroll strip */
+/* Mobile: optional horizontal scroll strip for sidebar */
 @media (max-width: 1439px) {
-  .page-sidebar-right:not(.sidebar-mobile-show) {
-    display: none;
-  }
-
   .page-sidebar-right.sidebar-mobile-show {
+    display: flex;
     flex-direction: row;
     overflow-x: auto;
     gap: var(--space-3);

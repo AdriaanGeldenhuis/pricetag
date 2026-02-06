@@ -982,32 +982,16 @@ class ProductImageService
     }
 
     // =========================================================================
-    // AI IMAGE GENERATION (GD Library)
+    // AI IMAGE DOWNLOAD (Search & Download real product images from the web)
     // =========================================================================
 
     /**
-     * Font paths for image generation
-     */
-    private const FONT_REGULAR = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
-    private const FONT_BOLD = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
-
-    /**
-     * Brand color palettes [primary, dark, accent]
-     */
-    private const BRAND_COLORS = [
-        'Intel'  => ['primary' => [0, 113, 197], 'dark' => [0, 62, 107],  'accent' => [0, 168, 252]],
-        'AMD'    => ['primary' => [237, 28, 36],  'dark' => [130, 15, 20], 'accent' => [255, 90, 96]],
-        'NVIDIA' => ['primary' => [118, 185, 0],  'dark' => [50, 90, 0],   'accent' => [150, 220, 30]],
-    ];
-    private const DEFAULT_BRAND_COLORS = ['primary' => [79, 70, 229], 'dark' => [40, 35, 115], 'accent' => [129, 120, 255]];
-
-    /**
-     * Generate AI product images using PHP GD library.
-     * Creates 4 professional info-card style images with brand colors and product details.
+     * Download real product images from the web for a product.
+     * Searches for the product by name/SKU and downloads up to 4 images.
      * Skips products that already have 4+ images.
      *
      * @param int $productId
-     * @param array $productData Keys: name, brand, sku, category, short_description, specifications
+     * @param array $productData Keys: name, brand, sku, category
      * @return array{success: bool, generated: int, message: string}
      */
     public function generateProductImages(int $productId, array $productData): array
@@ -1025,77 +1009,254 @@ class ProductImageService
             return ['success' => true, 'generated' => 0, 'message' => 'Product already has 4+ images'];
         }
 
-        if (!extension_loaded('gd')) {
-            return ['success' => false, 'generated' => 0, 'message' => 'GD extension not available'];
-        }
-
-        $fontRegular = file_exists(self::FONT_BOLD) ? self::FONT_REGULAR : '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf';
-        if (!file_exists($fontRegular)) {
-            return ['success' => false, 'generated' => 0, 'message' => 'Required fonts not found'];
-        }
-
         $needed = 4 - count($existingImages);
+        $name = $productData['name'] ?? '';
         $brand = $productData['brand'] ?? '';
-        $colors = self::BRAND_COLORS[$brand] ?? self::DEFAULT_BRAND_COLORS;
+        $sku = $productData['sku'] ?? '';
 
-        $generators = ['generateHeroImage', 'generateFeaturesImage', 'generateSpecsImage', 'generateBrandCard'];
-        $altSuffixes = ['Product Overview', 'Key Features', 'Technical Specifications', 'Available at Pricetag.co.za'];
+        if (empty($name) && empty($sku)) {
+            return ['success' => false, 'generated' => 0, 'message' => 'No product name or SKU to search for'];
+        }
 
-        $generated = 0;
+        // Build search queries - try different variations to get diverse images
+        $searchQueries = $this->buildImageSearchQueries($name, $brand, $sku);
+
+        // Search and download images
+        $downloaded = 0;
         $hasPrimary = !empty($existingImages);
+        $usedUrls = [];
 
-        for ($i = 0; $i < min($needed, 4); $i++) {
-            try {
-                $method = $generators[$i];
-                $gdImage = $this->$method($productData, $colors);
+        foreach ($searchQueries as $query) {
+            if ($downloaded >= $needed) break;
 
-                if ($gdImage) {
-                    $altText = ($productData['name'] ?? 'Product') . ' - ' . $altSuffixes[$i];
-                    $isPrimary = !$hasPrimary && $i === 0;
-                    $result = $this->saveGeneratedImage($productId, $gdImage, $altText, $isPrimary);
-                    imagedestroy($gdImage);
+            $imageUrls = $this->searchGoogleImages($query, $needed - $downloaded + 2);
 
-                    if ($result['success']) {
-                        $generated++;
-                    }
+            foreach ($imageUrls as $url) {
+                if ($downloaded >= $needed) break;
+                if (in_array($url, $usedUrls)) continue;
+                $usedUrls[] = $url;
+
+                $isPrimary = !$hasPrimary && $downloaded === 0;
+                $altText = $name ?: $sku;
+
+                $result = $this->downloadAndSaveImage($productId, $url, $altText, $isPrimary);
+                if ($result['success']) {
+                    $downloaded++;
                 }
-            } catch (\Throwable $e) {
-                error_log("ProductImageService: Image {$i} generation failed for product {$productId}: " . $e->getMessage());
             }
         }
 
-        error_log("ProductImageService: Generated {$generated} AI images for product {$productId}");
-
         return [
-            'success' => $generated > 0,
-            'generated' => $generated,
-            'message' => $generated > 0
-                ? "Generated {$generated} product image(s)"
-                : 'Failed to generate images',
+            'success' => $downloaded > 0,
+            'generated' => $downloaded,
+            'message' => $downloaded > 0
+                ? "Downloaded {$downloaded} product image(s)"
+                : 'Could not find suitable product images',
         ];
     }
 
     /**
-     * Save a GD-generated image to storage and database
+     * Build varied search queries for finding product images
      */
-    private function saveGeneratedImage(int $productId, \GdImage $image, string $altText = '', bool $isPrimary = false): array
+    private function buildImageSearchQueries(string $name, string $brand, string $sku): array
+    {
+        $queries = [];
+
+        // Primary: full product name + "product image"
+        if ($name) {
+            $queries[] = $name . ' product image';
+            $queries[] = $name . ' box';
+        }
+
+        // Brand + SKU
+        if ($brand && $sku) {
+            $queries[] = $brand . ' ' . $sku . ' product';
+        }
+
+        // Just the name if different queries needed
+        if ($name) {
+            $queries[] = $name;
+        }
+
+        return array_slice($queries, 0, 4);
+    }
+
+    /**
+     * Search Google Images and return direct image URLs
+     */
+    private function searchGoogleImages(string $query, int $count = 5): array
+    {
+        $urls = [];
+
+        // Use Google Images search and parse results
+        $searchUrl = 'https://www.google.com/search?q=' . urlencode($query) . '&tbm=isch&safe=active';
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $searchUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            CURLOPT_HTTPHEADER => [
+                'Accept: text/html,application/xhtml+xml',
+                'Accept-Language: en-US,en;q=0.9',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+
+        $html = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if (!$html || $httpCode !== 200) {
+            error_log("ProductImageService: Google search failed for '{$query}' (HTTP {$httpCode})");
+            return [];
+        }
+
+        // Extract image URLs from Google Images HTML
+        // Google embeds image URLs in multiple formats
+        $urls = $this->extractImageUrls($html, $count);
+
+        return $urls;
+    }
+
+    /**
+     * Extract real image URLs from Google Images HTML response
+     */
+    private function extractImageUrls(string $html, int $limit = 5): array
+    {
+        $urls = [];
+
+        // Method 1: Look for full-size image URLs in Google's JSON data
+        // Format: ["https://example.com/image.jpg", width, height]
+        if (preg_match_all('/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\s*\d+,\s*\d+\]/i', $html, $matches)) {
+            foreach ($matches[1] as $url) {
+                $url = str_replace(['\u003d', '\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
+                if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        // Method 2: Generic image URLs in script tags
+        if (count($urls) < $limit) {
+            if (preg_match_all('/"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/', $html, $matches)) {
+                foreach ($matches[1] as $url) {
+                    $url = str_replace(['\\u003d', '\\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                        $urls[] = $url;
+                    }
+                }
+            }
+        }
+
+        // Method 3: data-src attributes as fallback
+        if (count($urls) < $limit) {
+            if (preg_match_all('/data-src="(https?:\/\/[^"]+)"/i', $html, $matches)) {
+                foreach ($matches[1] as $url) {
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                        $urls[] = $url;
+                    }
+                }
+            }
+        }
+
+        return array_slice($urls, 0, $limit);
+    }
+
+    /**
+     * Check if a URL is a valid product image (not a thumbnail, icon, or tracking pixel)
+     */
+    private function isValidImageUrl(string $url): bool
+    {
+        // Skip Google's own thumbnails and encrypted URLs
+        if (str_contains($url, 'encrypted-tbn')) return false;
+        if (str_contains($url, 'gstatic.com')) return false;
+        if (str_contains($url, 'google.com')) return false;
+        if (str_contains($url, 'googleapis.com')) return false;
+        if (str_contains($url, 'googleusercontent.com')) return false;
+
+        // Skip tiny icons/favicons
+        if (str_contains($url, 'favicon')) return false;
+        if (str_contains($url, 'logo') && !str_contains($url, 'product')) return false;
+
+        // Skip tracking pixels and ads
+        if (str_contains($url, 'pixel')) return false;
+        if (str_contains($url, 'tracking')) return false;
+        if (str_contains($url, '1x1')) return false;
+
+        // Must be a proper image URL
+        if (!preg_match('/\.(jpg|jpeg|png|webp)(\?|$)/i', $url)) return false;
+
+        // Must be at least somewhat long (real URLs)
+        if (strlen($url) < 30) return false;
+
+        return true;
+    }
+
+    /**
+     * Download an image from URL and save it as a product image
+     */
+    private function downloadAndSaveImage(int $productId, string $url, string $altText = '', bool $isPrimary = false): array
     {
         try {
+            // Download the image
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
+                CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                CURLOPT_SSL_VERIFYPEER => true,
+            ]);
+
+            $imageData = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            curl_close($ch);
+
+            if (!$imageData || $httpCode !== 200 || strlen($imageData) < 1000) {
+                return ['success' => false, 'error' => 'Download failed'];
+            }
+
+            // Verify it's actually an image
+            $tmpFile = tempnam(sys_get_temp_dir(), 'pt_img_');
+            file_put_contents($tmpFile, $imageData);
+
+            $imageInfo = @getimagesize($tmpFile);
+            if (!$imageInfo) {
+                @unlink($tmpFile);
+                return ['success' => false, 'error' => 'Not a valid image'];
+            }
+
+            // Check minimum dimensions (skip tiny images)
+            if ($imageInfo[0] < 200 || $imageInfo[1] < 200) {
+                @unlink($tmpFile);
+                return ['success' => false, 'error' => 'Image too small'];
+            }
+
+            // Process image (resize, crop to square, convert to WebP)
             $filename = $this->generateFilename($productId);
             $relativePath = self::UPLOAD_DIR . '/' . $filename;
             $fullPath = STORAGE_PATH . '/uploads/' . $relativePath;
 
             $dir = dirname($fullPath);
             if (!is_dir($dir)) {
-                if (!mkdir($dir, 0755, true)) {
-                    throw new \RuntimeException('Failed to create upload directory');
-                }
+                mkdir($dir, 0755, true);
             }
 
-            if (!imagewebp($image, $fullPath, self::DEFAULT_WEBP_QUALITY)) {
-                throw new \RuntimeException('Failed to save WebP image');
+            $processed = $this->processImage($tmpFile, $fullPath);
+            @unlink($tmpFile);
+
+            if (!$processed) {
+                return ['success' => false, 'error' => 'Image processing failed'];
             }
 
+            // Save to database
             if ($isPrimary) {
                 $stmt = $this->db->prepare("UPDATE product_images SET is_primary = 0 WHERE product_id = ?");
                 $stmt->execute([$productId]);
@@ -1110,465 +1271,15 @@ class ProductImageService
                  VALUES (?, ?, ?, ?, ?, NOW())"
             );
             $stmt->execute([$productId, $relativePath, $altText, $isPrimary ? 1 : 0, $sortOrder]);
-            $imageId = (int) $this->db->lastInsertId();
 
-            return ['success' => true, 'image_id' => $imageId, 'path' => $relativePath];
+            return ['success' => true, 'path' => $relativePath];
+
         } catch (\Throwable $e) {
-            error_log("ProductImageService: Failed to save generated image for product {$productId}: " . $e->getMessage());
-
-            if (isset($fullPath) && file_exists($fullPath)) {
-                @unlink($fullPath);
+            error_log("ProductImageService: Download failed for {$url}: " . $e->getMessage());
+            if (isset($tmpFile) && file_exists($tmpFile)) {
+                @unlink($tmpFile);
             }
-
-            return ['success' => false, 'image_id' => null, 'path' => null];
+            return ['success' => false, 'error' => $e->getMessage()];
         }
-    }
-
-    // =========================================================================
-    // IMAGE GENERATORS (4 card styles)
-    // =========================================================================
-
-    /**
-     * Image 1: Hero product card - bold product name on branded gradient
-     */
-    private function generateHeroImage(array $data, array $colors): ?\GdImage
-    {
-        $img = imagecreatetruecolor(1024, 1024);
-        if (!$img) return null;
-        imagealphablending($img, true);
-
-        $name = $data['name'] ?? 'Product';
-        $brand = $data['brand'] ?? '';
-        $category = $data['category'] ?? '';
-        $sku = $data['sku'] ?? '';
-        $fontBold = file_exists(self::FONT_BOLD) ? self::FONT_BOLD : self::FONT_REGULAR;
-
-        // Gradient background: dark → brand → dark
-        $this->drawGradient($img, 0, 0, 1023, 380, [15, 15, 25], $colors['dark']);
-        $this->drawGradient($img, 0, 380, 1023, 650, $colors['dark'], $colors['primary']);
-        $this->drawGradient($img, 0, 650, 1023, 1023, $colors['primary'], [15, 15, 25]);
-
-        // Accent bar at top
-        $accent = imagecolorallocate($img, $colors['accent'][0], $colors['accent'][1], $colors['accent'][2]);
-        imagefilledrectangle($img, 0, 0, 1023, 6, $accent);
-
-        // Decorative side line
-        imagefilledrectangle($img, 80, 180, 83, 360, $accent);
-
-        // Decorative circles (subtle)
-        $circleColor = imagecolorallocatealpha($img, $colors['accent'][0], $colors['accent'][1], $colors['accent'][2], 100);
-        imagefilledellipse($img, 900, 150, 200, 200, $circleColor);
-        imagefilledellipse($img, 850, 870, 160, 160, $circleColor);
-
-        // Brand name
-        if ($brand) {
-            $brandColor = imagecolorallocate($img, $colors['accent'][0], $colors['accent'][1], $colors['accent'][2]);
-            $this->drawCenteredText($img, strtoupper($brand), $fontBold, 38, 120, $brandColor);
-        }
-
-        // Category
-        if ($category) {
-            $catColor = imagecolorallocatealpha($img, 255, 255, 255, 50);
-            $this->drawCenteredText($img, strtoupper($category), self::FONT_REGULAR, 18, 175, $catColor);
-        }
-
-        // Product name (large, centered, wrapped)
-        $white = imagecolorallocate($img, 255, 255, 255);
-        $nameLines = $this->wrapText($name, $fontBold, 54, 860);
-        $startY = 460 - (count($nameLines) * 72 / 2);
-        foreach ($nameLines as $i => $line) {
-            $this->drawCenteredText($img, $line, $fontBold, 54, $startY + ($i * 72), $white);
-        }
-
-        // Separator line
-        $sepY = $startY + count($nameLines) * 72 + 40;
-        $sepColor = imagecolorallocatealpha($img, 255, 255, 255, 80);
-        imagefilledrectangle($img, 380, $sepY, 644, $sepY + 3, $sepColor);
-
-        // "Premium Quality" tagline
-        $tagColor = imagecolorallocatealpha($img, 255, 255, 255, 30);
-        $this->drawCenteredText($img, 'PREMIUM QUALITY', self::FONT_REGULAR, 20, $sepY + 50, $tagColor);
-
-        // SKU at bottom
-        if ($sku) {
-            $skuColor = imagecolorallocatealpha($img, 255, 255, 255, 60);
-            $this->drawCenteredText($img, 'SKU: ' . $sku, self::FONT_REGULAR, 16, 940, $skuColor);
-        }
-
-        // Pricetag.co.za
-        $ptColor = imagecolorallocatealpha($img, 255, 255, 255, 50);
-        $this->drawCenteredText($img, 'Pricetag.co.za', self::FONT_REGULAR, 15, 980, $ptColor);
-
-        return $img;
-    }
-
-    /**
-     * Image 2: Key features card with bullet points
-     */
-    private function generateFeaturesImage(array $data, array $colors): ?\GdImage
-    {
-        $img = imagecreatetruecolor(1024, 1024);
-        if (!$img) return null;
-        imagealphablending($img, true);
-
-        $name = $data['name'] ?? 'Product';
-        $brand = $data['brand'] ?? '';
-        $fontBold = file_exists(self::FONT_BOLD) ? self::FONT_BOLD : self::FONT_REGULAR;
-
-        // Dark background
-        $bg = imagecolorallocate($img, 18, 18, 28);
-        imagefilledrectangle($img, 0, 0, 1023, 1023, $bg);
-
-        // Brand accent bar at top
-        $primary = imagecolorallocate($img, $colors['primary'][0], $colors['primary'][1], $colors['primary'][2]);
-        imagefilledrectangle($img, 0, 0, 1023, 8, $primary);
-
-        // Left accent strip
-        $dark = imagecolorallocate($img, $colors['dark'][0], $colors['dark'][1], $colors['dark'][2]);
-        imagefilledrectangle($img, 0, 0, 5, 1023, $dark);
-
-        $white = imagecolorallocate($img, 255, 255, 255);
-        $lightGray = imagecolorallocate($img, 200, 200, 210);
-        $accent = imagecolorallocate($img, $colors['accent'][0], $colors['accent'][1], $colors['accent'][2]);
-
-        // Brand + heading
-        if ($brand) {
-            imagettftext($img, 16, 0, 80, 70, $accent, self::FONT_REGULAR, strtoupper($brand));
-        }
-        imagettftext($img, 30, 0, 80, 115, $white, $fontBold, 'KEY FEATURES');
-        imagefilledrectangle($img, 80, 138, 360, 141, $primary);
-
-        // Parse bullet points from short_description
-        $features = $this->parseFeatures($data['short_description'] ?? '', $data);
-
-        // Draw features
-        $y = 200;
-        $featureSpacing = min(120, (int)((800 - 200) / max(count($features), 1)));
-
-        foreach (array_slice($features, 0, 6) as $feature) {
-            // Bullet dot
-            imagefilledellipse($img, 100, $y, 14, 14, $primary);
-
-            // Feature text (wrapped)
-            $featureLines = $this->wrapText($feature, self::FONT_REGULAR, 22, 830);
-            foreach ($featureLines as $j => $fLine) {
-                imagettftext($img, 22, 0, 125, $y + 6 + ($j * 32), $lightGray, self::FONT_REGULAR, $fLine);
-            }
-
-            $y += $featureSpacing;
-        }
-
-        // Product name at bottom
-        $nameColor = imagecolorallocatealpha($img, 255, 255, 255, 60);
-        $nameLines = $this->wrapText($name, self::FONT_REGULAR, 15, 860);
-        $bottomY = 960;
-        foreach ($nameLines as $i => $line) {
-            $this->drawCenteredText($img, $line, self::FONT_REGULAR, 15, $bottomY + ($i * 22), $nameColor);
-        }
-
-        return $img;
-    }
-
-    /**
-     * Image 3: Technical specifications grid
-     */
-    private function generateSpecsImage(array $data, array $colors): ?\GdImage
-    {
-        $img = imagecreatetruecolor(1024, 1024);
-        if (!$img) return null;
-        imagealphablending($img, true);
-
-        $fontBold = file_exists(self::FONT_BOLD) ? self::FONT_BOLD : self::FONT_REGULAR;
-
-        // Dark gradient background
-        $this->drawGradient($img, 0, 0, 1023, 1023, [20, 20, 35], [10, 10, 20]);
-
-        // Top accent bar
-        $primary = imagecolorallocate($img, $colors['primary'][0], $colors['primary'][1], $colors['primary'][2]);
-        imagefilledrectangle($img, 0, 0, 1023, 6, $primary);
-
-        $white = imagecolorallocate($img, 255, 255, 255);
-        $accent = imagecolorallocate($img, $colors['accent'][0], $colors['accent'][1], $colors['accent'][2]);
-        $dimGray = imagecolorallocate($img, 120, 120, 140);
-
-        // Heading
-        imagettftext($img, 14, 0, 80, 55, $accent, self::FONT_REGULAR, 'TECHNICAL');
-        imagettftext($img, 32, 0, 80, 100, $white, $fontBold, 'SPECIFICATIONS');
-        imagefilledrectangle($img, 80, 120, 420, 123, $primary);
-
-        // Parse specifications
-        $specPairs = $this->parseSpecifications($data);
-
-        // Draw specs in 2-column grid
-        $y = 180;
-        $colWidth = 440;
-        $rowHeight = 85;
-        $col = 0;
-        $count = 0;
-
-        foreach (array_slice($specPairs, 0, 10) as $spec) {
-            $x = 80 + ($col * $colWidth);
-            $currentY = $y + (intdiv($count, 2) * $rowHeight);
-
-            // Row separator
-            if ($col === 0 && $count > 1) {
-                $lineColor = imagecolorallocatealpha($img, 255, 255, 255, 110);
-                imagefilledrectangle($img, 80, $currentY - 12, 944, $currentY - 11, $lineColor);
-            }
-
-            // Key (dim label)
-            $keyText = strtoupper(substr($spec['key'], 0, 30));
-            imagettftext($img, 13, 0, $x, $currentY, $dimGray, self::FONT_REGULAR, $keyText);
-
-            // Value (bright)
-            $valText = substr($spec['value'], 0, 35);
-            imagettftext($img, 19, 0, $x, $currentY + 30, $white, $fontBold, $valText);
-
-            $col = ($col + 1) % 2;
-            $count++;
-        }
-
-        // Product name at bottom
-        $nameColor = imagecolorallocatealpha($img, 255, 255, 255, 60);
-        $nameLines = $this->wrapText($data['name'] ?? '', self::FONT_REGULAR, 15, 860);
-        $bottomY = 960;
-        foreach ($nameLines as $i => $line) {
-            $this->drawCenteredText($img, $line, self::FONT_REGULAR, 15, $bottomY + ($i * 22), $nameColor);
-        }
-
-        return $img;
-    }
-
-    /**
-     * Image 4: Brand trust card with store branding and trust badges
-     */
-    private function generateBrandCard(array $data, array $colors): ?\GdImage
-    {
-        $img = imagecreatetruecolor(1024, 1024);
-        if (!$img) return null;
-        imagealphablending($img, true);
-
-        $fontBold = file_exists(self::FONT_BOLD) ? self::FONT_BOLD : self::FONT_REGULAR;
-
-        // Light background
-        $bgLight = imagecolorallocate($img, 248, 248, 252);
-        imagefilledrectangle($img, 0, 0, 1023, 1023, $bgLight);
-
-        // Top brand color header
-        $primary = imagecolorallocate($img, $colors['primary'][0], $colors['primary'][1], $colors['primary'][2]);
-        $this->drawGradient($img, 0, 0, 1023, 140, $colors['dark'], $colors['primary']);
-
-        // Bottom accent bar
-        imagefilledrectangle($img, 0, 1014, 1023, 1023, $primary);
-
-        $white = imagecolorallocate($img, 255, 255, 255);
-        $darkText = imagecolorallocate($img, 30, 30, 40);
-        $grayText = imagecolorallocate($img, 90, 90, 105);
-        $primaryText = imagecolorallocate($img, $colors['primary'][0], $colors['primary'][1], $colors['primary'][2]);
-        $successGreen = imagecolorallocate($img, 22, 163, 74);
-
-        // Store branding on header bar
-        $this->drawCenteredText($img, 'PRICETAG.CO.ZA', $fontBold, 36, 70, $white);
-        $this->drawCenteredText($img, 'South Africa\'s Online Store', self::FONT_REGULAR, 16, 110, $white);
-
-        // Brand name
-        $brand = $data['brand'] ?? '';
-        if ($brand) {
-            $this->drawCenteredText($img, strtoupper($brand), $fontBold, 28, 220, $primaryText);
-        }
-
-        // Product name
-        $nameLines = $this->wrapText($data['name'] ?? 'Product', $fontBold, 34, 820);
-        $nameY = 290;
-        foreach ($nameLines as $i => $line) {
-            $this->drawCenteredText($img, $line, $fontBold, 34, $nameY + ($i * 48), $darkText);
-        }
-
-        // Separator
-        $sepY = $nameY + count($nameLines) * 48 + 30;
-        imagefilledrectangle($img, 380, $sepY, 644, $sepY + 3, $primary);
-
-        // Trust badges
-        $badges = [
-            'Genuine Product',
-            'Free Shipping on Orders Over R500',
-            'Full Manufacturer Warranty',
-            'Secure Online Payment',
-            'Nationwide Delivery',
-        ];
-
-        $badgeY = $sepY + 60;
-        foreach ($badges as $badge) {
-            // Green checkmark
-            $checkX = 260;
-            imagettftext($img, 22, 0, $checkX, $badgeY, $successGreen, $fontBold, "\xE2\x9C\x93");
-            // Badge text
-            imagettftext($img, 21, 0, $checkX + 35, $badgeY, $grayText, self::FONT_REGULAR, $badge);
-            $badgeY += 52;
-        }
-
-        // Category tag at bottom
-        $category = $data['category'] ?? '';
-        if ($category) {
-            $catText = strtoupper($category);
-            $bbox = imagettfbbox(13, 0, self::FONT_REGULAR, $catText);
-            $catWidth = abs($bbox[2] - $bbox[0]);
-            $tagX = (int)((1024 - $catWidth - 40) / 2);
-            $this->drawRoundedRect($img, $tagX, 900, $tagX + $catWidth + 40, 932, 14, $primary);
-            $this->drawCenteredText($img, $catText, self::FONT_REGULAR, 13, 921, $white);
-        }
-
-        // SKU
-        $sku = $data['sku'] ?? '';
-        if ($sku) {
-            $this->drawCenteredText($img, 'SKU: ' . $sku, self::FONT_REGULAR, 13, 968, $grayText);
-        }
-
-        return $img;
-    }
-
-    // =========================================================================
-    // GD DRAWING HELPERS
-    // =========================================================================
-
-    /**
-     * Draw a vertical gradient between two colors
-     */
-    private function drawGradient(\GdImage $img, int $x1, int $y1, int $x2, int $y2, array $from, array $to): void
-    {
-        $height = $y2 - $y1;
-        if ($height <= 0) return;
-
-        for ($y = $y1; $y <= $y2; $y++) {
-            $ratio = ($y - $y1) / $height;
-            $r = (int)($from[0] + ($to[0] - $from[0]) * $ratio);
-            $g = (int)($from[1] + ($to[1] - $from[1]) * $ratio);
-            $b = (int)($from[2] + ($to[2] - $from[2]) * $ratio);
-            $color = imagecolorallocate($img, $r, $g, $b);
-            imageline($img, $x1, $y, $x2, $y, $color);
-        }
-    }
-
-    /**
-     * Wrap text to fit within a max pixel width
-     */
-    private function wrapText(string $text, string $font, float $size, int $maxWidth): array
-    {
-        $words = explode(' ', $text);
-        $lines = [];
-        $currentLine = '';
-
-        foreach ($words as $word) {
-            $testLine = $currentLine ? $currentLine . ' ' . $word : $word;
-            $bbox = imagettfbbox($size, 0, $font, $testLine);
-            $lineWidth = abs($bbox[2] - $bbox[0]);
-
-            if ($lineWidth > $maxWidth && $currentLine !== '') {
-                $lines[] = $currentLine;
-                $currentLine = $word;
-            } else {
-                $currentLine = $testLine;
-            }
-        }
-
-        if ($currentLine !== '') {
-            $lines[] = $currentLine;
-        }
-
-        return $lines ?: [''];
-    }
-
-    /**
-     * Draw centered text on a GD image
-     */
-    private function drawCenteredText(\GdImage $img, string $text, string $font, float $size, int $y, int $color, int $canvasWidth = 1024): void
-    {
-        $bbox = imagettfbbox($size, 0, $font, $text);
-        $textWidth = abs($bbox[2] - $bbox[0]);
-        $x = (int)(($canvasWidth - $textWidth) / 2);
-        imagettftext($img, $size, 0, max(10, $x), $y, $color, $font, $text);
-    }
-
-    /**
-     * Draw a rounded rectangle
-     */
-    private function drawRoundedRect(\GdImage $img, int $x1, int $y1, int $x2, int $y2, int $radius, int $color): void
-    {
-        imagefilledrectangle($img, $x1 + $radius, $y1, $x2 - $radius, $y2, $color);
-        imagefilledrectangle($img, $x1, $y1 + $radius, $x2, $y2 - $radius, $color);
-        imagefilledellipse($img, $x1 + $radius, $y1 + $radius, $radius * 2, $radius * 2, $color);
-        imagefilledellipse($img, $x2 - $radius, $y1 + $radius, $radius * 2, $radius * 2, $color);
-        imagefilledellipse($img, $x1 + $radius, $y2 - $radius, $radius * 2, $radius * 2, $color);
-        imagefilledellipse($img, $x2 - $radius, $y2 - $radius, $radius * 2, $radius * 2, $color);
-    }
-
-    /**
-     * Parse bullet-point features from short_description
-     */
-    private function parseFeatures(string $shortDescription, array $data): array
-    {
-        $features = [];
-        if (!empty($shortDescription)) {
-            $lines = preg_split('/[\n\r]+/', $shortDescription);
-            foreach ($lines as $line) {
-                $line = trim($line);
-                $line = ltrim($line, "\xE2\x80\xA2\xC2\xB7- ");
-                $line = trim($line);
-                if (!empty($line) && strlen($line) > 3) {
-                    $features[] = $line;
-                }
-            }
-        }
-
-        // Fallback
-        if (empty($features)) {
-            $brand = $data['brand'] ?? 'Premium';
-            $category = $data['category'] ?? 'component';
-            $features = [
-                "High-performance {$category} by {$brand}",
-                'Premium build quality and reliability',
-                'Industry-leading technology',
-                'Energy efficient design',
-                'Full manufacturer warranty included',
-            ];
-        }
-
-        return $features;
-    }
-
-    /**
-     * Parse specifications into key-value pairs from various formats
-     */
-    private function parseSpecifications(array $data): array
-    {
-        $specPairs = [];
-        $specs = $data['specifications'] ?? [];
-
-        if (!empty($specs) && is_array($specs)) {
-            foreach ($specs as $key => $value) {
-                if (is_array($value)) {
-                    $specPairs[] = [
-                        'key' => $value['name'] ?? $value['spec_name'] ?? "Spec",
-                        'value' => $value['value'] ?? $value['spec_value'] ?? '',
-                    ];
-                } else {
-                    $specPairs[] = ['key' => (string)$key, 'value' => (string)$value];
-                }
-            }
-        }
-
-        // Fallback: basic product info
-        if (empty($specPairs)) {
-            $specPairs = [
-                ['key' => 'Brand', 'value' => $data['brand'] ?? 'N/A'],
-                ['key' => 'Category', 'value' => $data['category'] ?? 'N/A'],
-                ['key' => 'SKU', 'value' => $data['sku'] ?? 'N/A'],
-                ['key' => 'Condition', 'value' => 'Brand New'],
-                ['key' => 'Warranty', 'value' => 'Manufacturer Warranty'],
-                ['key' => 'Availability', 'value' => 'In Stock'],
-            ];
-        }
-
-        return $specPairs;
     }
 }

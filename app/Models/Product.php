@@ -396,6 +396,49 @@ class Product extends Model
         $db = Database::getInstance();
         $stmt = $db->prepare("UPDATE products SET view_count = view_count + 1 WHERE id = ?");
         $stmt->execute([$this->id]);
+
+        // Track in session for "recently viewed"
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $viewed = $_SESSION['recently_viewed'] ?? [];
+            $viewed = array_diff($viewed, [$this->id]); // remove if already present
+            array_unshift($viewed, $this->id); // add to front
+            $_SESSION['recently_viewed'] = array_slice($viewed, 0, 20); // keep max 20
+        }
+    }
+
+    /**
+     * Get recently viewed products from session
+     */
+    public static function recentlyViewed(int $limit = 4): array
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION['recently_viewed'])) {
+            return self::trending($limit);
+        }
+
+        $ids = array_slice($_SESSION['recently_viewed'], 0, $limit);
+        $db = Database::getInstance();
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $db->prepare("
+            SELECT * FROM products
+            WHERE id IN ($placeholders) AND status = 'active'
+            ORDER BY FIELD(id, $placeholders)
+        ");
+        $stmt->execute(array_merge($ids, $ids));
+
+        $products = [];
+        while ($data = $stmt->fetch()) {
+            $product = new self();
+            $product->setOriginal($data);
+            $product->exists = true;
+            $products[] = $product;
+        }
+
+        // Fall back to trending if not enough viewed
+        if (count($products) < $limit) {
+            return self::trending($limit);
+        }
+
+        return $products;
     }
 
     /**

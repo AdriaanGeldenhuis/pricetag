@@ -804,12 +804,6 @@
 
 @media (min-width: 1280px) {
     .shop-products-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-@media (min-width: 1536px) {
-    .shop-products-grid {
         grid-template-columns: repeat(5, 1fr);
     }
 }

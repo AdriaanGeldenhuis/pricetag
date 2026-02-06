@@ -64,15 +64,140 @@
             <span id="selected-count" class="text-sm font-medium">0 selected</span>
             <div class="flex gap-2">
                 <select id="bulk-action" class="form-select form-select-sm">
-                    <option value="">Choose action...</option>
+                    <option value="">Quick actions...</option>
                     <option value="active">Set Active</option>
                     <option value="draft">Set Draft</option>
                     <option value="inactive">Set Inactive</option>
                     <option value="delete">Delete</option>
                 </select>
                 <button type="button" id="apply-bulk-action" class="btn btn-primary btn-sm">Apply</button>
+                <button type="button" id="open-bulk-edit" class="btn btn-outline btn-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mr-1">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    Bulk Edit
+                </button>
             </div>
             <button type="button" id="clear-selection" class="btn btn-ghost btn-sm">Clear Selection</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Edit Modal -->
+<div id="bulk-edit-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3 class="modal-title">Bulk Edit Products</h3>
+            <button type="button" class="modal-close" onclick="closeBulkEditModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="text-muted mb-4">Select the fields you want to update. Only checked fields will be changed.</p>
+
+            <form id="bulk-edit-form">
+                <!-- Price Updates -->
+                <div class="mb-4 p-4 border rounded">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="bulk-update-price" class="form-checkbox mr-2">
+                        <label for="bulk-update-price" class="font-medium">Update Prices</label>
+                    </div>
+                    <div id="price-fields" class="grid grid-cols-2 gap-4" style="display: none;">
+                        <div>
+                            <label class="form-label">Price Action</label>
+                            <select name="price_action" class="form-select">
+                                <option value="set">Set fixed price</option>
+                                <option value="increase_percent">Increase by %</option>
+                                <option value="decrease_percent">Decrease by %</option>
+                                <option value="increase_fixed">Increase by fixed amount</option>
+                                <option value="decrease_fixed">Decrease by fixed amount</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Value</label>
+                            <input type="number" name="price_value" class="form-input" step="0.01" min="0">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Updates -->
+                <div class="mb-4 p-4 border rounded">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="bulk-update-stock" class="form-checkbox mr-2">
+                        <label for="bulk-update-stock" class="font-medium">Update Stock</label>
+                    </div>
+                    <div id="stock-fields" class="grid grid-cols-2 gap-4" style="display: none;">
+                        <div>
+                            <label class="form-label">Stock Action</label>
+                            <select name="stock_action" class="form-select">
+                                <option value="set">Set stock quantity</option>
+                                <option value="add">Add to stock</option>
+                                <option value="subtract">Subtract from stock</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Quantity</label>
+                            <input type="number" name="stock_value" class="form-input" min="0">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vendor -->
+                <div class="mb-4 p-4 border rounded">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="bulk-update-vendor" class="form-checkbox mr-2">
+                        <label for="bulk-update-vendor" class="font-medium">Update Vendor</label>
+                    </div>
+                    <div id="vendor-fields" style="display: none;">
+                        <select name="vendor_id" class="form-select">
+                            <option value="">No Vendor</option>
+                            <?php foreach ($vendors as $v): ?>
+                            <option value="<?= $v['id'] ?>"><?= e($v['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="mb-4 p-4 border rounded">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="bulk-update-status" class="form-checkbox mr-2">
+                        <label for="bulk-update-status" class="font-medium">Update Status</label>
+                    </div>
+                    <div id="status-fields" style="display: none;">
+                        <select name="status" class="form-select">
+                            <option value="active">Active</option>
+                            <option value="draft">Draft</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Flags -->
+                <div class="mb-4 p-4 border rounded">
+                    <div class="flex items-center mb-3">
+                        <input type="checkbox" id="bulk-update-flags" class="form-checkbox mr-2">
+                        <label for="bulk-update-flags" class="font-medium">Update Flags</label>
+                    </div>
+                    <div id="flags-fields" class="flex gap-6" style="display: none;">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name="is_featured" class="form-checkbox">
+                            Featured
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name="is_new" class="form-checkbox">
+                            New
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" name="is_on_sale" class="form-checkbox">
+                            On Sale
+                        </label>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeBulkEditModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="applyBulkEdit()">Apply Changes</button>
         </div>
     </div>
 </div>
@@ -201,6 +326,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const bulkAction = document.getElementById('bulk-action');
     const applyBulkAction = document.getElementById('apply-bulk-action');
     const clearSelection = document.getElementById('clear-selection');
+    const openBulkEdit = document.getElementById('open-bulk-edit');
+    const bulkEditModal = document.getElementById('bulk-edit-modal');
+
+    // Toggle field visibility checkboxes
+    const toggleFields = [
+        { checkbox: 'bulk-update-price', fields: 'price-fields' },
+        { checkbox: 'bulk-update-stock', fields: 'stock-fields' },
+        { checkbox: 'bulk-update-vendor', fields: 'vendor-fields' },
+        { checkbox: 'bulk-update-status', fields: 'status-fields' },
+        { checkbox: 'bulk-update-flags', fields: 'flags-fields' }
+    ];
+
+    toggleFields.forEach(item => {
+        const cb = document.getElementById(item.checkbox);
+        const fields = document.getElementById(item.fields);
+        if (cb && fields) {
+            cb.addEventListener('change', function() {
+                fields.style.display = this.checked ? 'grid' : 'none';
+                if (item.fields === 'flags-fields' || item.fields === 'vendor-fields' || item.fields === 'status-fields') {
+                    fields.style.display = this.checked ? 'flex' : 'none';
+                }
+            });
+        }
+    });
 
     function updateBulkActionsBar() {
         const selected = document.querySelectorAll('.product-checkbox:checked');
@@ -213,30 +362,31 @@ document.addEventListener('DOMContentLoaded', function() {
             bulkActionsBar.style.display = 'none';
         }
 
-        // Update select all state
         selectAll.checked = count === checkboxes.length && count > 0;
         selectAll.indeterminate = count > 0 && count < checkboxes.length;
     }
 
-    // Select all checkbox
     selectAll.addEventListener('change', function() {
         checkboxes.forEach(cb => cb.checked = this.checked);
         updateBulkActionsBar();
     });
 
-    // Individual checkboxes
     checkboxes.forEach(cb => {
         cb.addEventListener('change', updateBulkActionsBar);
     });
 
-    // Clear selection
     clearSelection.addEventListener('click', function() {
         checkboxes.forEach(cb => cb.checked = false);
         selectAll.checked = false;
         updateBulkActionsBar();
     });
 
-    // Apply bulk action
+    // Open bulk edit modal
+    openBulkEdit.addEventListener('click', function() {
+        bulkEditModal.style.display = 'flex';
+    });
+
+    // Apply quick bulk action
     applyBulkAction.addEventListener('click', function() {
         const action = bulkAction.value;
         if (!action) {
@@ -259,7 +409,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!confirm(confirmMsg)) return;
 
-        // Send bulk action request
         fetch('<?= url('/admin/products/bulk-action') ?>', {
             method: 'POST',
             headers: {
@@ -283,5 +432,91 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('An error occurred: ' + err.message);
         });
     });
+});
+
+function closeBulkEditModal() {
+    document.getElementById('bulk-edit-modal').style.display = 'none';
+}
+
+function applyBulkEdit() {
+    const selected = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => cb.value);
+    if (selected.length === 0) {
+        alert('Please select at least one product');
+        return;
+    }
+
+    const updates = { ids: selected };
+
+    // Collect price updates
+    if (document.getElementById('bulk-update-price').checked) {
+        const form = document.getElementById('bulk-edit-form');
+        updates.price_action = form.querySelector('[name="price_action"]').value;
+        updates.price_value = parseFloat(form.querySelector('[name="price_value"]').value) || 0;
+    }
+
+    // Collect stock updates
+    if (document.getElementById('bulk-update-stock').checked) {
+        const form = document.getElementById('bulk-edit-form');
+        updates.stock_action = form.querySelector('[name="stock_action"]').value;
+        updates.stock_value = parseInt(form.querySelector('[name="stock_value"]').value) || 0;
+    }
+
+    // Collect vendor update
+    if (document.getElementById('bulk-update-vendor').checked) {
+        const form = document.getElementById('bulk-edit-form');
+        updates.vendor_id = form.querySelector('[name="vendor_id"]').value;
+    }
+
+    // Collect status update
+    if (document.getElementById('bulk-update-status').checked) {
+        const form = document.getElementById('bulk-edit-form');
+        updates.status = form.querySelector('[name="status"]').value;
+    }
+
+    // Collect flags
+    if (document.getElementById('bulk-update-flags').checked) {
+        const form = document.getElementById('bulk-edit-form');
+        updates.is_featured = form.querySelector('[name="is_featured"]').checked ? 1 : 0;
+        updates.is_new = form.querySelector('[name="is_new"]').checked ? 1 : 0;
+        updates.is_on_sale = form.querySelector('[name="is_on_sale"]').checked ? 1 : 0;
+    }
+
+    // Check if any updates selected
+    const hasUpdates = updates.price_action || updates.stock_action ||
+                       updates.vendor_id !== undefined || updates.status ||
+                       updates.is_featured !== undefined;
+
+    if (!hasUpdates) {
+        alert('Please select at least one field to update');
+        return;
+    }
+
+    if (!confirm('Apply changes to ' + selected.length + ' product(s)?')) return;
+
+    fetch('<?= url('/admin/products/bulk-edit') ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?= csrf_token() ?>'
+        },
+        body: JSON.stringify(updates)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeBulkEditModal();
+            window.location.reload();
+        } else {
+            alert(data.message || 'An error occurred');
+        }
+    })
+    .catch(err => {
+        alert('An error occurred: ' + err.message);
+    });
+}
+
+// Close modal on backdrop click
+document.getElementById('bulk-edit-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeBulkEditModal();
 });
 </script>

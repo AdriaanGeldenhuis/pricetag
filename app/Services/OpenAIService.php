@@ -362,7 +362,7 @@ class OpenAIService
             return $this->generateFallbackFromSku($sku, $additionalInfo);
         }
 
-        $prompt = "You are a product database assistant. Based on the following product SKU/code, determine what the product is and generate product information.\n\n";
+        $prompt = "You are an e-commerce product specialist. Analyze the SKU/product code and generate professional product listing content for an online store.\n\n";
         $prompt .= "SKU/Product Code: {$sku}\n";
 
         if (!empty($additionalInfo['brand'])) {
@@ -372,26 +372,29 @@ class OpenAIService
             $prompt .= "Category hint: {$additionalInfo['category']}\n";
         }
         if (!empty($additionalInfo['price'])) {
-            $prompt .= "Price: R{$additionalInfo['price']}\n";
+            $prompt .= "Price: R{$additionalInfo['price']} (South African Rand)\n";
         }
 
-        $prompt .= "\nAnalyze the SKU pattern and generate:\n";
-        $prompt .= "1. name: A proper product name (e.g., 'Intel Core i7-12700K Processor' or 'Samsung Galaxy S24 Ultra')\n";
-        $prompt .= "2. short_description: Brief product summary (1-2 sentences, max 160 chars)\n";
-        $prompt .= "3. description: Detailed product description with key features (2-3 paragraphs)\n";
-        $prompt .= "4. suggested_category: Product category\n";
-        $prompt .= "5. brand: Brand name if identifiable from SKU\n";
-        $prompt .= "\nIMPORTANT: Analyze the SKU pattern. Common patterns:\n";
-        $prompt .= "- 'BX' prefix often indicates Intel boxed processors\n";
-        $prompt .= "- Numbers like '12700', '13900' indicate Intel Core generation and model\n";
-        $prompt .= "- 'K' suffix means unlocked, 'F' means no integrated graphics\n";
-        $prompt .= "\nRespond ONLY with valid JSON.";
+        $prompt .= "\nGenerate the following (respond in JSON format only):\n";
+        $prompt .= "1. name: Professional product name suitable for e-commerce (e.g., 'Intel Core i7-12700K Desktop Processor' not just 'Intel CPU')\n";
+        $prompt .= "2. short_description: Compelling 1-2 sentence summary for product cards (max 160 chars, highlight key selling point)\n";
+        $prompt .= "3. description: SEO-optimized product description with key features and benefits (2-3 paragraphs, include specs where known)\n";
+        $prompt .= "4. suggested_category: Best product category (e.g., 'Computer Components', 'Processors', 'Graphics Cards')\n";
+        $prompt .= "5. brand: Brand name extracted from SKU analysis\n";
+        $prompt .= "\nSKU PATTERNS TO RECOGNIZE:\n";
+        $prompt .= "- Intel: 'BX80' prefix = boxed processor. Model patterns: 12400=i5-12400, 14100=i3-14100, 13700=i7-13700, 13900=i9-13900\n";
+        $prompt .= "- Intel suffixes: K=unlocked, F=no iGPU, KF=both, T=low power, KS=special edition\n";
+        $prompt .= "- Intel: 'G' in model (e.g., G6900) = Celeron, G7400 = Pentium Gold\n";
+        $prompt .= "- AMD: '100-' prefix or 'Ryzen' in code\n";
+        $prompt .= "- NVIDIA: RTX/GTX prefix, AMD: RX prefix for graphics cards\n";
+        $prompt .= "\nIMPORTANT: Be specific with the product name. 'Intel Core i5-12400F Processor' is correct, 'Intel CPU' is too generic.\n";
+        $prompt .= "Respond ONLY with valid JSON, no markdown code blocks.";
 
         try {
             $response = $this->makeRequest('/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'You are a product identification expert. Analyze SKU codes to identify products. Always respond with valid JSON only, no markdown.'],
+                    ['role' => 'system', 'content' => 'You are a product identification expert. Analyze SKU codes to identify products. NEVER use the raw SKU as the product name - always identify the actual product. Always respond with valid JSON only, no markdown.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
                 'max_tokens' => 800,
@@ -409,6 +412,26 @@ class OpenAIService
             $data = json_decode($content, true);
 
             if (json_last_error() === JSON_ERROR_NONE && !empty($data['name'])) {
+                // Validate: If AI returned the raw SKU as name, use fallback for name
+                $aiName = trim($data['name']);
+                $isNameJustSku = (strcasecmp($aiName, $sku) === 0) ||
+                                 (stripos($aiName, $sku) === 0 && strlen($aiName) < strlen($sku) + 10);
+
+                if ($isNameJustSku) {
+                    // AI failed to generate a proper name - use fallback for name
+                    $fallback = $this->generateFallbackFromSku($sku, $additionalInfo);
+                    $data['name'] = $fallback['name'];
+                    // Keep AI descriptions if they're better (longer), otherwise use fallback
+                    if (empty($data['short_description']) || strlen($data['short_description']) < 20) {
+                        $data['short_description'] = $fallback['short_description'];
+                    }
+                    if (empty($data['description']) || strlen($data['description']) < 50) {
+                        $data['description'] = $fallback['description'];
+                    }
+                    if (empty($data['brand'])) {
+                        $data['brand'] = $fallback['brand'];
+                    }
+                }
                 return $data;
             }
 
@@ -429,51 +452,79 @@ class OpenAIService
         $name = $sku;
         $brand = $additionalInfo['brand'] ?? '';
         $category = $additionalInfo['category'] ?? 'Electronics';
+        $shortDesc = '';
+        $description = '';
 
-        // Intel boxed processor detection (BX80... format)
-        // Examples: BX8071512400F, BX8071512700K, BX80768245KF
-        if (preg_match('/^BX80\d{2}(\d{4,5})([A-Z]*)$/i', $sku, $matches)) {
+        // Clean SKU - remove regional suffixes for pattern matching
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+        $regionSuffix = '';
+        if (preg_match('/-(CA|US|EU|UK|AU|SA)$/i', $sku, $regionMatch)) {
+            $regionSuffix = $regionMatch[0];
+        }
+
+        // Intel Celeron/Pentium detection (BX80XXXGXXXX format)
+        // Examples: BX80715G6900 = Celeron G6900, BX80715G7400 = Pentium Gold G7400
+        if (preg_match('/^BX80\d{3}(G)(\d{4})([A-Z]*)$/i', $cleanSku, $matches)) {
             $brand = 'Intel';
-            $modelNum = $matches[1];  // e.g., "12400" or "8245"
-            $suffix = strtoupper($matches[2] ?? '');  // e.g., "K", "KF", "F"
+            $modelPrefix = strtoupper($matches[1]); // G
+            $modelNum = $matches[2]; // 6900, 7400
+            $suffix = strtoupper($matches[3] ?? '');
 
-            // Parse model number to determine generation and tier
-            // Modern Intel: 12400 = 12th gen i5-12400, 13900 = 13th gen i9-13900
-            // Older: 8700 = 8th gen i7-8700, 9900 = 9th gen i9-9900
-            $modelLen = strlen($modelNum);
-
-            if ($modelLen === 5) {
-                // 5-digit model: 12400, 12700, 13900, etc.
-                $gen = substr($modelNum, 0, 2);  // "12", "13", "14"
-                $tierDigit = substr($modelNum, 2, 1);  // "4", "7", "9"
+            // G6xxx = Celeron, G7xxx = Pentium Gold
+            $firstDigit = substr($modelNum, 0, 1);
+            if ($firstDigit === '6') {
+                $tierName = 'Celeron';
+            } elseif ($firstDigit === '7' || $firstDigit === '8') {
+                $tierName = 'Pentium Gold';
             } else {
-                // 4-digit model: 8700, 9900, etc.
-                $gen = substr($modelNum, 0, 1);  // "8", "9"
-                $tierDigit = substr($modelNum, 1, 1);  // "7", "9", "4", "6"
+                $tierName = 'Celeron';
             }
 
-            // Determine processor tier from the tier digit
+            $name = "Intel {$tierName} {$modelPrefix}{$modelNum}";
+            if ($suffix) $name .= $suffix;
+            $name .= ' Processor';
+            $category = 'Computer Components';
+            $shortDesc = "Intel {$tierName} desktop processor for everyday computing and basic tasks.";
+            $description = "The Intel {$tierName} {$modelPrefix}{$modelNum}" . ($suffix ?: '') . " is a reliable entry-level desktop processor. Perfect for everyday computing tasks including web browsing, office applications, and light media consumption. Features Intel's efficient architecture for responsive performance with low power consumption.";
+        }
+        // Intel Core processors (BX80XXX + 5-digit model) - handles 12th gen and newer
+        // Examples: BX8071512400F, BX8071514100, BX8071512700K, BX8071513900KS
+        elseif (preg_match('/^BX80\d{3}(\d{5})([A-Z]*)$/i', $cleanSku, $matches)) {
+            $brand = 'Intel';
+            $modelNum = $matches[1];  // e.g., "12400", "14100", "13900"
+            $suffix = strtoupper($matches[2] ?? '');  // e.g., "K", "KF", "F", "KS"
+
+            // Parse 5-digit model: 12400 = 12th gen, 4xx tier (i5)
+            $gen = substr($modelNum, 0, 2);  // "12", "13", "14"
+            $tierDigit = substr($modelNum, 2, 1);  // "1", "4", "7", "9"
+
+            // Determine processor tier
             $tierName = match($tierDigit) {
-                '1', '2', '3' => 'Core i3',
-                '4', '5', '6' => 'Core i5',
-                '7', '8' => 'Core i7',
+                '1' => 'Core i3',
+                '4', '5' => 'Core i5',
+                '6' => 'Core i5',  // i5-x600 variants
+                '7' => 'Core i7',
                 '9' => 'Core i9',
                 default => 'Core i5'
             };
 
-            // Build the proper product name
             $name = "Intel {$tierName}-{$modelNum}";
-            if ($suffix) {
-                $name .= $suffix;
-            }
+            if ($suffix) $name .= $suffix;
             $name .= ' Processor';
             $category = 'Computer Components';
+
+            // Generate suffix-aware descriptions
+            $suffixDesc = $this->getIntelSuffixDescription($suffix);
+            $tierDesc = $this->getIntelTierDescription($tierName);
+            $shortDesc = "{$gen}th Gen Intel {$tierName} desktop processor{$suffixDesc}.";
+            $description = "The Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " is a {$gen}th generation desktop processor. {$tierDesc} {$suffixDesc} Features Intel's latest architecture for exceptional performance in demanding applications.";
         }
-        // Alternative Intel format with I in SKU (e.g., BX80684I99900K)
-        elseif (preg_match('/^BX\d+I(\d)(\d{4})([A-Z]*)$/i', $sku, $matches)) {
+        // Intel Core processors (4-digit model - older generations)
+        // Examples: BX80684I99900K, BX80684I78700K
+        elseif (preg_match('/^BX\d+I(\d)(\d{4})([A-Z]*)$/i', $cleanSku, $matches)) {
             $brand = 'Intel';
             $tier = $matches[1];  // 3, 5, 7, 9
-            $modelNum = $matches[2];  // 9900, 8700, etc.
+            $modelNum = $matches[2];  // 9900, 8700
             $suffix = strtoupper($matches[3] ?? '');
 
             $tierName = match($tier) {
@@ -484,33 +535,83 @@ class OpenAIService
                 default => 'Core i5'
             };
 
+            $gen = substr($modelNum, 0, 1);  // 9 for 9900, 8 for 8700
             $name = "Intel {$tierName}-{$modelNum}";
             if ($suffix) $name .= $suffix;
             $name .= ' Processor';
             $category = 'Computer Components';
+
+            $suffixDesc = $this->getIntelSuffixDescription($suffix);
+            $tierDesc = $this->getIntelTierDescription($tierName);
+            $shortDesc = "{$gen}th Gen Intel {$tierName} desktop processor{$suffixDesc}.";
+            $description = "The Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " is a {$gen}th generation desktop processor. {$tierDesc} {$suffixDesc}";
         }
-        // Generic Intel BX pattern
-        elseif (preg_match('/^BX\d+/i', $sku)) {
+        // Generic Intel BX pattern - try to extract any useful model info
+        elseif (preg_match('/^BX80(\d{3})(\d+)([A-Z]*)$/i', $cleanSku, $matches)) {
             $brand = 'Intel';
-            $name = "Intel Processor ({$sku})";
+            $prefix = $matches[1];
+            $modelNum = $matches[2];
+            $suffix = strtoupper($matches[3] ?? '');
+
+            $name = "Intel Processor " . $modelNum;
+            if ($suffix) $name .= $suffix;
             $category = 'Computer Components';
+            $shortDesc = "Intel desktop processor for reliable computing performance.";
+            $description = "Intel processor model {$modelNum}" . ($suffix ?: '') . ". A reliable desktop processor delivering consistent performance for various computing tasks.";
         }
-        // AMD processor detection
-        elseif (preg_match('/ryzen/i', $sku) || preg_match('/^100-/i', $sku)) {
+        // Fallback for any Intel BX SKU
+        elseif (preg_match('/^BX\d+/i', $cleanSku)) {
+            $brand = 'Intel';
+            $name = "Intel Processor";
+            $category = 'Computer Components';
+            $shortDesc = "Intel desktop processor (SKU: {$sku}).";
+            $description = "Intel desktop processor. Please refer to Intel specifications for detailed product information. SKU: {$sku}";
+        }
+        // AMD Ryzen processors
+        elseif (preg_match('/ryzen\s*(\d)\s*(\d{4})([A-Z]*)/i', $sku, $matches)) {
             $brand = 'AMD';
-            $name = "AMD Ryzen Processor ({$sku})";
+            $tier = $matches[1];
+            $model = $matches[2];
+            $suffix = strtoupper($matches[3] ?? '');
+
+            $tierName = "Ryzen {$tier}";
+            $name = "AMD {$tierName} {$model}";
+            if ($suffix) $name .= $suffix;
+            $name .= ' Processor';
             $category = 'Computer Components';
+            $shortDesc = "AMD {$tierName} desktop processor for high performance computing.";
+            $description = "The AMD {$tierName} {$model}" . ($suffix ?: '') . " processor delivers exceptional multi-threaded performance. Built on AMD's advanced architecture for gaming, content creation, and productivity.";
         }
-        // Graphics card detection
-        elseif (preg_match('/RTX|GTX|RX\s?\d{4}/i', $sku)) {
-            if (preg_match('/RTX/i', $sku)) {
-                $brand = 'NVIDIA';
-                $name = "NVIDIA GeForce {$sku}";
-            } elseif (preg_match('/RX/i', $sku)) {
-                $brand = 'AMD';
-                $name = "AMD Radeon {$sku}";
-            }
+        // AMD 100-xxxxxx format
+        elseif (preg_match('/^100-\d{6}/i', $sku)) {
+            $brand = 'AMD';
+            $name = "AMD Processor";
+            $category = 'Computer Components';
+            $shortDesc = "AMD desktop processor (SKU: {$sku}).";
+            $description = "AMD processor. Please refer to AMD specifications for detailed product information. SKU: {$sku}";
+        }
+        // NVIDIA Graphics cards
+        elseif (preg_match('/(RTX|GTX)\s*(\d{4})\s*(Ti|SUPER)?/i', $sku, $matches)) {
+            $brand = 'NVIDIA';
+            $series = strtoupper($matches[1]);
+            $model = $matches[2];
+            $variant = isset($matches[3]) ? ' ' . ucfirst(strtolower($matches[3])) : '';
+
+            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
             $category = 'Graphics Cards';
+            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
+            $description = "The NVIDIA GeForce {$series} {$model}{$variant} graphics card delivers outstanding performance for gaming, streaming, and creative applications. Features NVIDIA's latest architecture with ray tracing and DLSS support.";
+        }
+        // AMD Graphics cards
+        elseif (preg_match('/RX\s*(\d{4})\s*(XT|XTX)?/i', $sku, $matches)) {
+            $brand = 'AMD';
+            $model = $matches[1];
+            $variant = isset($matches[2]) ? ' ' . strtoupper($matches[2]) : '';
+
+            $name = "AMD Radeon RX {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
+            $description = "The AMD Radeon RX {$model}{$variant} graphics card provides exceptional gaming performance and creative capabilities. Built on AMD's RDNA architecture for immersive gaming experiences.";
         }
 
         // Use provided brand if available
@@ -518,13 +619,53 @@ class OpenAIService
             $brand = $additionalInfo['brand'];
         }
 
+        // Fallback descriptions if not set
+        if (empty($shortDesc)) {
+            $shortDesc = $brand ? "{$brand} {$name} - Quality product for reliable performance." : "{$name} - Quality product.";
+        }
+        if (empty($description)) {
+            $description = $brand
+                ? "The {$name} from {$brand} delivers reliable performance and quality. Designed for demanding users who expect the best."
+                : "The {$name} delivers reliable performance and quality.";
+        }
+
         return [
             'name' => $name,
             'brand' => $brand,
-            'short_description' => "High-quality {$name} from {$brand}.",
-            'description' => "The {$name} is a premium product from {$brand}. Known for quality and reliability, this product offers excellent performance and value.",
+            'short_description' => $shortDesc,
+            'description' => $description,
             'suggested_category' => $category
         ];
+    }
+
+    /**
+     * Get description snippet based on Intel processor suffix
+     */
+    private function getIntelSuffixDescription(string $suffix): string
+    {
+        return match($suffix) {
+            'K' => ' with unlocked multiplier for overclocking',
+            'KF' => ' with unlocked multiplier (no integrated graphics)',
+            'F' => ' (no integrated graphics, discrete GPU required)',
+            'KS' => ' Special Edition with enhanced boost frequencies',
+            'T' => ' power-optimized variant for efficient operation',
+            'S' => ' performance-optimized variant',
+            default => ''
+        };
+    }
+
+    /**
+     * Get description snippet based on Intel processor tier
+     */
+    private function getIntelTierDescription(string $tierName): string
+    {
+        return match($tierName) {
+            'Core i3' => 'Ideal for everyday computing, office work, and light gaming.',
+            'Core i5' => 'Perfect balance of performance and value for gaming and productivity.',
+            'Core i7' => 'High-performance processor for demanding gaming and content creation.',
+            'Core i9' => 'Flagship desktop processor for extreme performance in gaming and professional workloads.',
+            default => 'Reliable processor for various computing tasks.'
+        };
     }
 
     /**

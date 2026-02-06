@@ -57,6 +57,7 @@ class CheckoutController extends Controller
         $this->view('pages/checkout', [
             'meta_title' => 'Checkout | ' . config('app.name'),
             'meta_robots' => 'noindex, nofollow',
+            'styles' => '<link rel="stylesheet" href="' . asset('css/checkout.css') . '">',
             'cart' => $cart,
             'items' => $cart->getItems(),
             'addresses' => $addresses,

@@ -248,6 +248,14 @@ class Cart
     }
 
     /**
+     * Get the applied coupon code
+     */
+    public function getCouponCode(): ?string
+    {
+        return $this->couponCode;
+    }
+
+    /**
      * Get subtotal
      */
     public function getSubtotal(): float

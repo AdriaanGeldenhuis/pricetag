@@ -1,5 +1,3 @@
-<link rel="stylesheet" href="<?= asset('css/checkout.css') ?>">
-
 <!-- Checkout Page - Multi-Step Checkout Flow -->
 <div class="checkout-page">
     <div class="container py-8">

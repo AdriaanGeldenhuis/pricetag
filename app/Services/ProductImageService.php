@@ -1060,18 +1060,11 @@ class ProductImageService
                     }
                 }
             } catch (\Throwable $e) {
-                logMessage('error', 'ProductImageService: Image generation failed', [
-                    'product_id' => $productId,
-                    'image_index' => $i,
-                    'error' => $e->getMessage(),
-                ]);
+                error_log("ProductImageService: Image {$i} generation failed for product {$productId}: " . $e->getMessage());
             }
         }
 
-        logMessage('info', 'ProductImageService: AI images generated', [
-            'product_id' => $productId,
-            'generated' => $generated,
-        ]);
+        error_log("ProductImageService: Generated {$generated} AI images for product {$productId}");
 
         return [
             'success' => $generated > 0,
@@ -1121,10 +1114,7 @@ class ProductImageService
 
             return ['success' => true, 'image_id' => $imageId, 'path' => $relativePath];
         } catch (\Throwable $e) {
-            logMessage('error', 'ProductImageService: Failed to save generated image', [
-                'product_id' => $productId,
-                'error' => $e->getMessage(),
-            ]);
+            error_log("ProductImageService: Failed to save generated image for product {$productId}: " . $e->getMessage());
 
             if (isset($fullPath) && file_exists($fullPath)) {
                 @unlink($fullPath);

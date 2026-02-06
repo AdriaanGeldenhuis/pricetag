@@ -1,5 +1,5 @@
 <!-- Product Page CSS -->
-<link rel="stylesheet" href="<?= asset('css/product-page.css') ?>">
+<link rel="stylesheet" href="<?= asset('css/product-page.css') ?>?v=<?= filemtime(PUBLIC_PATH . '/assets/css/product-page.css') ?>">
 
 <!-- Product Detail Page -->
 <div class="pt-page">

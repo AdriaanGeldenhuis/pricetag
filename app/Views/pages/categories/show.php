@@ -219,102 +219,70 @@
                 <?php endif; ?>
             </main>
 
-            <!-- Right Sidebar - Banners & Promotions -->
-            <aside class="category-sidebar category-sidebar-right">
-                <!-- Featured Deal Banner -->
-                <div class="sidebar-banner sidebar-banner-featured">
-                    <div class="sidebar-banner-badge">Hot Deal</div>
-                    <div class="sidebar-banner-content">
-                        <h4 class="sidebar-banner-title">Flash Sale</h4>
-                        <p class="sidebar-banner-text">Up to 50% off selected items</p>
-                        <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-banner-btn">Shop Now</a>
-                    </div>
-                    <div class="sidebar-banner-glow"></div>
+            <!-- Right Sidebar - Dynamic Banners & Promotions -->
+            <aside class="category-sidebar category-sidebar-right page-sidebar-right">
+                <?php $sidebarLocation = 'category_top'; include APP_PATH . '/Views/components/sidebar-banners.php'; ?>
+
+                <!-- Static Fallback Widgets -->
+                <div class="sidebar-static-widget sidebar-widget-featured">
+                    <span class="sidebar-widget-badge">Hot Deal</span>
+                    <div class="sidebar-widget-title" style="color: #fff; position: relative; z-index: 1;">Flash Sale</div>
+                    <p class="sidebar-widget-text">Up to 50% off selected items</p>
+                    <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-widget-cta">Shop Now</a>
                 </div>
 
-                <!-- New Arrivals Banner -->
-                <div class="sidebar-banner sidebar-banner-new">
-                    <div class="sidebar-banner-icon">
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                         </svg>
                     </div>
-                    <div class="sidebar-banner-content">
-                        <h4 class="sidebar-banner-title">New Arrivals</h4>
-                        <p class="sidebar-banner-text">Check out our latest products</p>
-                        <a href="<?= url('/products?sort=newest') ?>" class="sidebar-banner-link">
-                            Browse New
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                                <polyline points="12 5 19 12 12 19"></polyline>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Best Sellers Banner -->
-                <div class="sidebar-banner sidebar-banner-popular">
-                    <div class="sidebar-banner-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 20V10"></path>
-                            <path d="M18 20V4"></path>
-                            <path d="M6 20v-4"></path>
+                    <h4 class="sidebar-widget-title">New Arrivals</h4>
+                    <p class="sidebar-widget-text">Check out our latest products</p>
+                    <a href="<?= url('/products?sort=newest') ?>" class="sidebar-widget-link">
+                        Browse New
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
                         </svg>
-                    </div>
-                    <div class="sidebar-banner-content">
-                        <h4 class="sidebar-banner-title">Best Sellers</h4>
-                        <p class="sidebar-banner-text">Most popular products this week</p>
-                        <a href="<?= url('/products?sort=popular') ?>" class="sidebar-banner-link">
-                            View Top Products
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                                <polyline points="12 5 19 12 12 19"></polyline>
-                            </svg>
-                        </a>
-                    </div>
+                    </a>
                 </div>
 
-                <!-- Newsletter Banner -->
-                <div class="sidebar-banner sidebar-banner-newsletter">
-                    <div class="sidebar-banner-icon">
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                             <polyline points="22,6 12,13 2,6"></polyline>
                         </svg>
                     </div>
-                    <div class="sidebar-banner-content">
-                        <h4 class="sidebar-banner-title">Stay Updated</h4>
-                        <p class="sidebar-banner-text">Get exclusive deals & updates</p>
-                        <form class="sidebar-newsletter-form">
-                            <input type="email" placeholder="Your email" class="sidebar-newsletter-input">
-                            <button type="submit" class="sidebar-newsletter-btn">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                                </svg>
-                            </button>
-                        </form>
-                    </div>
+                    <h4 class="sidebar-widget-title">Stay Updated</h4>
+                    <p class="sidebar-widget-text">Get exclusive deals & updates</p>
+                    <form class="sidebar-newsletter-form" onsubmit="event.preventDefault()">
+                        <input type="email" placeholder="Your email" class="sidebar-newsletter-input">
+                        <button type="submit" class="sidebar-newsletter-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </form>
                 </div>
 
-                <!-- Help Banner -->
-                <div class="sidebar-banner sidebar-banner-help">
-                    <div class="sidebar-banner-icon">
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                         </svg>
                     </div>
-                    <div class="sidebar-banner-content">
-                        <h4 class="sidebar-banner-title">Need Help?</h4>
-                        <p class="sidebar-banner-text">Our support team is here for you</p>
-                        <a href="<?= url('/contact') ?>" class="sidebar-banner-link">
-                            Contact Us
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                                <polyline points="12 5 19 12 12 19"></polyline>
-                            </svg>
-                        </a>
-                    </div>
+                    <h4 class="sidebar-widget-title">Need Help?</h4>
+                    <p class="sidebar-widget-text">Our support team is here for you</p>
+                    <a href="<?= url('/contact') ?>" class="sidebar-widget-link">
+                        Contact Us
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </a>
                 </div>
             </aside>
         </div>

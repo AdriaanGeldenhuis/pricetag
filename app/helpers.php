@@ -642,3 +642,32 @@ function getAppearance(): array
 
     return $appearance;
 }
+
+/**
+ * Get active banners for a specific location
+ */
+function getBanners(string $location): array
+{
+    static $cache = [];
+
+    if (isset($cache[$location])) {
+        return $cache[$location];
+    }
+
+    try {
+        $db = \App\Core\Database::getInstance();
+        $stmt = $db->prepare("
+            SELECT * FROM banners
+            WHERE location = ? AND is_active = 1
+            AND (starts_at IS NULL OR starts_at <= NOW())
+            AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY sort_order
+        ");
+        $stmt->execute([$location]);
+        $cache[$location] = $stmt->fetchAll() ?: [];
+    } catch (\Throwable $e) {
+        $cache[$location] = [];
+    }
+
+    return $cache[$location];
+}

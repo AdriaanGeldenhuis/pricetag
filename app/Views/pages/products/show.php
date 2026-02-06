@@ -24,6 +24,8 @@
     <!-- Main Product Section -->
     <section class="pt-product-main">
         <div class="pt-container">
+            <div class="pt-product-page-layout">
+            <div class="pt-product-content-area">
             <div class="pt-product-grid">
 
                 <!-- Gallery Section -->
@@ -338,6 +340,62 @@
 
                 </div>
             </div>
+
+            </div><!-- /.pt-product-content-area -->
+
+            <!-- Product Sidebar -->
+            <aside class="pt-product-sidebar page-sidebar-right">
+                <?php $sidebarLocation = 'product_sidebar'; include APP_PATH . '/Views/components/sidebar-banners.php'; ?>
+
+                <!-- Quick Contact Widget -->
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <h4 class="sidebar-widget-title">Have Questions?</h4>
+                    <p class="sidebar-widget-text">Our team is ready to help you with this product</p>
+                    <a href="<?= url('/contact') ?>" class="sidebar-widget-link">
+                        Contact Us
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="12 5 19 12 12 19"></polyline>
+                        </svg>
+                    </a>
+                </div>
+
+                <!-- Deals Widget -->
+                <div class="sidebar-static-widget sidebar-widget-featured">
+                    <span class="sidebar-widget-badge">Sale</span>
+                    <div class="sidebar-widget-title" style="color: #fff; position: relative; z-index: 1;">Hot Deals</div>
+                    <p class="sidebar-widget-text">Browse our latest deals and save big</p>
+                    <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-widget-cta">View Deals</a>
+                </div>
+
+                <!-- Newsletter Widget -->
+                <div class="sidebar-static-widget">
+                    <div class="sidebar-widget-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                    </div>
+                    <h4 class="sidebar-widget-title">Stay Updated</h4>
+                    <p class="sidebar-widget-text">Get exclusive deals in your inbox</p>
+                    <form class="sidebar-newsletter-form" onsubmit="event.preventDefault()">
+                        <input type="email" placeholder="Email" class="sidebar-newsletter-input">
+                        <button type="submit" class="sidebar-newsletter-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </aside>
+
+            </div><!-- /.pt-product-page-layout -->
         </div>
     </section>
 

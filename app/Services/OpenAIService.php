@@ -217,132 +217,26 @@ class OpenAIService
         return 'conv_' . bin2hex(random_bytes(16));
     }
 
-    /**
-     * Generate product content using AI
-     */
-    public function generateProductContent(array $product): array
-    {
-        if (empty($this->apiKey)) {
-            return ['error' => 'OpenAI API key not configured'];
-        }
-
-        $productName = $product['name'] ?? '';
-        $currentDescription = $product['description'] ?? '';
-        $currentShortDescription = $product['short_description'] ?? '';
-        $price = $product['price'] ?? 0;
-        $category = $product['category'] ?? '';
-
-        $prompt = "You are a professional e-commerce copywriter. Generate content for the following product:\n\n";
-        $prompt .= "Product Name: {$productName}\n";
-        if ($category) {
-            $prompt .= "Category: {$category}\n";
-        }
-        $prompt .= "Price: R" . number_format((float)$price, 2) . "\n";
-        if ($currentDescription) {
-            $prompt .= "Current Description: {$currentDescription}\n";
-        }
-
-        $prompt .= "\nGenerate the following in JSON format:\n";
-        $prompt .= "1. short_description: A compelling 1-2 sentence product summary (max 160 characters)\n";
-        $prompt .= "2. description: A detailed product description with features and benefits (2-3 paragraphs)\n";
-        $prompt .= "3. meta_title: SEO-optimized page title (max 70 characters)\n";
-        $prompt .= "4. meta_description: SEO meta description (max 160 characters)\n";
-        $prompt .= "5. specifications: Array of key-value pairs for product specs (e.g., [{\"name\": \"Material\", \"value\": \"Cotton\"}])\n";
-        $prompt .= "\nRespond ONLY with valid JSON, no other text.";
-
-        try {
-            $response = $this->makeRequest('/chat/completions', [
-                'model' => $this->model,
-                'messages' => [
-                    ['role' => 'system', 'content' => 'You are a helpful assistant that generates e-commerce product content. Always respond with valid JSON only.'],
-                    ['role' => 'user', 'content' => $prompt],
-                ],
-                'max_tokens' => 1000,
-                'temperature' => 0.7,
-            ]);
-
-            $content = $response['choices'][0]['message']['content'] ?? '';
-
-            // Clean up potential markdown code blocks
-            $content = preg_replace('/^```json\s*/', '', $content);
-            $content = preg_replace('/\s*```$/', '', $content);
-            $content = trim($content);
-
-            $data = json_decode($content, true);
-
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return ['error' => 'Failed to parse AI response'];
-            }
-
-            return [
-                'success' => true,
-                'data' => $data,
-            ];
-
-        } catch (\Exception $e) {
-            error_log('OpenAI Product Generation Error: ' . $e->getMessage());
-            return ['error' => 'Failed to generate content: ' . $e->getMessage()];
-        }
-    }
-
-    /**
-     * Search and fill product information from the web
-     */
-    public function searchProductInfo(string $productName, string $sku = ''): array
-    {
-        if (empty($this->apiKey)) {
-            return ['error' => 'OpenAI API key not configured'];
-        }
-
-        $prompt = "Research and provide comprehensive product information for:\n";
-        $prompt .= "Product: {$productName}\n";
-        if ($sku) {
-            $prompt .= "SKU/Model: {$sku}\n";
-        }
-
-        $prompt .= "\nProvide the following in JSON format:\n";
-        $prompt .= "1. description: Detailed product description based on typical features of this product type\n";
-        $prompt .= "2. short_description: Brief summary (max 160 chars)\n";
-        $prompt .= "3. meta_title: SEO title (max 70 chars)\n";
-        $prompt .= "4. meta_description: SEO description (max 160 chars)\n";
-        $prompt .= "5. specifications: Array of typical specifications [{\"name\": \"spec\", \"value\": \"value\"}]\n";
-        $prompt .= "6. suggested_category: Best product category\n";
-        $prompt .= "\nBe helpful but don't make up specific technical specs you're not sure about. Respond ONLY with valid JSON.";
-
-        try {
-            $response = $this->makeRequest('/chat/completions', [
-                'model' => $this->model,
-                'messages' => [
-                    ['role' => 'system', 'content' => 'You are a product research assistant. Provide helpful product information based on general knowledge. Always respond with valid JSON only.'],
-                    ['role' => 'user', 'content' => $prompt],
-                ],
-                'max_tokens' => 1000,
-                'temperature' => 0.5,
-            ]);
-
-            $content = $response['choices'][0]['message']['content'] ?? '';
-
-            // Clean up potential markdown code blocks
-            $content = preg_replace('/^```json\s*/', '', $content);
-            $content = preg_replace('/\s*```$/', '', $content);
-            $content = trim($content);
-
-            $data = json_decode($content, true);
-
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return ['error' => 'Failed to parse AI response'];
-            }
-
-            return [
-                'success' => true,
-                'data' => $data,
-            ];
-
-        } catch (\Exception $e) {
-            error_log('OpenAI Product Search Error: ' . $e->getMessage());
-            return ['error' => 'Failed to search product: ' . $e->getMessage()];
-        }
-    }
+    // =========================================================================
+    // PRODUCT AI - IDENTIFICATION & CONTENT GENERATION
+    // =========================================================================
+    //
+    // ARCHITECTURE:
+    //   1. identifyProductFromSku() - LOCAL pattern matching. This is the SINGLE
+    //      source of truth for product names. No AI involved. 100% accurate for
+    //      known SKU formats (Intel BX80, AMD Ryzen, NVIDIA RTX/GTX, etc).
+    //
+    //   2. generateCompleteProduct() - THE main entry point for all AI product work.
+    //      Calls identifyProductFromSku() first, then asks AI to write descriptions,
+    //      SEO, specs. The AI NEVER decides the product name - it only writes content
+    //      about the already-identified product.
+    //
+    //   3. generateFromSku() - Lightweight wrapper that calls identifyProductFromSku()
+    //      and optionally enhances with AI. Used by older code paths.
+    //
+    //   RULE: The AI is NEVER allowed to decide what product a SKU is.
+    //         Pattern matching decides the name. AI writes the copy.
+    // =========================================================================
 
     /**
      * Check if API is configured
@@ -353,294 +247,509 @@ class OpenAIService
     }
 
     /**
-     * Generate product name and description from SKU
+     * Identify a product from its SKU using LOCAL pattern matching only.
+     * No AI involved. This is the single source of truth for product names.
+     *
+     * @return array{name: string, brand: string, category: string, shortDesc: string, description: string, recognized: bool}
      */
-    public function generateFromSku(string $sku, array $additionalInfo = []): array
+    public function identifyProductFromSku(string $sku): array
     {
+        $name = '';
+        $brand = '';
+        $category = 'Electronics';
+        $shortDesc = '';
+        $description = '';
+
+        // Clean SKU - remove regional suffixes
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+
+        // ---- INTEL CELERON/PENTIUM: BX80xxxGxxxx ----
+        if (preg_match('/^BX80\d{3}(G)(\d{4})([A-Z]*)$/i', $cleanSku, $m)) {
+            $brand = 'Intel';
+            $model = strtoupper($m[1]) . $m[2]; // G6900
+            $suffix = strtoupper($m[3] ?? '');
+            $firstDigit = substr($m[2], 0, 1);
+            $tierName = ($firstDigit >= '7') ? 'Pentium Gold' : 'Celeron';
+
+            $name = "Intel {$tierName} {$model}" . ($suffix ?: '') . " Processor";
+            $category = 'Processors';
+            $shortDesc = "Intel {$tierName} desktop processor for everyday computing and basic tasks.";
+            $description = "The {$name} is a reliable entry-level desktop processor. Perfect for everyday computing tasks including web browsing, office applications, and light media consumption.";
+        }
+
+        // ---- INTEL CORE (12th gen+): BX80xxx + 5 digits + optional suffix ----
+        // BX8071512400F -> 12400 + F  |  BX8071514900 -> 14900
+        elseif (preg_match('/^BX80\d{3}(\d{5})([A-Z]*)$/i', $cleanSku, $m)) {
+            $brand = 'Intel';
+            $modelNum = $m[1];  // "14900"
+            $suffix = strtoupper($m[2] ?? ''); // "K", "KF", "F", etc.
+
+            $gen = substr($modelNum, 0, 2);       // "14"
+            $tierDigit = substr($modelNum, 2, 1);  // "9"
+
+            $tierName = match($tierDigit) {
+                '1' => 'Core i3',
+                '4', '5', '6' => 'Core i5',
+                '7' => 'Core i7',
+                '9' => 'Core i9',
+                default => 'Core i5'
+            };
+
+            $name = "Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " Processor";
+            $category = 'Processors';
+
+            $suffixDesc = $this->getIntelSuffixDescription($suffix);
+            $tierDesc = $this->getIntelTierDescription($tierName);
+            $shortDesc = "{$gen}th Gen Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " desktop processor{$suffixDesc}.";
+            $description = "The {$name} is a {$gen}th generation desktop processor. {$tierDesc}{$suffixDesc}.";
+
+            error_log("SKU IDENTIFY: {$sku} -> modelNum={$modelNum}, tierDigit={$tierDigit}, tier={$tierName}, name={$name}");
+        }
+
+        // ---- INTEL CORE (older): BX80xxxIxYYYYz (e.g. BX80684I99900K) ----
+        elseif (preg_match('/^BX\d+I(\d)(\d{4})([A-Z]*)$/i', $cleanSku, $m)) {
+            $brand = 'Intel';
+            $tier = $m[1];
+            $modelNum = $m[2];
+            $suffix = strtoupper($m[3] ?? '');
+
+            $tierName = match($tier) {
+                '3' => 'Core i3', '5' => 'Core i5',
+                '7' => 'Core i7', '9' => 'Core i9',
+                default => 'Core i5'
+            };
+
+            $gen = substr($modelNum, 0, 1);
+            $name = "Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " Processor";
+            $category = 'Processors';
+
+            $suffixDesc = $this->getIntelSuffixDescription($suffix);
+            $tierDesc = $this->getIntelTierDescription($tierName);
+            $shortDesc = "{$gen}th Gen Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " desktop processor{$suffixDesc}.";
+            $description = "The {$name} is a {$gen}th generation desktop processor. {$tierDesc}{$suffixDesc}.";
+        }
+
+        // ---- INTEL GENERIC BX80 with digits ----
+        elseif (preg_match('/^BX80\d{3}(\d+)([A-Z]*)$/i', $cleanSku, $m)) {
+            $brand = 'Intel';
+            $modelNum = $m[1];
+            $suffix = strtoupper($m[2] ?? '');
+            $name = "Intel Processor {$modelNum}" . ($suffix ?: '');
+            $category = 'Processors';
+            $shortDesc = "Intel desktop processor for reliable computing performance.";
+            $description = "Intel processor model {$modelNum}" . ($suffix ?: '') . ". A reliable desktop processor.";
+        }
+
+        // ---- ANY BX prefix = Intel ----
+        elseif (preg_match('/^BX\d+/i', $cleanSku)) {
+            $brand = 'Intel';
+            $name = "Intel Processor ({$sku})";
+            $category = 'Processors';
+            $shortDesc = "Intel desktop processor (SKU: {$sku}).";
+            $description = "Intel desktop processor. SKU: {$sku}";
+        }
+
+        // ---- AMD RYZEN ----
+        elseif (preg_match('/ryzen\s*(\d)\s*(\d{4})([A-Z]*)/i', $sku, $m)) {
+            $brand = 'AMD';
+            $tier = $m[1]; $model = $m[2];
+            $suffix = strtoupper($m[3] ?? '');
+            $name = "AMD Ryzen {$tier} {$model}" . ($suffix ?: '') . " Processor";
+            $category = 'Processors';
+            $shortDesc = "AMD Ryzen {$tier} desktop processor for high performance computing.";
+            $description = "The {$name} delivers exceptional multi-threaded performance. Built on AMD's advanced architecture for gaming, content creation, and productivity.";
+        }
+
+        // ---- AMD 100-xxxxxx ----
+        elseif (preg_match('/^100-\d{6}/i', $sku)) {
+            $brand = 'AMD';
+            $name = "AMD Processor ({$sku})";
+            $category = 'Processors';
+            $shortDesc = "AMD desktop processor (SKU: {$sku}).";
+            $description = "AMD processor. SKU: {$sku}";
+        }
+
+        // ---- NVIDIA GPUs ----
+        elseif (preg_match('/(RTX|GTX)\s*(\d{4})\s*(Ti|SUPER)?/i', $sku, $m)) {
+            $brand = 'NVIDIA';
+            $series = strtoupper($m[1]); $model = $m[2];
+            $variant = isset($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
+            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
+            $description = "The {$name} delivers outstanding performance for gaming, streaming, and creative applications. Features ray tracing and DLSS support.";
+        }
+
+        // ---- AMD GPUs ----
+        elseif (preg_match('/RX\s*(\d{4})\s*(XT|XTX)?/i', $sku, $m)) {
+            $brand = 'AMD';
+            $model = $m[1];
+            $variant = isset($m[2]) ? ' ' . strtoupper($m[2]) : '';
+            $name = "AMD Radeon RX {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
+            $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
+        }
+
+        $recognized = !empty($name);
+
+        return [
+            'name' => $name,
+            'brand' => $brand,
+            'category' => $category,
+            'short_description' => $shortDesc,
+            'description' => $description,
+            'recognized' => $recognized,
+        ];
+    }
+
+    /**
+     * Generate a complete, production-ready product from SKU and/or short description.
+     *
+     * This is THE main method for all AI product generation. Every button and
+     * every import path should call this. Architecture:
+     *   1. identifyProductFromSku() decides the name (pattern matching, no AI)
+     *   2. AI writes descriptions, SEO, specs FOR that identified product
+     *   3. The AI name output is ALWAYS discarded; pattern name is forced
+     *
+     * @return array{success: bool, data: array}
+     */
+    public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
+    {
+        // STEP 1: Identify the product from SKU - this is LAW
+        $identity = $this->identifyProductFromSku($sku);
+        $verifiedName = $identity['name'];
+        $verifiedBrand = $identity['brand'] ?: ($context['brand'] ?? '');
+        $verifiedCategory = $identity['category'] ?: ($context['category'] ?? 'Electronics');
+        $recognized = $identity['recognized'];
+
+        // Use existing name or short description to help identify unknown products
+        $existingName = $context['existingName'] ?? '';
+        $existingDescription = $context['existingDescription'] ?? '';
+        $price = $context['price'] ?? 0;
+
+        // If pattern didn't recognize, try the short description or existing name
+        if (!$recognized && !empty($shortDescription)) {
+            // Try to identify from the short description text
+            $descIdentity = $this->identifyProductFromSku($shortDescription);
+            if ($descIdentity['recognized']) {
+                $verifiedName = $descIdentity['name'];
+                $verifiedBrand = $descIdentity['brand'];
+                $verifiedCategory = $descIdentity['category'];
+                $recognized = true;
+            }
+        }
+
+        // Final fallback name: use existing name if available, otherwise the SKU
+        $productName = $recognized ? $verifiedName : ($existingName ?: $sku);
+
+        error_log("AI COMPLETE: SKU={$sku}, Identified='" . ($recognized ? $verifiedName : 'NO') . "', Final name='{$productName}'");
+
+        // If no API key, return pattern-matched data only
         if (empty($this->apiKey)) {
-            // Return basic fallback based on SKU pattern analysis
-            return $this->generateFallbackFromSku($sku, $additionalInfo);
+            return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
         }
 
-        $prompt = "You are an e-commerce product specialist. Analyze the SKU/product code and generate professional product listing content for an online store.\n\n";
-        $prompt .= "SKU/Product Code: {$sku}\n";
+        // STEP 2: Ask AI to write content FOR the identified product
+        $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store.\n\n";
+        $prompt .= "Write a COMPLETE product listing for the following product:\n\n";
+        $prompt .= "PRODUCT NAME: {$productName}\n";
+        $prompt .= "SKU: {$sku}\n";
+        $prompt .= "BRAND: {$verifiedBrand}\n";
+        $prompt .= "CATEGORY: {$verifiedCategory}\n";
+        if ($shortDescription) {
+            $prompt .= "SUPPLIER INFO: {$shortDescription}\n";
+        }
+        if ($existingDescription && strlen($existingDescription) > 20) {
+            $prompt .= "EXISTING DESCRIPTION: " . substr($existingDescription, 0, 300) . "\n";
+        }
+        if ($price > 0) {
+            $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
+        }
 
-        if (!empty($additionalInfo['brand'])) {
-            $prompt .= "Brand: {$additionalInfo['brand']}\n";
-        }
-        if (!empty($additionalInfo['category'])) {
-            $prompt .= "Category hint: {$additionalInfo['category']}\n";
-        }
-        if (!empty($additionalInfo['price'])) {
-            $prompt .= "Price: R{$additionalInfo['price']} (South African Rand)\n";
-        }
+        $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is VERIFIED and CORRECT. ";
+        $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number. ***\n";
 
-        $prompt .= "\nGenerate the following (respond in JSON format only):\n";
-        $prompt .= "1. name: Professional product name suitable for e-commerce (e.g., 'Intel Core i7-12700K Desktop Processor' not just 'Intel CPU')\n";
-        $prompt .= "2. short_description: Compelling 1-2 sentence summary for product cards (max 160 chars, highlight key selling point)\n";
-        $prompt .= "3. description: SEO-optimized product description with key features and benefits (2-3 paragraphs, include specs where known)\n";
-        $prompt .= "4. suggested_category: Best product category (e.g., 'Computer Components', 'Processors', 'Graphics Cards')\n";
-        $prompt .= "5. brand: Brand name extracted from SKU analysis\n";
-        $prompt .= "\nSKU PATTERNS TO RECOGNIZE:\n";
-        $prompt .= "- Intel: 'BX80' prefix = boxed processor. Model patterns: 12400=i5-12400, 14100=i3-14100, 13700=i7-13700, 13900=i9-13900\n";
-        $prompt .= "- Intel suffixes: K=unlocked, F=no iGPU, KF=both, T=low power, KS=special edition\n";
-        $prompt .= "- Intel: 'G' in model (e.g., G6900) = Celeron, G7400 = Pentium Gold\n";
-        $prompt .= "- AMD: '100-' prefix or 'Ryzen' in code\n";
-        $prompt .= "- NVIDIA: RTX/GTX prefix, AMD: RX prefix for graphics cards\n";
-        $prompt .= "\nIMPORTANT: Be specific with the product name. 'Intel Core i5-12400F Processor' is correct, 'Intel CPU' is too generic.\n";
-        $prompt .= "Respond ONLY with valid JSON, no markdown code blocks.";
+        $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
+        $prompt .= "{\n";
+        $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
+        $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4-5 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four\\n• Point five. Each point is a key selling feature (max 30 words each). No intro text before bullets.\n";
+        $prompt .= "  \"description\": \"...\",         // RICH product description. NO HTML TAGS (no <p>, <ul>, <li>, <strong>). Use PLAIN TEXT with newlines (\\n). Structure it as follows:\\n\\n";
+        $prompt .= "    Line 1: Product headline - one powerful sentence about the product\\n";
+        $prompt .= "    Line 2: Empty line\\n";
+        $prompt .= "    Line 3-5: What makes this product special (2-3 sentences)\\n";
+        $prompt .= "    Line 6: Empty line\\n";
+        $prompt .= "    Line 7: ★ KEY FEATURES heading\\n";
+        $prompt .= "    Lines 8-14: Feature list using ✓ prefix, one per line (at least 6 features)\\n";
+        $prompt .= "    Line 15: Empty line\\n";
+        $prompt .= "    Line 16: ⚡ PERFORMANCE heading\\n";
+        $prompt .= "    Lines 17-19: Performance details (2-3 sentences)\\n";
+        $prompt .= "    Line 20: Empty line\\n";
+        $prompt .= "    Line 21: 📦 WHAT'S IN THE BOX heading\\n";
+        $prompt .= "    Lines 22-24: Box contents list using • prefix\\n";
+        $prompt .= "    Line 25: Empty line\\n";
+        $prompt .= "    Line 26: Final call-to-action sentence for Pricetag.co.za\\n\\n";
+        $prompt .= "    IMPORTANT: Use Unicode symbols (★ ✓ ⚡ 📦 •) for visual appeal. No HTML whatsoever.\\n\n";
+        $prompt .= "  \"meta_title\": \"...\",          // Max 70 chars, SEO optimized\n";
+        $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
+        $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
+        $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 5 real specs\n";
+        $prompt .= "  \"suggested_category\": \"...\",  // Best category\n";
+        $prompt .= "  \"brand\": \"{$verifiedBrand}\",\n";
+        $prompt .= "  \"weight\": 0.5                  // Estimated weight in kg\n";
+        $prompt .= "}\n";
+        $prompt .= "\nRules: All prices in ZAR (R). Write for a premium store. Include REAL specs.\n";
+        $prompt .= "CRITICAL FORMAT RULES:\n";
+        $prompt .= "- short_description: MUST be 4-5 bullet points using • character, separated by \\n. NO prose.\n";
+        $prompt .= "- description: MUST be plain text with \\n for newlines. NO HTML tags whatsoever. Use Unicode symbols for visual structure.\n";
+        $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
             $response = $this->makeRequest('/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'You are a product identification expert. Analyze SKU codes to identify products. NEVER use the raw SKU as the product name - always identify the actual product. Always respond with valid JSON only, no markdown.'],
+                    ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => 800,
+                'max_tokens' => 2500,
                 'temperature' => 0.3,
             ]);
 
             $content = $response['choices'][0]['message']['content'] ?? '';
-
-            // Clean up potential markdown code blocks
             $content = preg_replace('/^```json\s*/i', '', $content);
             $content = preg_replace('/^```\s*/i', '', $content);
             $content = preg_replace('/\s*```$/i', '', $content);
             $content = trim($content);
 
             $data = json_decode($content, true);
-
-            if (json_last_error() === JSON_ERROR_NONE && !empty($data['name'])) {
-                // Validate: If AI returned the raw SKU as name, use fallback for name
-                $aiName = trim($data['name']);
-                $isNameJustSku = (strcasecmp($aiName, $sku) === 0) ||
-                                 (stripos($aiName, $sku) === 0 && strlen($aiName) < strlen($sku) + 10);
-
-                if ($isNameJustSku) {
-                    // AI failed to generate a proper name - use fallback for name
-                    $fallback = $this->generateFallbackFromSku($sku, $additionalInfo);
-                    $data['name'] = $fallback['name'];
-                    // Keep AI descriptions if they're better (longer), otherwise use fallback
-                    if (empty($data['short_description']) || strlen($data['short_description']) < 20) {
-                        $data['short_description'] = $fallback['short_description'];
-                    }
-                    if (empty($data['description']) || strlen($data['description']) < 50) {
-                        $data['description'] = $fallback['description'];
-                    }
-                    if (empty($data['brand'])) {
-                        $data['brand'] = $fallback['brand'];
-                    }
-                }
-                return $data;
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log('AI JSON parse failed: ' . json_last_error_msg());
+                return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
             }
 
-            // Fallback if JSON parsing fails
-            return $this->generateFallbackFromSku($sku, $additionalInfo);
+            // STEP 3: FORCE the correct identity - AI output for name/brand/category is DISCARDED
+            $data['name'] = $productName;
+            $data['brand'] = $verifiedBrand;
+            if ($recognized) {
+                $data['suggested_category'] = $verifiedCategory;
+            }
+
+            // Ensure all keys exist
+            $data = array_merge([
+                'name' => $productName,
+                'short_description' => $identity['short_description'] ?? '',
+                'description' => $identity['description'] ?? '',
+                'meta_title' => '',
+                'meta_description' => '',
+                'meta_keywords' => '',
+                'specifications' => [],
+                'suggested_category' => $verifiedCategory,
+                'brand' => $verifiedBrand,
+                'weight' => null,
+                'is_taxable' => true,
+            ], $data);
+
+            // Force name again after merge (in case AI put it in the response)
+            $data['name'] = $productName;
+            $data['brand'] = $verifiedBrand;
+
+            return ['success' => true, 'data' => $data];
 
         } catch (\Exception $e) {
-            error_log('OpenAI SKU Generation Error: ' . $e->getMessage());
-            return $this->generateFallbackFromSku($sku, $additionalInfo);
+            error_log('AI Complete Product Error: ' . $e->getMessage());
+            return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
         }
     }
 
     /**
-     * Generate fallback product info from SKU pattern analysis
+     * Generate product info from SKU - lightweight version.
+     * Delegates to identifyProductFromSku() for the name, optionally enhances with AI.
      */
-    private function generateFallbackFromSku(string $sku, array $additionalInfo = []): array
+    public function generateFromSku(string $sku, array $additionalInfo = []): array
     {
-        $name = $sku;
-        $brand = $additionalInfo['brand'] ?? '';
-        $category = $additionalInfo['category'] ?? 'Electronics';
-        $shortDesc = '';
-        $description = '';
+        // Always use pattern matching first
+        $identity = $this->identifyProductFromSku($sku);
 
-        // Clean SKU - remove regional suffixes for pattern matching
-        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
-        $regionSuffix = '';
-        if (preg_match('/-(CA|US|EU|UK|AU|SA)$/i', $sku, $regionMatch)) {
-            $regionSuffix = $regionMatch[0];
-        }
+        if ($identity['recognized']) {
+            $result = [
+                'name' => $identity['name'],
+                'brand' => $identity['brand'],
+                'short_description' => $identity['short_description'],
+                'description' => $identity['description'],
+                'suggested_category' => $identity['category'],
+            ];
 
-        // Intel Celeron/Pentium detection (BX80XXXGXXXX format)
-        // Examples: BX80715G6900 = Celeron G6900, BX80715G7400 = Pentium Gold G7400
-        if (preg_match('/^BX80\d{3}(G)(\d{4})([A-Z]*)$/i', $cleanSku, $matches)) {
-            $brand = 'Intel';
-            $modelPrefix = strtoupper($matches[1]); // G
-            $modelNum = $matches[2]; // 6900, 7400
-            $suffix = strtoupper($matches[3] ?? '');
-
-            // G6xxx = Celeron, G7xxx = Pentium Gold
-            $firstDigit = substr($modelNum, 0, 1);
-            if ($firstDigit === '6') {
-                $tierName = 'Celeron';
-            } elseif ($firstDigit === '7' || $firstDigit === '8') {
-                $tierName = 'Pentium Gold';
-            } else {
-                $tierName = 'Celeron';
+            // Optionally enhance descriptions with AI if available
+            if (!empty($this->apiKey)) {
+                $complete = $this->generateCompleteProduct($sku, '', $additionalInfo);
+                if (!empty($complete['success'])) {
+                    // Keep the verified name, take AI's richer descriptions
+                    $result['short_description'] = $complete['data']['short_description'] ?: $result['short_description'];
+                    $result['description'] = $complete['data']['description'] ?: $result['description'];
+                    $result['meta_title'] = $complete['data']['meta_title'] ?? '';
+                    $result['meta_description'] = $complete['data']['meta_description'] ?? '';
+                    $result['meta_keywords'] = $complete['data']['meta_keywords'] ?? '';
+                    $result['specifications'] = $complete['data']['specifications'] ?? [];
+                }
             }
 
-            $name = "Intel {$tierName} {$modelPrefix}{$modelNum}";
-            if ($suffix) $name .= $suffix;
-            $name .= ' Processor';
-            $category = 'Computer Components';
-            $shortDesc = "Intel {$tierName} desktop processor for everyday computing and basic tasks.";
-            $description = "The Intel {$tierName} {$modelPrefix}{$modelNum}" . ($suffix ?: '') . " is a reliable entry-level desktop processor. Perfect for everyday computing tasks including web browsing, office applications, and light media consumption. Features Intel's efficient architecture for responsive performance with low power consumption.";
-        }
-        // Intel Core processors (BX80XXX + 5-digit model) - handles 12th gen and newer
-        // Examples: BX8071512400F, BX8071514100, BX8071512700K, BX8071513900KS
-        elseif (preg_match('/^BX80\d{3}(\d{5})([A-Z]*)$/i', $cleanSku, $matches)) {
-            $brand = 'Intel';
-            $modelNum = $matches[1];  // e.g., "12400", "14100", "13900"
-            $suffix = strtoupper($matches[2] ?? '');  // e.g., "K", "KF", "F", "KS"
-
-            // Parse 5-digit model: 12400 = 12th gen, 4xx tier (i5)
-            $gen = substr($modelNum, 0, 2);  // "12", "13", "14"
-            $tierDigit = substr($modelNum, 2, 1);  // "1", "4", "7", "9"
-
-            // Determine processor tier
-            $tierName = match($tierDigit) {
-                '1' => 'Core i3',
-                '4', '5' => 'Core i5',
-                '6' => 'Core i5',  // i5-x600 variants
-                '7' => 'Core i7',
-                '9' => 'Core i9',
-                default => 'Core i5'
-            };
-
-            $name = "Intel {$tierName}-{$modelNum}";
-            if ($suffix) $name .= $suffix;
-            $name .= ' Processor';
-            $category = 'Computer Components';
-
-            // Generate suffix-aware descriptions
-            $suffixDesc = $this->getIntelSuffixDescription($suffix);
-            $tierDesc = $this->getIntelTierDescription($tierName);
-            $shortDesc = "{$gen}th Gen Intel {$tierName} desktop processor{$suffixDesc}.";
-            $description = "The Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " is a {$gen}th generation desktop processor. {$tierDesc} {$suffixDesc} Features Intel's latest architecture for exceptional performance in demanding applications.";
-        }
-        // Intel Core processors (4-digit model - older generations)
-        // Examples: BX80684I99900K, BX80684I78700K
-        elseif (preg_match('/^BX\d+I(\d)(\d{4})([A-Z]*)$/i', $cleanSku, $matches)) {
-            $brand = 'Intel';
-            $tier = $matches[1];  // 3, 5, 7, 9
-            $modelNum = $matches[2];  // 9900, 8700
-            $suffix = strtoupper($matches[3] ?? '');
-
-            $tierName = match($tier) {
-                '3' => 'Core i3',
-                '5' => 'Core i5',
-                '7' => 'Core i7',
-                '9' => 'Core i9',
-                default => 'Core i5'
-            };
-
-            $gen = substr($modelNum, 0, 1);  // 9 for 9900, 8 for 8700
-            $name = "Intel {$tierName}-{$modelNum}";
-            if ($suffix) $name .= $suffix;
-            $name .= ' Processor';
-            $category = 'Computer Components';
-
-            $suffixDesc = $this->getIntelSuffixDescription($suffix);
-            $tierDesc = $this->getIntelTierDescription($tierName);
-            $shortDesc = "{$gen}th Gen Intel {$tierName} desktop processor{$suffixDesc}.";
-            $description = "The Intel {$tierName}-{$modelNum}" . ($suffix ?: '') . " is a {$gen}th generation desktop processor. {$tierDesc} {$suffixDesc}";
-        }
-        // Generic Intel BX pattern - try to extract any useful model info
-        elseif (preg_match('/^BX80(\d{3})(\d+)([A-Z]*)$/i', $cleanSku, $matches)) {
-            $brand = 'Intel';
-            $prefix = $matches[1];
-            $modelNum = $matches[2];
-            $suffix = strtoupper($matches[3] ?? '');
-
-            $name = "Intel Processor " . $modelNum;
-            if ($suffix) $name .= $suffix;
-            $category = 'Computer Components';
-            $shortDesc = "Intel desktop processor for reliable computing performance.";
-            $description = "Intel processor model {$modelNum}" . ($suffix ?: '') . ". A reliable desktop processor delivering consistent performance for various computing tasks.";
-        }
-        // Fallback for any Intel BX SKU
-        elseif (preg_match('/^BX\d+/i', $cleanSku)) {
-            $brand = 'Intel';
-            $name = "Intel Processor";
-            $category = 'Computer Components';
-            $shortDesc = "Intel desktop processor (SKU: {$sku}).";
-            $description = "Intel desktop processor. Please refer to Intel specifications for detailed product information. SKU: {$sku}";
-        }
-        // AMD Ryzen processors
-        elseif (preg_match('/ryzen\s*(\d)\s*(\d{4})([A-Z]*)/i', $sku, $matches)) {
-            $brand = 'AMD';
-            $tier = $matches[1];
-            $model = $matches[2];
-            $suffix = strtoupper($matches[3] ?? '');
-
-            $tierName = "Ryzen {$tier}";
-            $name = "AMD {$tierName} {$model}";
-            if ($suffix) $name .= $suffix;
-            $name .= ' Processor';
-            $category = 'Computer Components';
-            $shortDesc = "AMD {$tierName} desktop processor for high performance computing.";
-            $description = "The AMD {$tierName} {$model}" . ($suffix ?: '') . " processor delivers exceptional multi-threaded performance. Built on AMD's advanced architecture for gaming, content creation, and productivity.";
-        }
-        // AMD 100-xxxxxx format
-        elseif (preg_match('/^100-\d{6}/i', $sku)) {
-            $brand = 'AMD';
-            $name = "AMD Processor";
-            $category = 'Computer Components';
-            $shortDesc = "AMD desktop processor (SKU: {$sku}).";
-            $description = "AMD processor. Please refer to AMD specifications for detailed product information. SKU: {$sku}";
-        }
-        // NVIDIA Graphics cards
-        elseif (preg_match('/(RTX|GTX)\s*(\d{4})\s*(Ti|SUPER)?/i', $sku, $matches)) {
-            $brand = 'NVIDIA';
-            $series = strtoupper($matches[1]);
-            $model = $matches[2];
-            $variant = isset($matches[3]) ? ' ' . ucfirst(strtolower($matches[3])) : '';
-
-            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
-            $category = 'Graphics Cards';
-            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
-            $description = "The NVIDIA GeForce {$series} {$model}{$variant} graphics card delivers outstanding performance for gaming, streaming, and creative applications. Features NVIDIA's latest architecture with ray tracing and DLSS support.";
-        }
-        // AMD Graphics cards
-        elseif (preg_match('/RX\s*(\d{4})\s*(XT|XTX)?/i', $sku, $matches)) {
-            $brand = 'AMD';
-            $model = $matches[1];
-            $variant = isset($matches[2]) ? ' ' . strtoupper($matches[2]) : '';
-
-            $name = "AMD Radeon RX {$model}{$variant}";
-            $category = 'Graphics Cards';
-            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
-            $description = "The AMD Radeon RX {$model}{$variant} graphics card provides exceptional gaming performance and creative capabilities. Built on AMD's RDNA architecture for immersive gaming experiences.";
+            return $result;
         }
 
-        // Use provided brand if available
-        if (!empty($additionalInfo['brand'])) {
-            $brand = $additionalInfo['brand'];
+        // Pattern not recognized - if we have API, let AI try (but name gets validated)
+        if (!empty($this->apiKey)) {
+            $complete = $this->generateCompleteProduct($sku, $additionalInfo['short_description'] ?? '', $additionalInfo);
+            if (!empty($complete['success'])) {
+                return $complete['data'];
+            }
         }
 
-        // Fallback descriptions if not set
-        if (empty($shortDesc)) {
-            $shortDesc = $brand ? "{$brand} {$name} - Quality product for reliable performance." : "{$name} - Quality product.";
-        }
-        if (empty($description)) {
-            $description = $brand
-                ? "The {$name} from {$brand} delivers reliable performance and quality. Designed for demanding users who expect the best."
-                : "The {$name} delivers reliable performance and quality.";
-        }
-
+        // Pure fallback
+        $brand = $additionalInfo['brand'] ?? '';
         return [
-            'name' => $name,
+            'name' => $sku,
             'brand' => $brand,
-            'short_description' => $shortDesc,
-            'description' => $description,
-            'suggested_category' => $category
+            'short_description' => $brand ? "{$brand} product - quality and reliability." : "Quality product.",
+            'description' => $brand ? "The {$sku} from {$brand} delivers reliable performance." : "Product SKU: {$sku}.",
+            'suggested_category' => $additionalInfo['category'] ?? 'Electronics',
         ];
     }
 
     /**
-     * Get description snippet based on Intel processor suffix
+     * Generate product content (descriptions/SEO) for an existing named product.
+     * Used by the "Generate AI Content" button in the SEO tab.
      */
+    public function generateProductContent(array $product): array
+    {
+        if (empty($this->apiKey)) {
+            return ['error' => 'OpenAI API key not configured'];
+        }
+
+        $productName = $product['name'] ?? '';
+        $sku = $product['sku'] ?? '';
+
+        // If we have a SKU, use the full pipeline (pattern match + AI)
+        if (!empty($sku)) {
+            $result = $this->generateCompleteProduct($sku, $product['short_description'] ?? '', [
+                'existingName' => $productName,
+                'existingDescription' => $product['description'] ?? '',
+                'price' => $product['price'] ?? 0,
+                'category' => $product['category'] ?? '',
+            ]);
+
+            if (!empty($result['success'])) {
+                return $result;
+            }
+        }
+
+        // Fallback: generate content based on the name alone
+        $prompt = "Write e-commerce content for: {$productName}\n";
+        $prompt .= "Price: R" . number_format((float)($product['price'] ?? 0), 2) . "\n";
+        $prompt .= "\nJSON format: {\"short_description\": \"...\", \"description\": \"...\", \"meta_title\": \"...\", \"meta_description\": \"...\", \"meta_keywords\": \"...\", \"specifications\": [{\"name\":\"\",\"value\":\"\"}]}\n";
+        $prompt .= "Respond ONLY with valid JSON.";
+
+        try {
+            $response = $this->makeRequest('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'Generate e-commerce product content. Respond with valid JSON only.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 1000,
+                'temperature' => 0.7,
+            ]);
+
+            $content = $response['choices'][0]['message']['content'] ?? '';
+            $content = preg_replace('/^```json\s*/i', '', $content);
+            $content = preg_replace('/^```\s*/i', '', $content);
+            $content = preg_replace('/\s*```$/i', '', $content);
+
+            $data = json_decode(trim($content), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return ['error' => 'Failed to parse AI response'];
+            }
+
+            return ['success' => true, 'data' => $data];
+        } catch (\Exception $e) {
+            return ['error' => 'Failed to generate content: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Search and fill product information (used for unknown products)
+     */
+    public function searchProductInfo(string $productName, string $sku = ''): array
+    {
+        // If we have a SKU, try pattern matching first
+        if (!empty($sku)) {
+            $identity = $this->identifyProductFromSku($sku);
+            if ($identity['recognized']) {
+                $productName = $identity['name'];
+            }
+        }
+
+        if (empty($this->apiKey)) {
+            return ['error' => 'OpenAI API key not configured'];
+        }
+
+        $prompt = "Research product: {$productName}\n";
+        if ($sku) $prompt .= "SKU: {$sku}\n";
+        $prompt .= "\nJSON: {\"description\": \"\", \"short_description\": \"\", \"meta_title\": \"\", \"meta_description\": \"\", \"specifications\": [{\"name\":\"\",\"value\":\"\"}], \"suggested_category\": \"\"}\n";
+        $prompt .= "Respond ONLY with valid JSON.";
+
+        try {
+            $response = $this->makeRequest('/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    ['role' => 'system', 'content' => 'Product research assistant. Valid JSON only.'],
+                    ['role' => 'user', 'content' => $prompt],
+                ],
+                'max_tokens' => 1000,
+                'temperature' => 0.5,
+            ]);
+
+            $content = $response['choices'][0]['message']['content'] ?? '';
+            $content = preg_replace('/^```json\s*/i', '', $content);
+            $content = preg_replace('/^```\s*/i', '', $content);
+            $content = preg_replace('/\s*```$/i', '', $content);
+
+            $data = json_decode(trim($content), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return ['error' => 'Failed to parse AI response'];
+            }
+            return ['success' => true, 'data' => $data];
+        } catch (\Exception $e) {
+            return ['error' => 'Failed to search product: ' . $e->getMessage()];
+        }
+    }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    /**
+     * Build fallback result when AI is unavailable
+     */
+    private function buildFallbackResult(string $name, string $brand, string $category, array $identity, string $shortDescription): array
+    {
+        return [
+            'success' => true,
+            'data' => [
+                'name' => $name,
+                'short_description' => $identity['short_description'] ?: $shortDescription,
+                'description' => $identity['description'] ?: '',
+                'meta_title' => substr($name . ' | Buy Online at Pricetag.co.za', 0, 70),
+                'meta_description' => substr(($identity['short_description'] ?: $shortDescription) . ' Shop at Pricetag.co.za - fast delivery across South Africa.', 0, 160),
+                'meta_keywords' => implode(', ', array_filter([$brand, $category, 'buy online', 'South Africa', 'Pricetag'])),
+                'specifications' => [],
+                'suggested_category' => $category,
+                'brand' => $brand,
+                'weight' => null,
+                'is_taxable' => true,
+            ],
+        ];
+    }
+
     private function getIntelSuffixDescription(string $suffix): string
     {
         return match($suffix) {
@@ -654,9 +763,6 @@ class OpenAIService
         };
     }
 
-    /**
-     * Get description snippet based on Intel processor tier
-     */
     private function getIntelTierDescription(string $tierName): string
     {
         return match($tierName) {

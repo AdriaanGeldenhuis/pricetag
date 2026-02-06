@@ -143,7 +143,7 @@
 
                     <!-- Short Description -->
                     <?php if ($product->short_description): ?>
-                    <p class="pt-description"><?= e($product->short_description) ?></p>
+                    <div class="pt-description"><?= nl2br(e($product->short_description)) ?></div>
                     <?php endif; ?>
 
                     <!-- Variants / Attributes -->
@@ -360,7 +360,7 @@
                 <!-- Description Tab -->
                 <div class="pt-tab-panel is-active" id="pt-tab-description" role="tabpanel">
                     <?php if ($product->description): ?>
-                    <div class="pt-description-content">
+                    <div class="pt-description-content pt-rich-description">
                         <?= nl2br(e($product->description)) ?>
                     </div>
                     <?php else: ?>

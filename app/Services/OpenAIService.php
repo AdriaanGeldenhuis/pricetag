@@ -431,27 +431,20 @@ class OpenAIService
             $description = "The {$name} features ASUS's premium {$line} design with advanced cooling and factory overclocking. Delivers exceptional performance for 4K gaming and content creation.";
         }
 
-        // ---- ASUS GPUs (Standard/Budget): GT710-SL-2GD5-BRK-EVO, PH-GTX1650-O4G, EX-RX570-O4G ----
-        // Matches: GT(X){model}-{variant}-{mem}GD{ver} or PH/EX-{series}{model}-{mem}G
-        elseif (preg_match('/^(?:(?:(PH|EX|Phoenix)[- ]?)?(GT|GTX|RTX|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?[- ]).*?(\d+)GD?\d?/i', $cleanSku, $m)) {
-            $brand = 'ASUS';
-            $linePart = !empty($m[1]) ? strtoupper($m[1]) : '';
-            $series = strtoupper($m[2]); // GT, GTX, RTX, RX
-            $gpuModel = $m[3]; // 710, 1030, 1650, etc.
-            $variant = !empty($m[4]) ? ' ' . ucfirst(strtolower($m[4])) : '';
-            $memory = $m[5];
+        // ---- Generic GPU from SKU structure: GT710-SL-2GD5-BRK-EVO, PH-GTX1650-O4G, EX-RX570-O4G ----
+        // Extracts GPU model and memory WITHOUT assuming brand (brand comes from CSV context)
+        elseif (preg_match('/^(?:(?:PH|EX|Phoenix)[- ]?)?(GT|GTX|RTX|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?[- ].*?(\d+)GD?\d?/i', $cleanSku, $m)) {
+            // Don't set $brand - let it come from CSV context or AI
+            $series = strtoupper($m[1]); // GT, GTX, RTX, RX
+            $gpuModel = $m[2]; // 710, 1030, 1650, etc.
+            $variant = !empty($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
+            $memory = $m[4];
 
             $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
-            $lineName = '';
-            if ($linePart === 'PH' || $linePart === 'PHOENIX') {
-                $lineName = 'Phoenix ';
-            } elseif ($linePart === 'EX') {
-                $lineName = '';
-            }
-            $name = "ASUS {$lineName}{$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB";
+            $name = "{$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB";
             $category = 'Graphics Cards';
-            $shortDesc = "ASUS {$lineName}{$gpuBrand} {$series} {$gpuModel}{$variant} with {$memory}GB memory. Reliable graphics solution.";
-            $description = "The {$name} is a reliable ASUS graphics card designed for everyday computing, multimedia, and light gaming. Features ASUS quality components and build quality.";
+            $shortDesc = "{$gpuBrand} {$series} {$gpuModel}{$variant} graphics card with {$memory}GB memory.";
+            $description = "The {$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB is a reliable graphics card for everyday computing, multimedia, and gaming.";
         }
 
         // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI RTX 4070 VENTUS 3X OC 12G ----
@@ -614,6 +607,12 @@ class OpenAIService
         // Final fallback name: use existing name if available, otherwise the SKU
         $productName = $recognized ? $verifiedName : ($existingName ?: $sku);
 
+        // If pattern recognized the product model but not the brand, prepend context brand
+        // Also check the name doesn't already contain the brand to avoid duplication
+        if ($recognized && empty($identity['brand']) && !empty($verifiedBrand) && stripos($productName, $verifiedBrand) === false) {
+            $productName = $verifiedBrand . ' ' . $productName;
+        }
+
         error_log("AI COMPLETE: SKU={$sku}, Identified='" . ($recognized ? $verifiedName : 'NO') . "', Final name='{$productName}'");
 
         // If no API key, return pattern-matched data only
@@ -665,10 +664,21 @@ class OpenAIService
                 $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
             }
             $prompt .= "\n*** CRITICAL IDENTIFICATION RULES:\n";
-            $prompt .= "1. Decode the SKU to determine the EXACT product. SKUs encode manufacturer, model, variant, and specs.\n";
-            $prompt .= "2. Common SKU formats: GV-N = Gigabyte NVIDIA GPU, GV-R = Gigabyte AMD GPU, ROG/TUF/DUAL = ASUS, ZT- = Zotac, CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital.\n";
-            $prompt .= "3. The 'name' field MUST be a proper customer-facing product name (e.g., 'Gigabyte GeForce RTX 5090 Gaming OC 32GB'), NEVER a raw SKU.\n";
-            $prompt .= "4. If you cannot identify the product, use a best guess based on the SKU pattern. NEVER use the raw SKU as the product name. ***\n";
+            $prompt .= "1. Decode the SKU to determine the EXACT product model. SKUs encode manufacturer, model, variant, and specs.\n";
+            $prompt .= "2. USE THE SUPPLIER INFO - it often contains the brand, chipset, memory, and interface details. Parse it carefully.\n";
+            $prompt .= "3. Common GPU SKU formats:\n";
+            $prompt .= "   - ASUS: GT710-SL-2GD5-BRK, DUAL-RTX4060-O8G, ROG-STRIX-RTX5090-O32G, PH-GTX1650-O4G\n";
+            $prompt .= "   - Gigabyte: GV-N4070EAGLE OC-12GD, GV-R76XTGAMING OC-16GD\n";
+            $prompt .= "   - MSI: MSI RTX 5090 GAMING X TRIO 32G, MSI GTX 1650 VENTUS XS 4G\n";
+            $prompt .= "   - EVGA: 12G-P5-3657 (memory-P-series-model)\n";
+            $prompt .= "   - Zotac: ZT-T20610D-10M\n";
+            $prompt .= "4. Common non-GPU SKU formats: CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital, BX80 = Intel CPU.\n";
+            $prompt .= "5. GPU memory in SKUs: 2GD5 = 2GB GDDR5, 8GD6 = 8GB GDDR6, O8G = OC 8GB, 32GD = 32GB GDDR.\n";
+            $prompt .= "6. The 'name' MUST be a SPECIFIC customer-facing product name with brand, model, and key specs.\n";
+            $prompt .= "   GOOD: 'ASUS GeForce GT 710 2GB GDDR5 Silent Low Profile'\n";
+            $prompt .= "   BAD: 'Asus Graphics Cards Nvidia' (too generic!)\n";
+            $prompt .= "   BAD: 'GT710-SL-2GD5-BRK-EVO' (raw SKU!)\n";
+            $prompt .= "7. NEVER return a generic category name as the product name. Every product has a SPECIFIC model. ***\n";
         }
 
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";

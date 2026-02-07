@@ -561,6 +561,9 @@ class OpenAIService
      */
     public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
     {
+        // Clean SKU - remove regional suffixes (needed for name validation below)
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+
         // STEP 1: Identify the product from SKU - this is LAW
         $identity = $this->identifyProductFromSku($sku);
         $verifiedName = $identity['name'];

@@ -11,6 +11,7 @@ namespace Admin\Controllers;
 use App\Core\Controller;
 use App\Models\Product;
 use App\Models\Category;
+use App\Services\OpenAIService;
 
 class ProductController extends Controller
 {
@@ -948,9 +949,10 @@ class ProductController extends Controller
             INSERT INTO products (
                 name, slug, sku, description, short_description,
                 price, compare_price, cost_price, category_id,
-                stock, low_stock_threshold, weight,
+                stock, low_stock_threshold, weight, length, width, height,
+                meta_title, meta_description, meta_keywords,
                 status, featured, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ", [
             $name,
             $slug,
@@ -964,6 +966,12 @@ class ProductController extends Controller
             !empty($row['stock']) ? (int) $row['stock'] : 0,
             10,
             !empty($row['weight']) ? (float) $row['weight'] : null,
+            !empty($row['length']) ? (float) $row['length'] : null,
+            !empty($row['width']) ? (float) $row['width'] : null,
+            !empty($row['height']) ? (float) $row['height'] : null,
+            $row['meta_title'] ?? null,
+            $row['meta_description'] ?? null,
+            $row['meta_keywords'] ?? null,
             isset($row['status']) ? (int) $row['status'] : 0,
             isset($row['featured']) ? (int) $row['featured'] : 0,
         ]);
@@ -994,6 +1002,12 @@ class ProductController extends Controller
             'cost_price' => 'cost_price',
             'stock' => 'stock',
             'weight' => 'weight',
+            'length' => 'length',
+            'width' => 'width',
+            'height' => 'height',
+            'meta_title' => 'meta_title',
+            'meta_description' => 'meta_description',
+            'meta_keywords' => 'meta_keywords',
             'status' => 'status',
             'featured' => 'featured',
         ];
@@ -1003,7 +1017,7 @@ class ProductController extends Controller
                 $value = $row[$csvField];
 
                 // Type conversion
-                if (in_array($dbField, ['price', 'compare_price', 'cost_price', 'weight'])) {
+                if (in_array($dbField, ['price', 'compare_price', 'cost_price', 'weight', 'length', 'width', 'height'])) {
                     $value = (float) $value;
                 } elseif (in_array($dbField, ['stock', 'status', 'featured'])) {
                     $value = (int) $value;
@@ -1286,10 +1300,43 @@ class ProductController extends Controller
                         }
 
                         $name = trim($row['name'] ?? '');
+                        $shortDesc = trim($row['short_description'] ?? '');
 
-                        // AI Generate name if empty and enabled
-                        if (empty($name) && $aiGenerate) {
-                            $name = $this->aiGenerateName($sku, $row);
+                        // AI Generate: use real OpenAI service for complete product generation
+                        if ($aiGenerate) {
+                            $openai = $openai ?? new OpenAIService();
+                            $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
+                                'brand' => $row['brand'] ?? '',
+                                'category' => $row['category'] ?? '',
+                                'price' => $row['price'] ?? 0,
+                                'existingName' => $name,
+                                'existingDescription' => $row['description'] ?? '',
+                            ]);
+
+                            if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                                $aiData = $aiResult['data'];
+                                if (empty($name) && !empty($aiData['name']) && $aiData['name'] !== $sku) {
+                                    $name = $aiData['name'];
+                                }
+                                if (empty($row['description']) && !empty($aiData['description'])) {
+                                    $row['description'] = $aiData['description'];
+                                }
+                                if (!empty($aiData['short_description'])) {
+                                    $row['short_description'] = $aiData['short_description'];
+                                }
+                                if (!empty($aiData['meta_title'])) {
+                                    $row['meta_title'] = substr($aiData['meta_title'], 0, 255);
+                                }
+                                if (!empty($aiData['meta_description'])) {
+                                    $row['meta_description'] = $aiData['meta_description'];
+                                }
+                                if (!empty($aiData['meta_keywords'])) {
+                                    $row['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
+                                }
+                                if (!empty($aiData['weight']) && empty($row['weight'])) {
+                                    $row['weight'] = (float) $aiData['weight'];
+                                }
+                            }
                         }
 
                         if (empty($name)) {
@@ -1302,11 +1349,6 @@ class ProductController extends Controller
                         }
 
                         $row['name'] = $name;
-
-                        // AI Generate description if empty and enabled
-                        if (empty($row['description']) && $aiGenerate) {
-                            $row['description'] = $this->aiGenerateDescription($name, $row);
-                        }
 
                         $this->createProductFromImport($db, $row, $categoryMap);
                         $created++;
@@ -1337,45 +1379,5 @@ class ProductController extends Controller
         exit;
     }
 
-    /**
-     * AI Generate product name
-     */
-    private function aiGenerateName(string $sku, array $row): string
-    {
-        // Use basic name generation from available data
-        $parts = [];
-
-        if (!empty($row['category'])) {
-            $parts[] = ucwords($row['category']);
-        }
-
-        $parts[] = 'Product';
-        $parts[] = strtoupper(substr($sku, -4));
-
-        return implode(' ', $parts);
-    }
-
-    /**
-     * AI Generate product description
-     */
-    private function aiGenerateDescription(string $name, array $row): string
-    {
-        $desc = "Introducing the {$name}. ";
-
-        if (!empty($row['category'])) {
-            $desc .= "This quality " . strtolower($row['category']) . " product ";
-        } else {
-            $desc .= "This quality product ";
-        }
-
-        $desc .= "offers excellent value and performance. ";
-
-        if (!empty($row['price'])) {
-            $desc .= "Available at an affordable price. ";
-        }
-
-        $desc .= "Order now and experience the difference!";
-
-        return $desc;
-    }
+    // Legacy AI methods removed - import now uses OpenAIService::generateCompleteProduct() directly
 }

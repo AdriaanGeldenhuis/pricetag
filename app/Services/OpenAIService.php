@@ -736,16 +736,22 @@ class OpenAIService
         $prompt .= "  \"meta_title\": \"...\",          // Max 70 chars, SEO optimized\n";
         $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
         $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
-        $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 5 real specs\n";
+        $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 8 real specs. Include ALL specs from supplier info. Common specs: Chipset, Memory Size, Memory Type, Interface, Clock Speed, TDP/Power, Cores/Threads, Socket, Form Factor, Connectivity, Dimensions, etc.\n";
         $prompt .= "  \"suggested_category\": \"...\",  // Best category\n";
         $prompt .= "  \"brand\": \"{$verifiedBrand}\",\n";
-        $prompt .= "  \"weight\": 0.5                  // Estimated weight in kg\n";
+        $prompt .= "  \"weight\": 0.5,                 // Estimated product weight in kg (just the product, with retail packaging)\n";
+        $prompt .= "  \"length\": 30.0,                // Estimated package length in cm\n";
+        $prompt .= "  \"width\": 20.0,                 // Estimated package width in cm\n";
+        $prompt .= "  \"height\": 10.0,                // Estimated package height in cm\n";
+        $prompt .= "  \"is_new\": false                 // true ONLY if this is a current-generation product released within the last 12 months (e.g. RTX 50-series, Intel 15th gen, AMD 9000-series, DDR5 latest). false for older/established products.\n";
         $prompt .= "}\n";
         $prompt .= "\nRules: All prices in ZAR (R). Write for a South African premium online store. Include REAL specs from supplier info.\n";
         $prompt .= "CRITICAL FORMAT RULES:\n";
         $prompt .= "- short_description: EXACTLY 4 bullet points using • character, separated by \\n. Specs only. No prose.\n";
         $prompt .= "- description: 250-400 words of flowing paragraphs (NO bullet points, NO headings, NO symbols). Separated by \\n\\n. Write like an expert helping someone decide to buy. Must be DIFFERENT content from short_description - do NOT repeat the same points.\n";
         $prompt .= "- description MUST NOT contain any bullet points (•), checkmarks (✓), stars (★), or section headings. Only paragraphs.\n";
+        $prompt .= "- specifications: Include ALL technical specs you can determine from the supplier info and SKU. Parse memory size, memory type, interface, bus width, clock speeds, TDP, cores/threads, socket type, ports, etc. from the supplier text. Minimum 8 specs for recognized products.\n";
+        $prompt .= "- weight/length/width/height: Estimate realistic shipping dimensions based on the product type. GPUs are typically 35x15x6cm, CPUs 13x13x8cm, RAM 22x14x4cm, SSDs 15x10x3cm. Use your knowledge of real product dimensions.\n";
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
@@ -755,7 +761,7 @@ class OpenAIService
                     ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => 2500,
+                'max_tokens' => 3000,
                 'temperature' => 0.3,
             ]);
 
@@ -807,6 +813,10 @@ class OpenAIService
                 'suggested_category' => $data['suggested_category'] ?? $verifiedCategory,
                 'brand' => $verifiedBrand,
                 'weight' => null,
+                'length' => null,
+                'width' => null,
+                'height' => null,
+                'is_new' => false,
                 'is_taxable' => true,
             ], $data);
 
@@ -1008,6 +1018,10 @@ class OpenAIService
                 'suggested_category' => $category,
                 'brand' => $brand,
                 'weight' => null,
+                'length' => null,
+                'width' => null,
+                'height' => null,
+                'is_new' => false,
                 'is_taxable' => true,
             ],
         ];

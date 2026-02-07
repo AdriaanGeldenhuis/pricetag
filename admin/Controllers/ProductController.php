@@ -1230,9 +1230,23 @@ class ProductController extends Controller
             $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
         }
 
-        // Weight
+        // Weight and dimensions - only fill if currently empty
         if (!empty($aiData['weight']) && empty($product->weight)) {
             $updates['weight'] = (float) $aiData['weight'];
+        }
+        if (!empty($aiData['length']) && empty($product->length)) {
+            $updates['length'] = (float) $aiData['length'];
+        }
+        if (!empty($aiData['width']) && empty($product->width)) {
+            $updates['width'] = (float) $aiData['width'];
+        }
+        if (!empty($aiData['height']) && empty($product->height)) {
+            $updates['height'] = (float) $aiData['height'];
+        }
+
+        // Mark as new if AI identifies current-generation product
+        if (!empty($aiData['is_new']) && empty($product->is_new)) {
+            $updates['is_new'] = 1;
         }
 
         // Apply updates to database
@@ -2218,14 +2232,28 @@ class ProductController extends Controller
                             $productData['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
                         }
 
-                        // Apply weight
+                        // Apply weight and dimensions
                         if (!empty($aiData['weight']) && empty($productData['weight'])) {
                             $productData['weight'] = (float) $aiData['weight'];
+                        }
+                        if (!empty($aiData['length']) && empty($productData['length'])) {
+                            $productData['length'] = (float) $aiData['length'];
+                        }
+                        if (!empty($aiData['width']) && empty($productData['width'])) {
+                            $productData['width'] = (float) $aiData['width'];
+                        }
+                        if (!empty($aiData['height']) && empty($productData['height'])) {
+                            $productData['height'] = (float) $aiData['height'];
                         }
 
                         // Auto-detect brand from AI
                         if (!empty($aiData['brand']) && empty($brandValue)) {
                             $brandValue = $aiData['brand'];
+                        }
+
+                        // Mark as new product if AI identifies it as current-generation
+                        if (!empty($aiData['is_new'])) {
+                            $productData['is_new'] = 1;
                         }
 
                         // Store AI data for post-insert operations (specs, category, images)

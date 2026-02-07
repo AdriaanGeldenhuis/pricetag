@@ -382,28 +382,6 @@ class OpenAIService
             $description = "AMD processor. SKU: {$sku}";
         }
 
-        // ---- NVIDIA GPUs ----
-        elseif (preg_match('/(RTX|GTX)\s*(\d{4})\s*(Ti|SUPER)?/i', $sku, $m)) {
-            $brand = 'NVIDIA';
-            $series = strtoupper($m[1]); $model = $m[2];
-            $variant = isset($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
-            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
-            $category = 'Graphics Cards';
-            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
-            $description = "The {$name} delivers outstanding performance for gaming, streaming, and creative applications. Features ray tracing and DLSS support.";
-        }
-
-        // ---- AMD GPUs ----
-        elseif (preg_match('/RX\s*(\d{4})\s*(XT|XTX)?/i', $sku, $m)) {
-            $brand = 'AMD';
-            $model = $m[1];
-            $variant = isset($m[2]) ? ' ' . strtoupper($m[2]) : '';
-            $name = "AMD Radeon RX {$model}{$variant}";
-            $category = 'Graphics Cards';
-            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
-            $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
-        }
-
         // ---- GIGABYTE NVIDIA GPUs: GV-N{model}{variant}-{memory}GD ----
         // e.g. GV-N5090GAMING OC-32GD -> Gigabyte GeForce RTX 5090 Gaming OC 32GB
         // e.g. GV-N4070EAGLE OC-12GD -> Gigabyte GeForce RTX 4070 Eagle OC 12GB
@@ -437,8 +415,8 @@ class OpenAIService
             $description = "The {$name} graphics card delivers outstanding gaming performance. Built with Gigabyte's advanced cooling for optimal thermals.";
         }
 
-        // ---- ASUS GPUs: ROG-STRIX-RTX5090-O32G, TUF-RTX4070TI-O12G, DUAL-RTX4060-O8G ----
-        elseif (preg_match('/^(ROG[- ]?STRIX|TUF|DUAL|PRIME|PROART)[- ]?(RTX|GTX|RX)\s*(\d{4})\s*(Ti|SUPER|XT|XTX)?[- ]?O?(\d+)G/i', $cleanSku, $m)) {
+        // ---- ASUS GPUs (Premium lines): ROG-STRIX-RTX5090-O32G, TUF-RTX4070TI-O12G, DUAL-RTX4060-O8G ----
+        elseif (preg_match('/^(ROG[- ]?STRIX|TUF|DUAL|PRIME|PROART)[- ]?(RTX|GTX|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?[- ]?O?(\d+)G/i', $cleanSku, $m)) {
             $brand = 'ASUS';
             $line = str_replace('-', ' ', strtoupper($m[1])); // ROG STRIX, TUF, DUAL
             $series = strtoupper($m[2]); // RTX, GTX, RX
@@ -453,8 +431,24 @@ class OpenAIService
             $description = "The {$name} features ASUS's premium {$line} design with advanced cooling and factory overclocking. Delivers exceptional performance for 4K gaming and content creation.";
         }
 
+        // ---- Generic GPU from SKU structure: GT710-SL-2GD5-BRK-EVO, PH-GTX1650-O4G, EX-RX570-O4G ----
+        // Extracts GPU model and memory WITHOUT assuming brand (brand comes from CSV context)
+        elseif (preg_match('/^(?:(?:PH|EX|Phoenix)[- ]?)?(GT|GTX|RTX|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?[- ].*?(\d+)GD?\d?/i', $cleanSku, $m)) {
+            // Don't set $brand - let it come from CSV context or AI
+            $series = strtoupper($m[1]); // GT, GTX, RTX, RX
+            $gpuModel = $m[2]; // 710, 1030, 1650, etc.
+            $variant = !empty($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
+            $memory = $m[4];
+
+            $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
+            $name = "{$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB";
+            $category = 'Graphics Cards';
+            $shortDesc = "{$gpuBrand} {$series} {$gpuModel}{$variant} graphics card with {$memory}GB memory.";
+            $description = "The {$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB is a reliable graphics card for everyday computing, multimedia, and gaming.";
+        }
+
         // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI RTX 4070 VENTUS 3X OC 12G ----
-        elseif (preg_match('/^MSI\s*(RTX|GTX|RX)\s*(\d{4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
+        elseif (preg_match('/^MSI\s*(RTX|GTX|GT|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
             $brand = 'MSI';
             $series = strtoupper($m[1]);
             $gpuModel = $m[2];
@@ -486,6 +480,28 @@ class OpenAIService
             $category = 'Graphics Cards';
             $shortDesc = "Zotac Gaming graphics card for gaming performance.";
             $description = "Zotac Gaming graphics card. SKU: {$sku}. Compact design with efficient cooling.";
+        }
+
+        // ---- NVIDIA GPUs (generic catch-all, after manufacturer-specific patterns) ----
+        elseif (preg_match('/(RTX|GTX|GT)\s*(\d{3,4})\s*(Ti|SUPER)?/i', $sku, $m)) {
+            $brand = 'NVIDIA';
+            $series = strtoupper($m[1]); $model = $m[2];
+            $variant = isset($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
+            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
+            $description = "The {$name} delivers outstanding performance for gaming, streaming, and creative applications. Features ray tracing and DLSS support.";
+        }
+
+        // ---- AMD GPUs (generic catch-all, after manufacturer-specific patterns) ----
+        elseif (preg_match('/RX\s*(\d{3,4})\s*(XT|XTX)?/i', $sku, $m)) {
+            $brand = 'AMD';
+            $model = $m[1];
+            $variant = isset($m[2]) ? ' ' . strtoupper($m[2]) : '';
+            $name = "AMD Radeon RX {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
+            $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
         }
 
         // ---- CORSAIR products: CMx/CMK (RAM), RM/HX/AX (PSU), etc. ----
@@ -561,6 +577,9 @@ class OpenAIService
      */
     public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
     {
+        // Clean SKU - remove regional suffixes (needed for name validation below)
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+
         // STEP 1: Identify the product from SKU - this is LAW
         $identity = $this->identifyProductFromSku($sku);
         $verifiedName = $identity['name'];
@@ -585,8 +604,49 @@ class OpenAIService
             }
         }
 
-        // Final fallback name: use existing name if available, otherwise the SKU
-        $productName = $recognized ? $verifiedName : ($existingName ?: $sku);
+        // Extract product name from short description when pattern matching failed
+        // Supplier short descriptions contain the real product name, separated by ";" or "/"
+        // e.g. "GIGABYTE nVidia GeForce RTX 5090 GAMING OC - 32GB GDDR7; 512-Bit Memory Bus; ..."
+        // e.g. "ASUS Graphics Card/NVIDIA/PCIe2.0/2GB GDDR5/1xHDMI/1xD-Sub/1xDVI/300w/ 17x6.9x3.9cm."
+        $nameFromDesc = '';
+        if (!$recognized && !empty($shortDescription)) {
+            // Split on common supplier separators: semicolons or forward slashes
+            if (strpos($shortDescription, ';') !== false) {
+                $extractedName = trim(explode(';', $shortDescription)[0]);
+            } elseif (strpos($shortDescription, '/') !== false) {
+                $extractedName = trim(explode('/', $shortDescription)[0]);
+            } else {
+                $extractedName = trim($shortDescription);
+            }
+            // Clean up: remove trailing dots, dashes, and extra whitespace
+            $extractedName = rtrim($extractedName, ' .-');
+            if (!empty($extractedName) && strlen($extractedName) > 5 && strlen($extractedName) < 200) {
+                $nameFromDesc = $extractedName;
+                // Try to extract brand from the beginning of the name
+                if (empty($verifiedBrand)) {
+                    $firstWord = explode(' ', $extractedName)[0];
+                    $knownBrands = ['ASUS', 'Gigabyte', 'GIGABYTE', 'MSI', 'EVGA', 'Zotac', 'Corsair', 'Samsung',
+                        'Kingston', 'Seagate', 'Intel', 'AMD', 'Logitech', 'Razer', 'HyperX', 'Crucial',
+                        'Western', 'SanDisk', 'Thermaltake', 'Cooler', 'NZXT', 'be', 'Sapphire', 'XFX',
+                        'PowerColor', 'ASRock', 'Biostar', 'PNY', 'Palit', 'Gainward', 'Inno3D'];
+                    foreach ($knownBrands as $kb) {
+                        if (strcasecmp($firstWord, $kb) === 0) {
+                            $verifiedBrand = $kb;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Final product name: pattern match → extracted from description → existing name → SKU
+        $productName = $recognized ? $verifiedName : ($nameFromDesc ?: ($existingName ?: $sku));
+
+        // If pattern recognized the product model but not the brand, prepend context brand
+        // Also check the name doesn't already contain the brand to avoid duplication
+        if ($recognized && empty($identity['brand']) && !empty($verifiedBrand) && stripos($productName, $verifiedBrand) === false) {
+            $productName = $verifiedBrand . ' ' . $productName;
+        }
 
         error_log("AI COMPLETE: SKU={$sku}, Identified='" . ($recognized ? $verifiedName : 'NO') . "', Final name='{$productName}'");
 
@@ -598,9 +658,9 @@ class OpenAIService
         // STEP 2: Ask AI to write content FOR the identified product
         $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store.\n\n";
 
-        if ($recognized) {
-            // Pattern matched - we know the product, lock in the name
-            $prompt .= "Write a COMPLETE product listing for the following VERIFIED product:\n\n";
+        if ($recognized || !empty($nameFromDesc)) {
+            // We have a known product name (from pattern or short description) - write content for it
+            $prompt .= "Write a COMPLETE product listing for the following product:\n\n";
             $prompt .= "PRODUCT NAME: {$productName}\n";
             $prompt .= "SKU: {$sku}\n";
             $prompt .= "BRAND: {$verifiedBrand}\n";
@@ -614,8 +674,8 @@ class OpenAIService
             if ($price > 0) {
                 $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
             }
-            $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is VERIFIED and CORRECT. ";
-            $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number. ***\n";
+            $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is CORRECT. ";
+            $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number or brand. ***\n";
         } else {
             // Pattern NOT matched - ask AI to IDENTIFY the product from the SKU
             $prompt .= "IDENTIFY this product from its SKU and write a COMPLETE product listing.\n\n";
@@ -639,32 +699,40 @@ class OpenAIService
                 $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
             }
             $prompt .= "\n*** CRITICAL IDENTIFICATION RULES:\n";
-            $prompt .= "1. Decode the SKU to determine the EXACT product. SKUs encode manufacturer, model, variant, and specs.\n";
-            $prompt .= "2. Common SKU formats: GV-N = Gigabyte NVIDIA GPU, GV-R = Gigabyte AMD GPU, ROG/TUF/DUAL = ASUS, ZT- = Zotac, CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital.\n";
-            $prompt .= "3. The 'name' field MUST be a proper customer-facing product name (e.g., 'Gigabyte GeForce RTX 5090 Gaming OC 32GB'), NEVER a raw SKU.\n";
-            $prompt .= "4. If you cannot identify the product, use a best guess based on the SKU pattern. NEVER use the raw SKU as the product name. ***\n";
+            $prompt .= "1. Decode the SKU to determine the EXACT product model. SKUs encode manufacturer, model, variant, and specs.\n";
+            $prompt .= "2. USE THE SUPPLIER INFO - it often contains the brand, chipset, memory, and interface details. Parse it carefully.\n";
+            $prompt .= "3. Common GPU SKU formats:\n";
+            $prompt .= "   - ASUS: GT710-SL-2GD5-BRK, DUAL-RTX4060-O8G, ROG-STRIX-RTX5090-O32G, PH-GTX1650-O4G\n";
+            $prompt .= "   - Gigabyte: GV-N4070EAGLE OC-12GD, GV-R76XTGAMING OC-16GD\n";
+            $prompt .= "   - MSI: MSI RTX 5090 GAMING X TRIO 32G, MSI GTX 1650 VENTUS XS 4G\n";
+            $prompt .= "   - EVGA: 12G-P5-3657 (memory-P-series-model)\n";
+            $prompt .= "   - Zotac: ZT-T20610D-10M\n";
+            $prompt .= "4. Common non-GPU SKU formats: CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital, BX80 = Intel CPU.\n";
+            $prompt .= "5. GPU memory in SKUs: 2GD5 = 2GB GDDR5, 8GD6 = 8GB GDDR6, O8G = OC 8GB, 32GD = 32GB GDDR.\n";
+            $prompt .= "6. The 'name' MUST be a SPECIFIC customer-facing product name with brand, model, and key specs.\n";
+            $prompt .= "   GOOD: 'ASUS GeForce GT 710 2GB GDDR5 Silent Low Profile'\n";
+            $prompt .= "   BAD: 'Asus Graphics Cards Nvidia' (too generic!)\n";
+            $prompt .= "   BAD: 'GT710-SL-2GD5-BRK-EVO' (raw SKU!)\n";
+            $prompt .= "7. NEVER return a generic category name as the product name. Every product has a SPECIFIC model. ***\n";
         }
 
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
         $prompt .= "{\n";
         $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
-        $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4-5 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four\\n• Point five. Each point is a key selling feature (max 30 words each). No intro text before bullets.\n";
-        $prompt .= "  \"description\": \"...\",         // RICH product description. NO HTML TAGS (no <p>, <ul>, <li>, <strong>). Use PLAIN TEXT with newlines (\\n). Structure it as follows:\\n\\n";
-        $prompt .= "    Line 1: Product headline - one powerful sentence about the product\\n";
-        $prompt .= "    Line 2: Empty line\\n";
-        $prompt .= "    Line 3-5: What makes this product special (2-3 sentences)\\n";
-        $prompt .= "    Line 6: Empty line\\n";
-        $prompt .= "    Line 7: ★ KEY FEATURES heading\\n";
-        $prompt .= "    Lines 8-14: Feature list using ✓ prefix, one per line (at least 6 features)\\n";
-        $prompt .= "    Line 15: Empty line\\n";
-        $prompt .= "    Line 16: ⚡ PERFORMANCE heading\\n";
-        $prompt .= "    Lines 17-19: Performance details (2-3 sentences)\\n";
-        $prompt .= "    Line 20: Empty line\\n";
-        $prompt .= "    Line 21: 📦 WHAT'S IN THE BOX heading\\n";
-        $prompt .= "    Lines 22-24: Box contents list using • prefix\\n";
-        $prompt .= "    Line 25: Empty line\\n";
-        $prompt .= "    Line 26: Final call-to-action sentence for Pricetag.co.za\\n\\n";
-        $prompt .= "    IMPORTANT: Use Unicode symbols (★ ✓ ⚡ 📦 •) for visual appeal. No HTML whatsoever.\\n\n";
+        $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four. Each point is a key spec or selling feature (max 20 words each). No intro text before bullets. Focus on specs: memory, interface, connectivity, power.\n";
+        $prompt .= "  \"description\": \"...\",         // DETAILED product description to HELP CUSTOMERS BUY. NO HTML TAGS. Use PLAIN TEXT with newlines (\\n). Must be 250-400 words. DO NOT repeat the short_description bullet points. Structure:\\n\\n";
+        $prompt .= "    Paragraph 1: Opening hook - What is this product and who is it for? Why should someone buy it? (3-4 sentences)\\n\\n";
+        $prompt .= "    Paragraph 2: Deep dive into what makes this product stand out from competitors. Talk about the technology, architecture, build quality, cooling solution, or design. Be SPECIFIC with real technical details - not vague marketing speak. (4-5 sentences)\\n\\n";
+        $prompt .= "    Paragraph 3: Real-world performance and use cases. What can the customer actually DO with this product? Gaming at what resolution/FPS? Content creation workflows? Everyday tasks? Give concrete examples that help the buyer picture using it. (3-4 sentences)\\n\\n";
+        $prompt .= "    Paragraph 4: Connectivity, compatibility, and practical details. What ports/slots/interfaces does it have? What systems is it compatible with? Any special requirements (PSU, case size, motherboard)? Installation considerations. (3-4 sentences)\\n\\n";
+        $prompt .= "    Paragraph 5: Closing - Summarize why this is a smart purchase. Include warranty/reliability note. End with a confident recommendation for the target buyer. (2-3 sentences)\\n\\n";
+        $prompt .= "    IMPORTANT RULES FOR DESCRIPTION:\\n";
+        $prompt .= "    - Write in a knowledgeable, helpful tone like an expert advisor helping a customer choose\\n";
+        $prompt .= "    - Use REAL technical details from the supplier info and specs - never make up performance numbers\\n";
+        $prompt .= "    - NO bullet points or feature lists in the description - that is what short_description is for\\n";
+        $prompt .= "    - NO headings with symbols (★ ✓ ⚡ 📦) - write flowing paragraphs\\n";
+        $prompt .= "    - NO HTML tags whatsoever - plain text with \\n for paragraph breaks\\n";
+        $prompt .= "    - Separate paragraphs with \\n\\n (double newline)\\n\n";
         $prompt .= "  \"meta_title\": \"...\",          // Max 70 chars, SEO optimized\n";
         $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
         $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
@@ -673,10 +741,11 @@ class OpenAIService
         $prompt .= "  \"brand\": \"{$verifiedBrand}\",\n";
         $prompt .= "  \"weight\": 0.5                  // Estimated weight in kg\n";
         $prompt .= "}\n";
-        $prompt .= "\nRules: All prices in ZAR (R). Write for a premium store. Include REAL specs.\n";
+        $prompt .= "\nRules: All prices in ZAR (R). Write for a South African premium online store. Include REAL specs from supplier info.\n";
         $prompt .= "CRITICAL FORMAT RULES:\n";
-        $prompt .= "- short_description: MUST be 4-5 bullet points using • character, separated by \\n. NO prose.\n";
-        $prompt .= "- description: MUST be plain text with \\n for newlines. NO HTML tags whatsoever. Use Unicode symbols for visual structure.\n";
+        $prompt .= "- short_description: EXACTLY 4 bullet points using • character, separated by \\n. Specs only. No prose.\n";
+        $prompt .= "- description: 250-400 words of flowing paragraphs (NO bullet points, NO headings, NO symbols). Separated by \\n\\n. Write like an expert helping someone decide to buy. Must be DIFFERENT content from short_description - do NOT repeat the same points.\n";
+        $prompt .= "- description MUST NOT contain any bullet points (•), checkmarks (✓), stars (★), or section headings. Only paragraphs.\n";
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
@@ -703,13 +772,17 @@ class OpenAIService
             }
 
             // STEP 3: Enforce identity based on recognition status
-            if ($recognized) {
-                // Pattern matched - FORCE the verified name, discard AI name
+            if ($recognized || !empty($nameFromDesc)) {
+                // We have a known name (from pattern or short description) - FORCE it
                 $data['name'] = $productName;
-                $data['brand'] = $verifiedBrand;
-                $data['suggested_category'] = $verifiedCategory;
+                if (!empty($verifiedBrand)) {
+                    $data['brand'] = $verifiedBrand;
+                }
+                if ($verifiedCategory !== 'Electronics') {
+                    $data['suggested_category'] = $verifiedCategory;
+                }
             } else {
-                // Pattern NOT matched - TRUST the AI name (it was asked to identify)
+                // No name at all - TRUST the AI name (it was asked to identify)
                 // But validate: never allow the raw SKU as the name
                 $aiName = $data['name'] ?? '';
                 if (empty($aiName) || $aiName === $sku || $aiName === $cleanSku) {

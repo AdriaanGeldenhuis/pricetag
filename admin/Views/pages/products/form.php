@@ -1336,19 +1336,18 @@ function generateAiImages() {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
 
-        if (data.success) {
-            alert(data.message + '\n\nRefresh the page to see the new images.');
-            if (data.generated > 0) {
-                window.location.reload();
-            }
+        if (data.success && data.generated > 0) {
+            alert('Downloaded ' + data.generated + ' product image(s)!\n\nReloading to show them...');
+            window.location.reload();
         } else {
-            alert('Error: ' + (data.message || 'Image generation failed'));
+            // Image search failed - guide user to upload manually
+            alert((data.message || 'Could not find product images online.') + '\n\nTip: You can upload images manually using the drag-and-drop area below.');
         }
     })
     .catch(err => {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
-        alert('Error: ' + err.message);
+        alert('Error: ' + err.message + '\n\nYou can upload images manually using the drag-and-drop area below.');
     });
 }
 

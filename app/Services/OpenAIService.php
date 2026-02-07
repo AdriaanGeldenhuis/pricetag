@@ -276,6 +276,29 @@ class OpenAIService
         // Clean SKU - remove regional suffixes
         $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
 
+        // Detect manufacturer brand prefix in SKU (but don't strip yet - try matching first)
+        // e.g. "ASUS DUAL-RTX3050-O6G" → skuBrand="ASUS", strippedSku="DUAL-RTX3050-O6G"
+        $skuBrand = '';
+        $strippedSku = '';
+        $brandPrefixes = [
+            'ASUS' => 'ASUS', 'Gigabyte' => 'Gigabyte', 'GIGABYTE' => 'Gigabyte',
+            'MSI' => 'MSI', 'EVGA' => 'EVGA', 'Zotac' => 'Zotac', 'ZOTAC' => 'Zotac',
+            'Corsair' => 'Corsair', 'Samsung' => 'Samsung', 'Kingston' => 'Kingston',
+            'Intel' => 'Intel', 'AMD' => 'AMD', 'Logitech' => 'Logitech', 'Razer' => 'Razer',
+            'HyperX' => 'HyperX', 'Crucial' => 'Crucial', 'Sapphire' => 'Sapphire',
+            'XFX' => 'XFX', 'PowerColor' => 'PowerColor', 'ASRock' => 'ASRock',
+            'PNY' => 'PNY', 'Palit' => 'Palit', 'Gainward' => 'Gainward', 'Inno3D' => 'Inno3D',
+            'Thermaltake' => 'Thermaltake', 'NZXT' => 'NZXT', 'Biostar' => 'Biostar',
+            'Cooler Master' => 'Cooler Master', 'be quiet!' => 'be quiet!',
+        ];
+        foreach ($brandPrefixes as $prefix => $normalizedBrand) {
+            if (preg_match('/^' . preg_quote($prefix, '/') . '[\s\-]+(.+)$/i', $cleanSku, $prefixMatch)) {
+                $skuBrand = $normalizedBrand;
+                $strippedSku = trim($prefixMatch[1]);
+                break;
+            }
+        }
+
         // ---- INTEL CELERON/PENTIUM: BX80xxxGxxxx ----
         if (preg_match('/^BX80\d{3}(G)(\d{4})([A-Z]*)$/i', $cleanSku, $m)) {
             $brand = 'Intel';
@@ -447,8 +470,8 @@ class OpenAIService
             $description = "The {$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB is a reliable graphics card for everyday computing, multimedia, and gaming.";
         }
 
-        // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI RTX 4070 VENTUS 3X OC 12G ----
-        elseif (preg_match('/^MSI\s*(RTX|GTX|GT|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
+        // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI GeForce RTX 4070 VENTUS 3X OC 12G ----
+        elseif (preg_match('/^MSI\s*(?:GeForce|Radeon)?\s*(RTX|GTX|GT|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z0-9\s]+?)\s+(\d+)G/i', $cleanSku, $m)) {
             $brand = 'MSI';
             $series = strtoupper($m[1]);
             $gpuModel = $m[2];
@@ -552,7 +575,46 @@ class OpenAIService
             $description = "Logitech {$prodType}. SKU: {$sku}";
         }
 
+        // If SKU had a brand prefix, try ALSO matching the stripped version for a more specific result
+        // e.g. "ASUS DUAL-RTX3050-O6G" matched generic NVIDIA catch-all → but "DUAL-RTX3050-O6G"
+        //       matches the ASUS-specific pattern, giving a richer name with line/memory details
+        // Only prefer stripped result if it's more specific (non-generic brand or richer name)
+        $genericBrandNames = ['NVIDIA', 'AMD'];
+        if (!empty($skuBrand) && !empty($strippedSku)) {
+            $originalIsGeneric = empty($brand) || in_array($brand, $genericBrandNames);
+            // Only retry if original didn't match or matched a generic catch-all pattern
+            if (empty($name) || $originalIsGeneric) {
+                $strippedResult = $this->identifyProductFromSku($strippedSku);
+                if ($strippedResult['recognized']) {
+                    // Always prefer stripped result when original was generic -
+                    // the stripped SKU matches manufacturer-specific patterns with richer details
+                    $name = $strippedResult['name'];
+                    $brand = $strippedResult['brand'];
+                    $category = $strippedResult['category'];
+                    $shortDesc = $strippedResult['short_description'];
+                    $description = $strippedResult['description'];
+                }
+            }
+        }
+
         $recognized = !empty($name);
+
+        // If we detected a brand prefix from the SKU, it's the real manufacturer brand.
+        // Override generic chipset brands (NVIDIA, AMD) with the actual product brand.
+        // e.g. SKU "ASUS GT710-SL-2GD5-BRK" → skuBrand="ASUS" overrides empty brand from generic GPU pattern
+        if (!empty($skuBrand)) {
+            $genericBrands = ['NVIDIA', 'AMD'];
+            if (empty($brand) || in_array($brand, $genericBrands)) {
+                $brand = $skuBrand;
+            }
+        }
+
+        // Ensure brand name is always first in the product name
+        if ($recognized && !empty($brand) && !empty($name) && stripos($name, $brand) !== 0) {
+            // Remove any existing brand occurrence to avoid duplication then prepend
+            $nameWithoutBrand = preg_replace('/\b' . preg_quote($brand, '/') . '\b\s*/i', '', $name);
+            $name = $brand . ' ' . trim($nameWithoutBrand);
+        }
 
         return [
             'name' => $name,

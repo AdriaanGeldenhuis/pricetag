@@ -166,12 +166,6 @@
                         <?php endif; ?>
                         <?php endforeach; ?>
 
-                        <button type="submit" class="filter-apply-btn">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                            Apply Filters
-                        </button>
                     </form>
                 </div>
             </aside>
@@ -195,8 +189,7 @@
 
                         <div class="shop-sort">
                             <label class="sort-label">Sort by:</label>
-                            <select name="sort" class="sort-select"
-                                    onchange="window.location.href = window.location.pathname + '?sort=' + this.value + '<?php echo $query ? '&q=' . urlencode($query) : ''; ?>'">
+                            <select name="sort" class="sort-select">
                                 <option value="newest" <?php echo ($filters['sort'] ?? '') === 'newest' ? 'selected' : ''; ?>>Newest</option>
                                 <option value="popular" <?php echo ($filters['sort'] ?? '') === 'popular' || empty($filters['sort']) ? 'selected' : ''; ?>>Most Popular</option>
                                 <option value="price_asc" <?php echo ($filters['sort'] ?? '') === 'price_asc' ? 'selected' : ''; ?>>Price: Low to High</option>
@@ -661,31 +654,6 @@
     color: var(--color-text);
 }
 
-/* Apply Button */
-.filter-apply-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    width: calc(100% - var(--space-10));
-    margin: var(--space-5);
-    padding: var(--space-4);
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-weight: var(--font-bold);
-    border: none;
-    border-radius: var(--radius-xl);
-    cursor: pointer;
-    transition: var(--transition-all);
-    box-shadow: 0 4px 15px rgba(139, 43, 43, 0.3);
-}
-
-.filter-apply-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(139, 43, 43, 0.4);
-}
-
 /* =========================================================================
    MAIN CONTENT AREA
    ========================================================================= */
@@ -959,11 +927,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Mobile Filter Toggle
     const mobileFilterToggle = document.getElementById('mobileFilterToggle');
     const mobileFilterOverlay = document.getElementById('mobileFilterOverlay');
-    const sidebar = document.querySelector('.shop-sidebar');
+    const shopSidebar = document.querySelector('.shop-sidebar');
+    let mobileSidebar = null;
 
-    if (mobileFilterToggle && sidebar) {
-        // Clone sidebar for mobile
-        const mobileSidebar = sidebar.cloneNode(true);
+    if (mobileFilterToggle && shopSidebar) {
+        mobileSidebar = shopSidebar.cloneNode(true);
         mobileSidebar.classList.add('mobile-active');
         document.body.appendChild(mobileSidebar);
 
@@ -985,6 +953,169 @@ document.addEventListener('DOMContentLoaded', function() {
         title.addEventListener('click', function() {
             this.closest('.filter-section').classList.toggle('collapsed');
         });
+    });
+
+    // =========================================================================
+    // REAL-TIME AJAX FILTERING
+    // =========================================================================
+    const filterForm = document.getElementById('filter-form');
+    const productGrid = document.querySelector('.shop-products-grid');
+    const resultsHeader = document.querySelector('.shop-results-header');
+    const shopMain = document.querySelector('.shop-main');
+    if (!filterForm || !productGrid) return;
+
+    let filterTimeout = null;
+    let filterController = null;
+
+    function buildFilterUrl() {
+        const formData = new FormData(filterForm);
+        const params = new URLSearchParams();
+        for (const [key, value] of formData.entries()) {
+            if (value !== '' && value !== null) {
+                params.append(key, value);
+            }
+        }
+        // Include sort from the sort dropdown in the main content area
+        const sortSelect = shopMain?.querySelector('.sort-select');
+        if (sortSelect && sortSelect.value) {
+            params.set('sort', sortSelect.value);
+        }
+        const qs = params.toString();
+        return window.location.pathname + (qs ? '?' + qs : '');
+    }
+
+    function applyFilters(delay) {
+        clearTimeout(filterTimeout);
+        if (filterController) filterController.abort();
+
+        filterTimeout = setTimeout(async function() {
+            const url = buildFilterUrl();
+
+            // Show loading state
+            productGrid.style.opacity = '0.4';
+            productGrid.style.pointerEvents = 'none';
+            productGrid.style.transition = 'opacity 0.2s ease';
+
+            filterController = new AbortController();
+            try {
+                const response = await fetch(url, {
+                    signal: filterController.signal,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const html = await response.text();
+
+                // Parse the response and extract updated content
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                // Update product grid
+                const newGrid = doc.querySelector('.shop-products-grid');
+                const newNoResults = doc.querySelector('.shop-no-results');
+                const newPagination = doc.querySelector('.pagination');
+                const newResultsHeader = doc.querySelector('.shop-results-header');
+
+                // Update results header (count)
+                if (newResultsHeader && resultsHeader) {
+                    resultsHeader.innerHTML = newResultsHeader.innerHTML;
+                    bindSortDropdown();
+                }
+
+                // Replace grid content or show no-results
+                const existingNoResults = shopMain.querySelector('.shop-no-results');
+                const existingPagination = shopMain.querySelector('.pagination');
+
+                if (newGrid) {
+                    productGrid.innerHTML = newGrid.innerHTML;
+                    productGrid.style.display = '';
+                    if (existingNoResults) existingNoResults.remove();
+                } else if (newNoResults) {
+                    productGrid.innerHTML = '';
+                    productGrid.style.display = 'none';
+                    if (existingNoResults) {
+                        existingNoResults.innerHTML = newNoResults.innerHTML;
+                    } else {
+                        productGrid.insertAdjacentHTML('afterend', newNoResults.outerHTML);
+                    }
+                }
+
+                // Update pagination
+                if (existingPagination) existingPagination.remove();
+                if (newPagination) {
+                    productGrid.insertAdjacentHTML('afterend', newPagination.outerHTML);
+                }
+
+                // Update URL without reload
+                history.pushState(null, '', url);
+
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                console.error('Filter error:', e);
+            } finally {
+                productGrid.style.opacity = '';
+                productGrid.style.pointerEvents = '';
+                filterController = null;
+            }
+        }, delay);
+    }
+
+    // Listen for checkbox/radio/select changes — instant
+    filterForm.addEventListener('change', function(e) {
+        const type = e.target.type;
+        const tag = e.target.tagName;
+        if (type === 'checkbox' || type === 'radio' || tag === 'SELECT') {
+            syncFiltersToMobile();
+            applyFilters(50);
+        }
+    });
+
+    // Listen for price slider — debounced
+    if (priceMin) priceMin.addEventListener('input', function() { applyFilters(400); });
+    if (priceMax) priceMax.addEventListener('input', function() { applyFilters(400); });
+
+    // Prevent traditional form submission
+    filterForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        applyFilters(0);
+    });
+
+    // Sort dropdown in main content (outside filter form)
+    function bindSortDropdown() {
+        const sortSelect = shopMain?.querySelector('.sort-select');
+        if (sortSelect) {
+            sortSelect.onchange = function() {
+                applyFilters(0);
+            };
+        }
+    }
+    bindSortDropdown();
+
+    // Sync checkbox states to mobile sidebar clone
+    function syncFiltersToMobile() {
+        if (!mobileSidebar) return;
+        const desktopInputs = filterForm.querySelectorAll('input[type="checkbox"]');
+        desktopInputs.forEach(function(input) {
+            const mobileInput = mobileSidebar.querySelector('input[name="' + input.name + '"][value="' + input.value + '"]');
+            if (mobileInput) mobileInput.checked = input.checked;
+        });
+    }
+
+    // Also listen for changes on the mobile sidebar clone
+    if (mobileSidebar) {
+        mobileSidebar.addEventListener('change', function(e) {
+            const type = e.target.type;
+            if (type === 'checkbox' || type === 'radio') {
+                const name = e.target.name;
+                const value = e.target.value;
+                const desktopInput = filterForm.querySelector('input[name="' + name + '"][value="' + value + '"]');
+                if (desktopInput) desktopInput.checked = e.target.checked;
+                applyFilters(50);
+            }
+        });
+    }
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', function() {
+        window.location.reload();
     });
 });
 </script>

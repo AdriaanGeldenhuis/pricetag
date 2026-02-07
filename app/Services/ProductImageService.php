@@ -988,10 +988,11 @@ class ProductImageService
     /**
      * Download real product images from the web for a product.
      * Searches for the product by name/SKU and downloads up to 4 images.
+     * Falls back to generating branded info-card images via GD if web search fails.
      * Skips products that already have 4+ images.
      *
      * @param int $productId
-     * @param array $productData Keys: name, brand, sku, category
+     * @param array $productData Keys: name, brand, sku, category, short_description, specifications
      * @return array{success: bool, generated: int, message: string}
      */
     public function generateProductImages(int $productId, array $productData): array
@@ -1021,7 +1022,7 @@ class ProductImageService
         // Build search queries - try different variations to get diverse images
         $searchQueries = $this->buildImageSearchQueries($name, $brand, $sku);
 
-        // Search and download images
+        // Phase 1: Try web search for real product images
         $downloaded = 0;
         $hasPrimary = !empty($existingImages);
         $usedUrls = [];
@@ -1046,12 +1047,19 @@ class ProductImageService
             }
         }
 
+        // Phase 2: If web search didn't find enough, generate branded info cards via GD
+        if ($downloaded < $needed) {
+            $remaining = $needed - $downloaded;
+            $generated = $this->generateInfoCards($productId, $productData, $remaining, !$hasPrimary && $downloaded === 0);
+            $downloaded += $generated;
+        }
+
         return [
             'success' => $downloaded > 0,
             'generated' => $downloaded,
             'message' => $downloaded > 0
-                ? "Downloaded {$downloaded} product image(s)"
-                : 'Could not find suitable product images',
+                ? "Generated {$downloaded} product image(s)"
+                : 'Could not generate product images',
         ];
     }
 
@@ -1323,6 +1331,543 @@ class ProductImageService
         if (strlen($url) < 30) return false;
 
         return true;
+    }
+
+    // =========================================================================
+    // GD-BASED PRODUCT INFO CARD GENERATION (Guaranteed fallback)
+    // =========================================================================
+
+    /**
+     * Generate branded product info-card images using PHP GD.
+     * Creates professional-looking cards with product name, specs, and Pricetag branding.
+     * This is 100% reliable as it has no external dependencies.
+     *
+     * @param int $productId
+     * @param array $productData Product details (name, brand, sku, category, short_description, specifications)
+     * @param int $count Number of cards to generate
+     * @param bool $firstIsPrimary Whether the first card should be set as primary
+     * @return int Number of cards successfully generated
+     */
+    private function generateInfoCards(int $productId, array $productData, int $count, bool $firstIsPrimary): int
+    {
+        $name = $productData['name'] ?? ($productData['sku'] ?? 'Product');
+        $brand = $productData['brand'] ?? '';
+        $sku = $productData['sku'] ?? '';
+        $category = $productData['category'] ?? '';
+        $shortDesc = $productData['short_description'] ?? '';
+        $specs = $productData['specifications'] ?? [];
+
+        // Define card themes (each card has a different style)
+        $cardStyles = [
+            [
+                'type' => 'hero',
+                'bg' => [45, 15, 15],       // Dark burgundy
+                'accent' => [180, 60, 60],   // Lighter burgundy
+                'text' => [255, 255, 255],
+                'subtitle' => [220, 180, 180],
+            ],
+            [
+                'type' => 'specs',
+                'bg' => [20, 20, 30],        // Dark navy
+                'accent' => [60, 100, 180],  // Blue accent
+                'text' => [255, 255, 255],
+                'subtitle' => [180, 200, 230],
+            ],
+            [
+                'type' => 'minimal',
+                'bg' => [250, 250, 250],     // White
+                'accent' => [139, 43, 43],   // Pricetag burgundy
+                'text' => [30, 30, 30],
+                'subtitle' => [100, 100, 100],
+            ],
+            [
+                'type' => 'gradient',
+                'bg' => [25, 25, 35],        // Dark
+                'accent' => [139, 43, 43],   // Pricetag burgundy
+                'text' => [255, 255, 255],
+                'subtitle' => [200, 200, 200],
+            ],
+        ];
+
+        $generated = 0;
+
+        for ($i = 0; $i < $count && $i < 4; $i++) {
+            $style = $cardStyles[$i % count($cardStyles)];
+            $isPrimary = $firstIsPrimary && $i === 0;
+
+            $result = $this->createInfoCardImage($productId, $name, $brand, $sku, $category, $shortDesc, $specs, $style, $isPrimary);
+            if ($result) {
+                $generated++;
+            }
+        }
+
+        if ($generated > 0) {
+            error_log("ProductImageService: Generated {$generated} info card(s) for product {$productId}");
+        }
+
+        return $generated;
+    }
+
+    /**
+     * Create a single info card image using GD
+     */
+    private function createInfoCardImage(
+        int $productId,
+        string $name,
+        string $brand,
+        string $sku,
+        string $category,
+        string $shortDesc,
+        array $specs,
+        array $style,
+        bool $isPrimary
+    ): bool {
+        $size = 1024;
+        $img = imagecreatetruecolor($size, $size);
+        if (!$img) return false;
+
+        try {
+            // Enable anti-aliasing
+            imageantialias($img, true);
+
+            // Colors
+            $bgColor = imagecolorallocate($img, $style['bg'][0], $style['bg'][1], $style['bg'][2]);
+            $accentColor = imagecolorallocate($img, $style['accent'][0], $style['accent'][1], $style['accent'][2]);
+            $textColor = imagecolorallocate($img, $style['text'][0], $style['text'][1], $style['text'][2]);
+            $subtitleColor = imagecolorallocate($img, $style['subtitle'][0], $style['subtitle'][1], $style['subtitle'][2]);
+            $dimColor = imagecolorallocate($img,
+                (int)(($style['text'][0] + $style['bg'][0]) / 2),
+                (int)(($style['text'][1] + $style['bg'][1]) / 2),
+                (int)(($style['text'][2] + $style['bg'][2]) / 2)
+            );
+
+            // Fill background
+            imagefilledrectangle($img, 0, 0, $size - 1, $size - 1, $bgColor);
+
+            // Try to use a TTF font, fall back to built-in GD fonts
+            $fontFile = $this->findSystemFont();
+
+            if ($style['type'] === 'hero') {
+                $this->drawHeroCard($img, $size, $name, $brand, $sku, $category, $accentColor, $textColor, $subtitleColor, $dimColor, $fontFile);
+            } elseif ($style['type'] === 'specs') {
+                $this->drawSpecsCard($img, $size, $name, $brand, $specs, $accentColor, $textColor, $subtitleColor, $dimColor, $fontFile);
+            } elseif ($style['type'] === 'minimal') {
+                $this->drawMinimalCard($img, $size, $name, $brand, $sku, $shortDesc, $accentColor, $textColor, $subtitleColor, $dimColor, $fontFile);
+            } else {
+                $this->drawGradientCard($img, $size, $name, $brand, $category, $specs, $accentColor, $textColor, $subtitleColor, $dimColor, $bgColor, $fontFile);
+            }
+
+            // Draw Pricetag.co.za branding at bottom
+            $this->drawBranding($img, $size, $accentColor, $textColor, $subtitleColor, $fontFile);
+
+            // Save to WebP file
+            $filename = $this->generateFilename($productId);
+            $relativePath = self::UPLOAD_DIR . '/' . $filename;
+            $fullPath = STORAGE_PATH . '/uploads/' . $relativePath;
+
+            $dir = dirname($fullPath);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            imagewebp($img, $fullPath, self::DEFAULT_WEBP_QUALITY);
+            imagedestroy($img);
+
+            if (!file_exists($fullPath) || filesize($fullPath) < 100) {
+                return false;
+            }
+
+            // Save to database
+            if ($isPrimary) {
+                $stmt = $this->db->prepare("UPDATE product_images SET is_primary = 0 WHERE product_id = ?");
+                $stmt->execute([$productId]);
+            }
+
+            $stmt = $this->db->prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM product_images WHERE product_id = ?");
+            $stmt->execute([$productId]);
+            $sortOrder = (int) $stmt->fetchColumn();
+
+            $stmt = $this->db->prepare(
+                "INSERT INTO product_images (product_id, path, alt_text, is_primary, sort_order, created_at)
+                 VALUES (?, ?, ?, ?, ?, NOW())"
+            );
+            $stmt->execute([$productId, $relativePath, $name, $isPrimary ? 1 : 0, $sortOrder]);
+
+            return true;
+
+        } catch (\Throwable $e) {
+            error_log("ProductImageService: Info card generation failed: " . $e->getMessage());
+            if (isset($img) && $img) {
+                imagedestroy($img);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Draw hero-style card (large product name, prominent)
+     */
+    private function drawHeroCard(\GdImage $img, int $size, string $name, string $brand, string $sku, string $category, int $accent, int $text, int $subtitle, int $dim, ?string $font): void
+    {
+        // Accent bar at top
+        imagefilledrectangle($img, 0, 0, $size, 6, $accent);
+
+        // Decorative corner accent
+        $this->drawCornerAccent($img, $size, $accent);
+
+        $y = 120;
+
+        // Category tag
+        if ($category) {
+            $this->drawText($img, $font, 14, $size / 2, $y, strtoupper($category), $subtitle, true);
+            $y += 50;
+        }
+
+        // Brand
+        if ($brand) {
+            $this->drawText($img, $font, 18, $size / 2, $y, strtoupper($brand), $accent, true);
+            $y += 55;
+        }
+
+        // Product name (large, word-wrapped)
+        $nameLines = $this->wordWrap($name, $font ? 28 : 5, $size - 140, $font);
+        foreach ($nameLines as $line) {
+            $this->drawText($img, $font, 28, $size / 2, $y, $line, $text, true);
+            $y += $font ? 42 : 28;
+        }
+
+        $y += 30;
+
+        // Decorative line
+        $lineWidth = 100;
+        imagefilledrectangle($img, ($size - $lineWidth) / 2, $y, ($size + $lineWidth) / 2, $y + 3, $accent);
+        $y += 40;
+
+        // SKU
+        if ($sku) {
+            $this->drawText($img, $font, 13, $size / 2, $y, 'SKU: ' . $sku, $dim, true);
+        }
+    }
+
+    /**
+     * Draw specs-focused card (product name + specifications list)
+     */
+    private function drawSpecsCard(\GdImage $img, int $size, string $name, string $brand, array $specs, int $accent, int $text, int $subtitle, int $dim, ?string $font): void
+    {
+        // Left accent bar
+        imagefilledrectangle($img, 0, 0, 5, $size, $accent);
+
+        $y = 80;
+
+        // Brand
+        if ($brand) {
+            $this->drawText($img, $font, 14, 60, $y, strtoupper($brand), $accent, false);
+            $y += 45;
+        }
+
+        // Product name
+        $nameLines = $this->wordWrap($name, $font ? 22 : 5, $size - 120, $font);
+        foreach ($nameLines as $line) {
+            $this->drawText($img, $font, 22, 60, $y, $line, $text, false);
+            $y += $font ? 34 : 22;
+        }
+
+        $y += 30;
+
+        // Divider
+        imagefilledrectangle($img, 60, $y, $size - 60, $y + 1, $dim);
+        $y += 30;
+
+        // Specifications header
+        $this->drawText($img, $font, 13, 60, $y, 'SPECIFICATIONS', $accent, false);
+        $y += 35;
+
+        // Specs list
+        $specCount = 0;
+        foreach ($specs as $spec) {
+            if ($specCount >= 8) break;
+            $specName = $spec['name'] ?? ($spec['spec_name'] ?? '');
+            $specValue = $spec['value'] ?? ($spec['spec_value'] ?? '');
+            if (!$specName || !$specValue) continue;
+
+            // Spec name
+            $this->drawText($img, $font, 12, 60, $y, $specName, $subtitle, false);
+            // Spec value (right-aligned area)
+            $this->drawText($img, $font, 12, $size - 60, $y, $specValue, $text, false, true);
+
+            $y += $font ? 32 : 22;
+            $specCount++;
+
+            // Subtle separator
+            if ($specCount < count($specs) && $specCount < 8) {
+                $sepColor = imagecolorallocatealpha($img, $subtitle >> 16 & 0xFF, $subtitle >> 8 & 0xFF, $subtitle & 0xFF, 110);
+                imageline($img, 60, $y - 8, $size - 60, $y - 8, $dim);
+            }
+        }
+
+        // If no specs, show a note
+        if ($specCount === 0) {
+            $this->drawText($img, $font, 14, 60, $y, 'Detailed specifications available on product page', $dim, false);
+        }
+    }
+
+    /**
+     * Draw minimal-style card (clean white with accent color)
+     */
+    private function drawMinimalCard(\GdImage $img, int $size, string $name, string $brand, string $sku, string $shortDesc, int $accent, int $text, int $subtitle, int $dim, ?string $font): void
+    {
+        // Bottom accent bar
+        imagefilledrectangle($img, 0, $size - 6, $size, $size, $accent);
+
+        $y = 160;
+
+        // Brand
+        if ($brand) {
+            $this->drawText($img, $font, 16, $size / 2, $y, strtoupper($brand), $accent, true);
+            $y += 55;
+        }
+
+        // Product name (centered, word-wrapped)
+        $nameLines = $this->wordWrap($name, $font ? 24 : 5, $size - 160, $font);
+        foreach ($nameLines as $line) {
+            $this->drawText($img, $font, 24, $size / 2, $y, $line, $text, true);
+            $y += $font ? 38 : 26;
+        }
+
+        $y += 25;
+
+        // Short description (first 2 lines)
+        if ($shortDesc) {
+            $descLines = $this->wordWrap($shortDesc, $font ? 13 : 2, $size - 200, $font);
+            $lineCount = 0;
+            foreach ($descLines as $line) {
+                if ($lineCount >= 3) break;
+                $this->drawText($img, $font, 13, $size / 2, $y, $line, $subtitle, true);
+                $y += $font ? 24 : 18;
+                $lineCount++;
+            }
+        }
+
+        $y += 20;
+
+        // SKU at bottom
+        if ($sku) {
+            $this->drawText($img, $font, 11, $size / 2, $y, $sku, $dim, true);
+        }
+    }
+
+    /**
+     * Draw gradient-style card with specs sidebar
+     */
+    private function drawGradientCard(\GdImage $img, int $size, string $name, string $brand, string $category, array $specs, int $accent, int $text, int $subtitle, int $dim, int $bg, ?string $font): void
+    {
+        // Gradient effect (simulated with horizontal bars)
+        for ($row = 0; $row < $size; $row++) {
+            $factor = $row / $size;
+            $r = (int)($this->colorComponent($bg, 'r') * (1 - $factor * 0.3) + $this->colorComponent($accent, 'r') * $factor * 0.3);
+            $g = (int)($this->colorComponent($bg, 'g') * (1 - $factor * 0.3) + $this->colorComponent($accent, 'g') * $factor * 0.3);
+            $b = (int)($this->colorComponent($bg, 'b') * (1 - $factor * 0.3) + $this->colorComponent($accent, 'b') * $factor * 0.3);
+            $gradColor = imagecolorallocate($img, max(0, min(255, $r)), max(0, min(255, $g)), max(0, min(255, $b)));
+            imageline($img, 0, $row, $size, $row, $gradColor);
+        }
+
+        // Top accent line
+        imagefilledrectangle($img, 0, 0, $size, 4, $accent);
+
+        $y = 100;
+
+        // Category
+        if ($category) {
+            $this->drawText($img, $font, 12, $size / 2, $y, strtoupper($category), $subtitle, true);
+            $y += 40;
+        }
+
+        // Brand
+        if ($brand) {
+            $this->drawText($img, $font, 16, $size / 2, $y, strtoupper($brand), $accent, true);
+            $y += 50;
+        }
+
+        // Product name
+        $nameLines = $this->wordWrap($name, $font ? 26 : 5, $size - 120, $font);
+        foreach ($nameLines as $line) {
+            $this->drawText($img, $font, 26, $size / 2, $y, $line, $text, true);
+            $y += $font ? 40 : 28;
+        }
+
+        $y += 40;
+
+        // Key specs (up to 4, centered)
+        $specCount = 0;
+        foreach ($specs as $spec) {
+            if ($specCount >= 4) break;
+            $specName = $spec['name'] ?? ($spec['spec_name'] ?? '');
+            $specValue = $spec['value'] ?? ($spec['spec_value'] ?? '');
+            if (!$specName || !$specValue) continue;
+
+            $specText = $specName . ': ' . $specValue;
+            $this->drawText($img, $font, 13, $size / 2, $y, $specText, $subtitle, true);
+            $y += $font ? 28 : 20;
+            $specCount++;
+        }
+    }
+
+    /**
+     * Draw Pricetag.co.za branding at the bottom of the card
+     */
+    private function drawBranding(\GdImage $img, int $size, int $accent, int $text, int $subtitle, ?string $font): void
+    {
+        $brandingY = $size - 50;
+
+        // Small tag icon (diamond shape)
+        $tagCx = ($size / 2) - 70;
+        $tagCy = $brandingY;
+        $tagSize = 8;
+        $points = [
+            $tagCx, $tagCy - $tagSize,
+            $tagCx + $tagSize, $tagCy,
+            $tagCx, $tagCy + $tagSize,
+            $tagCx - $tagSize, $tagCy,
+        ];
+        imagefilledpolygon($img, $points, $accent);
+
+        // Brand text
+        $this->drawText($img, $font, 12, ($size / 2) + 10, $brandingY, 'Pricetag.co.za', $subtitle, true);
+    }
+
+    /**
+     * Draw text with TTF font or fallback to GD built-in fonts
+     */
+    private function drawText(\GdImage $img, ?string $font, int $fontSize, int $x, int $y, string $text, int $color, bool $center, bool $rightAlign = false): void
+    {
+        if (empty($text)) return;
+
+        if ($font && function_exists('imagettftext')) {
+            $bbox = imagettfbbox($fontSize, 0, $font, $text);
+            $textWidth = abs($bbox[2] - $bbox[0]);
+
+            if ($center) {
+                $x = (int)($x - $textWidth / 2);
+            } elseif ($rightAlign) {
+                $x = (int)($x - $textWidth);
+            }
+
+            imagettftext($img, $fontSize, 0, $x, $y + $fontSize, $color, $font, $text);
+        } else {
+            // Map TTF font size to GD built-in font (1-5)
+            $gdFont = match (true) {
+                $fontSize >= 24 => 5,
+                $fontSize >= 18 => 4,
+                $fontSize >= 14 => 3,
+                $fontSize >= 11 => 2,
+                default => 1,
+            };
+
+            $charWidth = imagefontwidth($gdFont);
+            $textWidth = $charWidth * strlen($text);
+
+            if ($center) {
+                $x = (int)($x - $textWidth / 2);
+            } elseif ($rightAlign) {
+                $x = (int)($x - $textWidth);
+            }
+
+            imagestring($img, $gdFont, max(0, $x), $y, $text, $color);
+        }
+    }
+
+    /**
+     * Word wrap text to fit within a given width
+     */
+    private function wordWrap(string $text, int $fontSize, int $maxWidth, ?string $font): array
+    {
+        if (empty($text)) return [];
+
+        $words = explode(' ', $text);
+        $lines = [];
+        $currentLine = '';
+
+        foreach ($words as $word) {
+            $testLine = $currentLine ? $currentLine . ' ' . $word : $word;
+
+            if ($font && function_exists('imagettfbbox')) {
+                $bbox = imagettfbbox($fontSize, 0, $font, $testLine);
+                $lineWidth = abs($bbox[2] - $bbox[0]);
+            } else {
+                $gdFont = min(5, max(1, $fontSize));
+                $lineWidth = imagefontwidth($gdFont) * strlen($testLine);
+            }
+
+            if ($lineWidth > $maxWidth && $currentLine) {
+                $lines[] = $currentLine;
+                $currentLine = $word;
+            } else {
+                $currentLine = $testLine;
+            }
+        }
+
+        if ($currentLine) {
+            $lines[] = $currentLine;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Draw decorative corner accent
+     */
+    private function drawCornerAccent(\GdImage $img, int $size, int $accent): void
+    {
+        // Top-right corner lines
+        for ($i = 0; $i < 3; $i++) {
+            $offset = 30 + ($i * 15);
+            imageline($img, $size - $offset, 20, $size - 20, $offset, $accent);
+        }
+
+        // Bottom-left corner lines
+        for ($i = 0; $i < 3; $i++) {
+            $offset = 30 + ($i * 15);
+            imageline($img, $offset, $size - 20, 20, $size - $offset, $accent);
+        }
+    }
+
+    /**
+     * Extract color component from a GD color int
+     */
+    private function colorComponent(int $gdColor, string $component): int
+    {
+        return match ($component) {
+            'r' => ($gdColor >> 16) & 0xFF,
+            'g' => ($gdColor >> 8) & 0xFF,
+            'b' => $gdColor & 0xFF,
+            default => 0,
+        };
+    }
+
+    /**
+     * Find a system TTF font file for text rendering
+     */
+    private function findSystemFont(): ?string
+    {
+        $fontPaths = [
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+            '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+            '/usr/share/fonts/TTF/DejaVuSans.ttf',
+            '/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf',
+            '/usr/share/fonts/noto/NotoSans-Regular.ttf',
+            '/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf',
+            '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        ];
+
+        foreach ($fontPaths as $path) {
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -1519,7 +1519,11 @@ class ProductController extends Controller
             return;
         }
 
+        // Accept both JSON body and FormData (multipart/form-data)
         $data = json_decode(file_get_contents('php://input'), true);
+        if (empty($data)) {
+            $data = $_POST;
+        }
 
         if (empty($data)) {
             $this->json(['success' => false, 'message' => 'No data provided']);

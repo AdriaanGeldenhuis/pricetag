@@ -1207,7 +1207,7 @@ class OpenAIService
                     ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => 3000,
+                'max_tokens' => 4000,
                 'temperature' => 0.3,
             ]);
 

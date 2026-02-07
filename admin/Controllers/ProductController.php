@@ -2167,10 +2167,10 @@ class ProductController extends Controller
                 $brandValue = $row['brand'] ?? null;
                 $aiCompleteData = null;
 
-                // AI Generate if enabled - use comprehensive AI to create production-ready product
+                // AI Generate if enabled - fill ALL missing fields to make products production-ready
                 if ($aiGenerate) {
-                    $openai = new OpenAIService();
-                    $productService = ProductService::getInstance();
+                    $openai = $openai ?? new OpenAIService();
+                    $productService = $productService ?? ProductService::getInstance();
 
                     // Rate limiting: pause between AI calls during bulk import
                     static $aiCallCount = 0;
@@ -2192,22 +2192,22 @@ class ProductController extends Controller
                         $aiData = $aiResult['data'];
                         error_log("AI Import (complete) for SKU {$sku}: name=" . ($aiData['name'] ?? 'N/A'));
 
-                        // Apply AI-generated name (if better than raw SKU)
+                        // Apply AI-generated name - ALWAYS use AI name if current name is empty or is raw SKU
                         if (!empty($aiData['name']) && strcasecmp($aiData['name'], $sku) !== 0) {
-                            $productData['name'] = $aiData['name'];
+                            if (empty($productData['name']) || $productData['name'] === $sku) {
+                                $productData['name'] = $aiData['name'];
+                            }
                         }
 
-                        // Apply AI description if we don't have one (or have a poor one)
+                        // Apply ALL AI-generated descriptions (fill any empty fields)
                         if (!empty($aiData['description']) && (empty($productData['description']) || strlen($productData['description']) < 50)) {
                             $productData['description'] = $aiData['description'];
                         }
-
-                        // Apply short description if empty
                         if (!empty($aiData['short_description']) && empty($productData['short_description'])) {
                             $productData['short_description'] = $aiData['short_description'];
                         }
 
-                        // Apply SEO fields
+                        // Apply ALL SEO fields
                         if (!empty($aiData['meta_title'])) {
                             $productData['meta_title'] = substr($aiData['meta_title'], 0, 255);
                         }
@@ -2218,19 +2218,24 @@ class ProductController extends Controller
                             $productData['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
                         }
 
-                        // Apply weight if we don't have one
+                        // Apply weight
                         if (!empty($aiData['weight']) && empty($productData['weight'])) {
                             $productData['weight'] = (float) $aiData['weight'];
                         }
 
-                        // Auto-set brand if detected
+                        // Auto-detect brand from AI
                         if (!empty($aiData['brand']) && empty($brandValue)) {
                             $brandValue = $aiData['brand'];
                         }
 
-                        // Store AI data for post-insert operations (specs, category)
+                        // Store AI data for post-insert operations (specs, category, images)
                         $aiCompleteData = $aiData;
                     }
+                }
+
+                // If name is still empty after AI, use SKU as fallback
+                if (empty($productData['name'])) {
+                    $productData['name'] = $sku;
                 }
 
                 // Generate unique slug AFTER name is finalized (whether from AI or original)
@@ -2303,9 +2308,12 @@ class ProductController extends Controller
                         $productService = $productService ?? ProductService::getInstance();
                         $productService->saveSpecifications($productId, $aiCompleteData['specifications']);
                     }
+
+                    // Handle image: download from mapped URL first, then AI search for remaining
+                    $this->importHandleImages($productId, $productData, $brandValue, $aiCompleteData, $row['image'] ?? '', $aiGenerate);
                 }
 
-                // For existing products: update brand and apply AI specs/category if missing
+                // For existing products: update brand and apply AI specs/category/images if missing
                 if ($existingId) {
                     if (!empty($brandValue)) {
                         $this->handleBrandAttribute($db, $existingId, trim($brandValue));
@@ -2330,6 +2338,9 @@ class ProductController extends Controller
                         if (!empty($aiCompleteData['specifications'])) {
                             $productService->saveSpecifications($existingId, $aiCompleteData['specifications']);
                         }
+
+                        // Handle images for existing products too
+                        $this->importHandleImages($existingId, $productData, $brandValue, $aiCompleteData, $row['image'] ?? '', $aiGenerate);
                     }
                 }
             } catch (\Throwable $e) {
@@ -2353,6 +2364,47 @@ class ProductController extends Controller
             ]);
         }
         exit;
+    }
+
+    /**
+     * Handle images for a product during import:
+     * 1. Download from mapped image URL if provided
+     * 2. Use AI web search for remaining images if AI is enabled
+     */
+    private function importHandleImages(int $productId, array $productData, ?string $brand, ?array $aiData, string $imageUrl, bool $aiGenerate): void
+    {
+        try {
+            $imageService = new ProductImageService();
+
+            // First: download from mapped image URL if provided
+            if (!empty($imageUrl) && filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                ob_start();
+                $imageService->downloadAndSaveImagePublic($productId, $imageUrl, $productData['name'] ?? '', true);
+                ob_end_clean();
+            }
+
+            // Second: if AI is enabled, search for more images to fill up to 4
+            if ($aiGenerate) {
+                $categoryName = $aiData['suggested_category'] ?? '';
+
+                ob_start();
+                $result = $imageService->generateProductImages($productId, [
+                    'name' => $productData['name'] ?? '',
+                    'brand' => $brand ?? ($aiData['brand'] ?? ''),
+                    'sku' => $productData['sku'] ?? '',
+                    'category' => $categoryName,
+                    'short_description' => $productData['short_description'] ?? '',
+                    'specifications' => $aiData['specifications'] ?? [],
+                ]);
+                ob_end_clean();
+
+                if ($result['generated'] > 0) {
+                    error_log("AI Import: Generated {$result['generated']} images for product {$productId}");
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("AI Import: Image handling failed for product {$productId}: " . $e->getMessage());
+        }
     }
 
     /**

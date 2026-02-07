@@ -1374,6 +1374,15 @@ class ProductImageService
     }
 
     /**
+     * Public wrapper for downloading an image from URL.
+     * Used by the import process to download from mapped image URLs.
+     */
+    public function downloadAndSaveImagePublic(int $productId, string $url, string $altText = '', bool $isPrimary = false): array
+    {
+        return $this->downloadAndSaveImage($productId, $url, $altText, $isPrimary);
+    }
+
+    /**
      * Download an image from URL and save it as a product image
      */
     private function downloadAndSaveImage(int $productId, string $url, string $altText = '', bool $isPrimary = false): array

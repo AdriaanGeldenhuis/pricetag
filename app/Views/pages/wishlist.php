@@ -16,10 +16,38 @@ $isEmpty = empty($items);
 ?>
 
 <!-- Breadcrumbs -->
-<nav class="breadcrumbs container">
-    <div class="breadcrumb-item"><a href="<?= url('/') ?>" class="breadcrumb-link">Home</a></div>
-    <div class="breadcrumb-item"><a href="<?= url('/account') ?>" class="breadcrumb-link">My Account</a></div>
-    <div class="breadcrumb-item"><span class="breadcrumb-current">Wishlist</span></div>
+<nav class="breadcrumb-rings container">
+    <div class="breadcrumb-rings-list">
+        <a href="<?= url('/') ?>" class="bc-ring-item">
+            <div class="bc-ring-wrap">
+                <div class="bc-ring-border"></div>
+                <div class="bc-ring-inner">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </div>
+            </div>
+            <span class="bc-ring-label">Home</span>
+        </a>
+        <span class="bc-ring-sep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+        <a href="<?= url('/account') ?>" class="bc-ring-item">
+            <div class="bc-ring-wrap">
+                <div class="bc-ring-border"></div>
+                <div class="bc-ring-inner">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+            </div>
+            <span class="bc-ring-label">Account</span>
+        </a>
+        <span class="bc-ring-sep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+        <span class="bc-ring-item bc-ring-active">
+            <div class="bc-ring-wrap">
+                <div class="bc-ring-border"></div>
+                <div class="bc-ring-inner">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+            </div>
+            <span class="bc-ring-label">Wishlist</span>
+        </span>
+    </div>
 </nav>
 
 <div class="wishlist-page container py-6">

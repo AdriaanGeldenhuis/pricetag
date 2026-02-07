@@ -1,10 +1,27 @@
 <!-- Categories Page - Full Width Modern Design -->
 
-<!-- Breadcrumbs -->
-<nav class="breadcrumbs">
+<!-- Breadcrumb Rings -->
+<nav class="breadcrumb-rings">
     <div class="categories-container">
-        <div class="breadcrumb-item"><a href="<?php echo url('/'); ?>" class="breadcrumb-link">Home</a></div>
-        <div class="breadcrumb-item"><span class="breadcrumb-current">Categories</span></div>
+        <div class="breadcrumb-rings-list">
+            <a href="<?php echo url('/'); ?>" class="bc-ring-item">
+                <div class="bc-ring-wrap">
+                    <div class="bc-ring-border"></div>
+                    <div class="bc-ring-inner">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    </div>
+                </div>
+                <span class="bc-ring-label">Home</span>
+            </a>
+            <span class="bc-ring-sep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+            <span class="bc-ring-item bc-ring-active">
+                <div class="bc-ring-wrap">
+                    <div class="bc-ring-border"></div>
+                    <div class="bc-ring-inner"><span>C</span></div>
+                </div>
+                <span class="bc-ring-label">Categories</span>
+            </span>
+        </div>
     </div>
 </nav>
 
@@ -199,11 +216,10 @@
     }
 }
 
-/* Breadcrumbs */
-.breadcrumbs .categories-container {
+/* Breadcrumb Rings Container */
+.breadcrumb-rings .categories-container {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
 }
 
 /* Categories Header */

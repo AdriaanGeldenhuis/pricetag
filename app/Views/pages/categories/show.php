@@ -1,17 +1,42 @@
 <!-- Category Detail Page - Full Width with Dual Sidebars -->
 
-<!-- Breadcrumbs -->
-<nav class="breadcrumbs">
+<!-- Breadcrumb Rings -->
+<nav class="breadcrumb-rings">
     <div class="category-container">
-        <?php foreach ($breadcrumbs as $i => $crumb): ?>
-        <div class="breadcrumb-item">
-            <?php if ($i === count($breadcrumbs) - 1): ?>
-            <span class="breadcrumb-current"><?= e($crumb['name']) ?></span>
-            <?php else: ?>
-            <a href="<?= $crumb['url'] ?>" class="breadcrumb-link"><?= e($crumb['name']) ?></a>
-            <?php endif; ?>
+        <div class="breadcrumb-rings-list">
+            <?php foreach ($breadcrumbs as $i => $crumb): ?>
+                <?php if ($i > 0): ?>
+                <span class="bc-ring-sep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+                <?php endif; ?>
+                <?php if ($i === count($breadcrumbs) - 1): ?>
+                <span class="bc-ring-item bc-ring-active">
+                    <div class="bc-ring-wrap">
+                        <div class="bc-ring-border"></div>
+                        <div class="bc-ring-inner"><span><?= e(mb_substr($crumb['name'], 0, 1)) ?></span></div>
+                    </div>
+                    <span class="bc-ring-label"><?= e($crumb['name']) ?></span>
+                </span>
+                <?php elseif ($i === 0): ?>
+                <a href="<?= $crumb['url'] ?>" class="bc-ring-item">
+                    <div class="bc-ring-wrap">
+                        <div class="bc-ring-border"></div>
+                        <div class="bc-ring-inner">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        </div>
+                    </div>
+                    <span class="bc-ring-label"><?= e($crumb['name']) ?></span>
+                </a>
+                <?php else: ?>
+                <a href="<?= $crumb['url'] ?>" class="bc-ring-item">
+                    <div class="bc-ring-wrap">
+                        <div class="bc-ring-border"></div>
+                        <div class="bc-ring-inner"><span><?= e(mb_substr($crumb['name'], 0, 1)) ?></span></div>
+                    </div>
+                    <span class="bc-ring-label"><?= e($crumb['name']) ?></span>
+                </a>
+                <?php endif; ?>
+            <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
     </div>
 </nav>
 
@@ -171,12 +196,6 @@
                         <?php endif; ?>
                         <?php endforeach; ?>
 
-                        <button type="submit" class="filter-apply-btn">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                            Apply Filters
-                        </button>
                     </form>
                 </div>
             </aside>
@@ -200,8 +219,7 @@
 
                         <div class="category-sort">
                             <label class="sort-label">Sort by:</label>
-                            <select name="sort" class="sort-select"
-                                    onchange="window.location.href = '<?= url('/categories/' . $category->slug) ?>?sort=' + this.value">
+                            <select name="sort" class="sort-select">
                                 <option value="newest" <?= ($filters['sort'] ?? '') === 'newest' ? 'selected' : '' ?>>Newest</option>
                                 <option value="price_asc" <?= ($filters['sort'] ?? '') === 'price_asc' ? 'selected' : '' ?>>Price: Low to High</option>
                                 <option value="price_desc" <?= ($filters['sort'] ?? '') === 'price_desc' ? 'selected' : '' ?>>Price: High to Low</option>
@@ -362,11 +380,10 @@
     }
 }
 
-/* Breadcrumbs */
-.breadcrumbs .category-container {
+/* Breadcrumb Rings Container */
+.breadcrumb-rings .category-container {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
 }
 
 /* Category Header */
@@ -670,31 +687,6 @@
 
 .filter-checkbox-item:hover .filter-checkbox-label {
     color: var(--color-text);
-}
-
-/* Apply Button */
-.filter-apply-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    width: calc(100% - var(--space-10));
-    margin: var(--space-5);
-    padding: var(--space-4);
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-600) 100%);
-    color: var(--color-text);
-    font-size: var(--text-sm);
-    font-weight: var(--font-bold);
-    border: none;
-    border-radius: var(--radius-xl);
-    cursor: pointer;
-    transition: var(--transition-all);
-    box-shadow: 0 4px 15px rgba(139, 43, 43, 0.3);
-}
-
-.filter-apply-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(139, 43, 43, 0.4);
 }
 
 /* =========================================================================
@@ -1151,9 +1143,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const mobileFilterToggle = document.getElementById('mobileFilterToggle');
     const mobileFilterOverlay = document.getElementById('mobileFilterOverlay');
     const sidebar = document.querySelector('.category-sidebar-left');
+    let mobileSidebar = null;
 
     if (mobileFilterToggle && sidebar) {
-        const mobileSidebar = sidebar.cloneNode(true);
+        mobileSidebar = sidebar.cloneNode(true);
         mobileSidebar.classList.add('mobile-active');
         document.body.appendChild(mobileSidebar);
 
@@ -1175,6 +1168,172 @@ document.addEventListener('DOMContentLoaded', function() {
         title.addEventListener('click', function() {
             this.closest('.filter-section').classList.toggle('collapsed');
         });
+    });
+
+    // =========================================================================
+    // REAL-TIME AJAX FILTERING
+    // =========================================================================
+    const filterForm = document.getElementById('filter-form');
+    const productGrid = document.querySelector('.category-products-grid');
+    const resultsHeader = document.querySelector('.category-results-header');
+    const categoryMain = document.querySelector('.category-main');
+    if (!filterForm || !productGrid) return;
+
+    let filterTimeout = null;
+    let filterController = null;
+
+    function buildFilterUrl() {
+        const formData = new FormData(filterForm);
+        const params = new URLSearchParams();
+        for (const [key, value] of formData.entries()) {
+            if (value !== '' && value !== null) {
+                params.append(key, value);
+            }
+        }
+        // Include sort from the sort dropdown in the main content area
+        const sortSelect = categoryMain?.querySelector('.sort-select');
+        if (sortSelect && sortSelect.value) {
+            params.set('sort', sortSelect.value);
+        }
+        const qs = params.toString();
+        return window.location.pathname + (qs ? '?' + qs : '');
+    }
+
+    function applyFilters(delay) {
+        clearTimeout(filterTimeout);
+        if (filterController) filterController.abort();
+
+        filterTimeout = setTimeout(async function() {
+            const url = buildFilterUrl();
+
+            // Show loading state
+            productGrid.style.opacity = '0.4';
+            productGrid.style.pointerEvents = 'none';
+            productGrid.style.transition = 'opacity 0.2s ease';
+
+            filterController = new AbortController();
+            try {
+                const response = await fetch(url, {
+                    signal: filterController.signal,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const html = await response.text();
+
+                // Parse the response and extract updated content
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                // Update product grid
+                const newGrid = doc.querySelector('.category-products-grid');
+                const newNoResults = doc.querySelector('.category-no-results');
+                const newPagination = doc.querySelector('.pagination');
+                const newResultsHeader = doc.querySelector('.category-results-header');
+
+                // Update results header (count)
+                if (newResultsHeader && resultsHeader) {
+                    resultsHeader.innerHTML = newResultsHeader.innerHTML;
+                    // Re-bind sort dropdown
+                    bindSortDropdown();
+                }
+
+                // Replace grid content or show no-results
+                const existingNoResults = categoryMain.querySelector('.category-no-results');
+                const existingPagination = categoryMain.querySelector('.pagination');
+
+                if (newGrid) {
+                    productGrid.innerHTML = newGrid.innerHTML;
+                    productGrid.style.display = '';
+                    if (existingNoResults) existingNoResults.remove();
+                } else if (newNoResults) {
+                    productGrid.innerHTML = '';
+                    productGrid.style.display = 'none';
+                    if (existingNoResults) {
+                        existingNoResults.innerHTML = newNoResults.innerHTML;
+                    } else {
+                        productGrid.insertAdjacentHTML('afterend', newNoResults.outerHTML);
+                    }
+                }
+
+                // Update pagination
+                if (existingPagination) existingPagination.remove();
+                if (newPagination) {
+                    productGrid.insertAdjacentHTML('afterend', newPagination.outerHTML);
+                }
+
+                // Update URL without reload
+                history.pushState(null, '', url);
+
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                console.error('Filter error:', e);
+            } finally {
+                productGrid.style.opacity = '';
+                productGrid.style.pointerEvents = '';
+                filterController = null;
+            }
+        }, delay);
+    }
+
+    // Listen for checkbox/radio changes — instant
+    filterForm.addEventListener('change', function(e) {
+        const tag = e.target.tagName;
+        const type = e.target.type;
+        if (type === 'checkbox' || type === 'radio' || tag === 'SELECT') {
+            // Sync to mobile sidebar
+            syncFiltersToMobile();
+            applyFilters(50);
+        }
+    });
+
+    // Listen for price slider — debounced
+    if (priceMin) priceMin.addEventListener('input', function() { applyFilters(400); });
+    if (priceMax) priceMax.addEventListener('input', function() { applyFilters(400); });
+
+    // Prevent traditional form submission
+    filterForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        applyFilters(0);
+    });
+
+    // Sort dropdown in main content (outside filter form)
+    function bindSortDropdown() {
+        const sortSelect = categoryMain?.querySelector('.sort-select');
+        if (sortSelect) {
+            sortSelect.onchange = function() {
+                applyFilters(0);
+            };
+        }
+    }
+    bindSortDropdown();
+
+    // Sync checkbox states to mobile sidebar clone
+    function syncFiltersToMobile() {
+        if (!mobileSidebar) return;
+        const desktopInputs = filterForm.querySelectorAll('input[type="checkbox"]');
+        desktopInputs.forEach(function(input) {
+            const mobileInput = mobileSidebar.querySelector('input[name="' + input.name + '"][value="' + input.value + '"]');
+            if (mobileInput) mobileInput.checked = input.checked;
+        });
+    }
+
+    // Also listen for changes on the mobile sidebar clone
+    if (mobileSidebar) {
+        mobileSidebar.addEventListener('change', function(e) {
+            const type = e.target.type;
+            if (type === 'checkbox' || type === 'radio') {
+                // Sync back to desktop form
+                const name = e.target.name;
+                const value = e.target.value;
+                const desktopInput = filterForm.querySelector('input[name="' + name + '"][value="' + value + '"]');
+                if (desktopInput) desktopInput.checked = e.target.checked;
+                applyFilters(50);
+            }
+        });
+    }
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', function() {
+        window.location.reload();
     });
 });
 </script>

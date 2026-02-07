@@ -1473,48 +1473,278 @@ a.footer-contact-item:hover svg {
 }
 
 /* =========================================================================
-   BREADCRUMBS
+   BREADCRUMB RINGS (ring-styled breadcrumb nav matching theme)
    ========================================================================= */
 
+.breadcrumb-rings {
+  padding: var(--space-4) 0 var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.breadcrumb-rings::-webkit-scrollbar { display: none; }
+
+.breadcrumb-rings-list {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+/* Individual breadcrumb ring item */
+.bc-ring-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  padding: 2px;
+}
+
+.bc-ring-item:hover {
+  transform: translateY(-2px);
+}
+
+/* Ring container - small version of subcategory rings */
+.bc-ring-wrap {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+@media (min-width: 640px) {
+  .bc-ring-wrap {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Rotating metallic ring border - 3D effect */
+.bc-ring-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 1.5px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(120, 120, 140, 0.5),
+    rgba(200, 200, 220, 0.9),
+    rgba(255, 255, 255, 1),
+    rgba(200, 200, 220, 0.9),
+    rgba(140, 140, 160, 0.5),
+    rgba(90, 90, 110, 0.4),
+    rgba(160, 160, 180, 0.7),
+    rgba(220, 220, 240, 0.95),
+    rgba(255, 255, 255, 1),
+    rgba(200, 200, 220, 0.8),
+    rgba(120, 120, 140, 0.5)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: sidebarRingRotate 10s linear infinite;
+  opacity: 0.4;
+  transition: opacity 0.4s ease;
+}
+
+.bc-ring-item:hover .bc-ring-border {
+  opacity: 1;
+  animation-duration: 4s;
+}
+
+/* Outer glow on hover */
+.bc-ring-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(180, 180, 200, 0.05),
+    rgba(220, 220, 240, 0.1),
+    rgba(255, 255, 255, 0.12),
+    rgba(220, 220, 240, 0.1),
+    rgba(180, 180, 200, 0.05)
+  );
+  filter: blur(6px);
+  animation: sidebarRingRotate 10s linear infinite;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: -1;
+}
+
+.bc-ring-item:hover .bc-ring-wrap::before {
+  opacity: 1;
+}
+
+/* Inner 3D depth shadow */
+.bc-ring-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.5),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.04),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Inner circle with icon/letter */
+.bc-ring-inner {
+  position: relative;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(145deg, #1e1e28 0%, #12121a 50%, #0e0e14 100%);
+  z-index: 2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+@media (min-width: 640px) {
+  .bc-ring-inner {
+    font-size: 12px;
+  }
+}
+
+.bc-ring-inner svg {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-muted);
+  transition: color 0.3s ease;
+}
+
+@media (min-width: 640px) {
+  .bc-ring-inner svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.bc-ring-item:hover .bc-ring-inner {
+  color: #e0e0f0;
+}
+
+.bc-ring-item:hover .bc-ring-inner svg {
+  color: #e0e0f0;
+}
+
+/* Label below ring */
+.bc-ring-label {
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+  transition: color 0.3s ease;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 640px) {
+  .bc-ring-label {
+    font-size: 10px;
+    max-width: 80px;
+  }
+}
+
+.bc-ring-item:hover .bc-ring-label {
+  color: #f1f5f9;
+}
+
+/* Active/current breadcrumb ring */
+.bc-ring-active .bc-ring-border {
+  opacity: 0.7;
+  background: conic-gradient(
+    from 0deg,
+    rgba(139, 43, 43, 0.5),
+    rgba(200, 100, 100, 0.8),
+    rgba(255, 150, 150, 0.9),
+    rgba(200, 100, 100, 0.8),
+    rgba(139, 43, 43, 0.5),
+    rgba(100, 30, 30, 0.4),
+    rgba(160, 70, 70, 0.7),
+    rgba(220, 120, 120, 0.85),
+    rgba(255, 150, 150, 0.9),
+    rgba(200, 100, 100, 0.7),
+    rgba(139, 43, 43, 0.5)
+  );
+}
+
+.bc-ring-active .bc-ring-inner {
+  background: linear-gradient(145deg, #2a1a1a 0%, #1a1015 50%, #140e12 100%);
+  color: var(--color-text);
+}
+
+.bc-ring-active .bc-ring-label {
+  color: var(--color-text);
+  font-weight: var(--font-bold);
+}
+
+/* Chevron separator between rings */
+.bc-ring-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  opacity: 0.35;
+  margin: 0 var(--space-1);
+  padding-bottom: 16px;
+}
+
+.bc-ring-sep svg {
+  width: 12px;
+  height: 12px;
+}
+
+@media (min-width: 640px) {
+  .bc-ring-sep svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* Mobile: pause ring animations for performance */
+@media (max-width: 768px) {
+  .bc-ring-border {
+    animation: none;
+    opacity: 0.35;
+  }
+  .bc-ring-wrap::before {
+    display: none;
+  }
+}
+
+/* Legacy class compat: redirect old classes */
 .breadcrumbs {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  padding: var(--space-4) 0;
-  background-color: transparent;
-}
-
-.breadcrumb-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.breadcrumb-item::after {
-  content: '/';
-  color: var(--color-text-muted);
-  opacity: 0.5;
-}
-
-.breadcrumb-item:last-child::after {
   display: none;
 }
 
-.breadcrumb-link {
-  color: var(--color-text-muted);
-  transition: var(--transition-colors);
-}
-
-.breadcrumb-link:hover {
-  color: var(--color-primary-400);
-}
-
+.breadcrumb-item,
+.breadcrumb-link,
 .breadcrumb-current {
-  color: var(--color-text);
-  font-weight: var(--font-medium);
+  /* Legacy - hidden when breadcrumb-rings is present */
 }
 
 /* =========================================================================

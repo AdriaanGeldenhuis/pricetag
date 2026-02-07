@@ -21,61 +21,9 @@
    BREADCRUMBS — thin, quiet, uppercase
    ========================================================================= */
 
+/* Product breadcrumbs now use shared .breadcrumb-rings from components.css */
 .pt-crumbs {
-    padding: var(--space-4) 0;
-    border-bottom: 1px solid var(--color-border-light);
-    overflow: hidden;
-}
-
-.pt-crumbs-list {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wider);
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    flex-wrap: nowrap;
-}
-
-.pt-crumbs-list::-webkit-scrollbar { display: none; }
-
-.pt-crumb {
-    flex-shrink: 0;
-}
-
-.pt-crumb {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-shrink: 0;
-    white-space: nowrap;
-}
-
-.pt-crumb::after {
-    content: '\2215'; /* fraction slash */
-    color: var(--color-text-muted);
-    opacity: .4;
-    margin-left: var(--space-1);
-}
-
-.pt-crumb:last-child::after { display: none; }
-
-.pt-crumb a {
-    color: var(--color-text-muted);
-    text-decoration: none;
-    transition: var(--transition-colors);
-}
-
-.pt-crumb a:hover {
-    color: var(--color-accent);
-}
-
-.pt-crumb-active {
-    color: var(--color-text-secondary);
-    font-weight: var(--font-medium);
+    display: none; /* Legacy — replaced by .breadcrumb-rings */
 }
 
 /* =========================================================================

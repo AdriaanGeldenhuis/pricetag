@@ -1,17 +1,42 @@
 <!-- Category Detail Page - Full Width with Dual Sidebars -->
 
-<!-- Breadcrumbs -->
-<nav class="breadcrumbs">
+<!-- Breadcrumb Rings -->
+<nav class="breadcrumb-rings">
     <div class="category-container">
-        <?php foreach ($breadcrumbs as $i => $crumb): ?>
-        <div class="breadcrumb-item">
-            <?php if ($i === count($breadcrumbs) - 1): ?>
-            <span class="breadcrumb-current"><?= e($crumb['name']) ?></span>
-            <?php else: ?>
-            <a href="<?= $crumb['url'] ?>" class="breadcrumb-link"><?= e($crumb['name']) ?></a>
-            <?php endif; ?>
+        <div class="breadcrumb-rings-list">
+            <?php foreach ($breadcrumbs as $i => $crumb): ?>
+                <?php if ($i > 0): ?>
+                <span class="bc-ring-sep"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+                <?php endif; ?>
+                <?php if ($i === count($breadcrumbs) - 1): ?>
+                <span class="bc-ring-item bc-ring-active">
+                    <div class="bc-ring-wrap">
+                        <div class="bc-ring-border"></div>
+                        <div class="bc-ring-inner"><span><?= e(mb_substr($crumb['name'], 0, 1)) ?></span></div>
+                    </div>
+                    <span class="bc-ring-label"><?= e($crumb['name']) ?></span>
+                </span>
+                <?php elseif ($i === 0): ?>
+                <a href="<?= $crumb['url'] ?>" class="bc-ring-item">
+                    <div class="bc-ring-wrap">
+                        <div class="bc-ring-border"></div>
+                        <div class="bc-ring-inner">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        </div>
+                    </div>
+                    <span class="bc-ring-label"><?= e($crumb['name']) ?></span>
+                </a>
+                <?php else: ?>
+                <a href="<?= $crumb['url'] ?>" class="bc-ring-item">
+                    <div class="bc-ring-wrap">
+                        <div class="bc-ring-border"></div>
+                        <div class="bc-ring-inner"><span><?= e(mb_substr($crumb['name'], 0, 1)) ?></span></div>
+                    </div>
+                    <span class="bc-ring-label"><?= e($crumb['name']) ?></span>
+                </a>
+                <?php endif; ?>
+            <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
     </div>
 </nav>
 
@@ -362,11 +387,10 @@
     }
 }
 
-/* Breadcrumbs */
-.breadcrumbs .category-container {
+/* Breadcrumb Rings Container */
+.breadcrumb-rings .category-container {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
 }
 
 /* Category Header */

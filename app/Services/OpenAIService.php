@@ -276,6 +276,29 @@ class OpenAIService
         // Clean SKU - remove regional suffixes
         $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
 
+        // Detect manufacturer brand prefix in SKU (but don't strip yet - try matching first)
+        // e.g. "ASUS DUAL-RTX3050-O6G" → skuBrand="ASUS", strippedSku="DUAL-RTX3050-O6G"
+        $skuBrand = '';
+        $strippedSku = '';
+        $brandPrefixes = [
+            'ASUS' => 'ASUS', 'Gigabyte' => 'Gigabyte', 'GIGABYTE' => 'Gigabyte',
+            'MSI' => 'MSI', 'EVGA' => 'EVGA', 'Zotac' => 'Zotac', 'ZOTAC' => 'Zotac',
+            'Corsair' => 'Corsair', 'Samsung' => 'Samsung', 'Kingston' => 'Kingston',
+            'Intel' => 'Intel', 'AMD' => 'AMD', 'Logitech' => 'Logitech', 'Razer' => 'Razer',
+            'HyperX' => 'HyperX', 'Crucial' => 'Crucial', 'Sapphire' => 'Sapphire',
+            'XFX' => 'XFX', 'PowerColor' => 'PowerColor', 'ASRock' => 'ASRock',
+            'PNY' => 'PNY', 'Palit' => 'Palit', 'Gainward' => 'Gainward', 'Inno3D' => 'Inno3D',
+            'Thermaltake' => 'Thermaltake', 'NZXT' => 'NZXT', 'Biostar' => 'Biostar',
+            'Cooler Master' => 'Cooler Master', 'be quiet!' => 'be quiet!',
+        ];
+        foreach ($brandPrefixes as $prefix => $normalizedBrand) {
+            if (preg_match('/^' . preg_quote($prefix, '/') . '[\s\-]+(.+)$/i', $cleanSku, $prefixMatch)) {
+                $skuBrand = $normalizedBrand;
+                $strippedSku = trim($prefixMatch[1]);
+                break;
+            }
+        }
+
         // ---- INTEL CELERON/PENTIUM: BX80xxxGxxxx ----
         if (preg_match('/^BX80\d{3}(G)(\d{4})([A-Z]*)$/i', $cleanSku, $m)) {
             $brand = 'Intel';
@@ -447,8 +470,8 @@ class OpenAIService
             $description = "The {$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB is a reliable graphics card for everyday computing, multimedia, and gaming.";
         }
 
-        // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI RTX 4070 VENTUS 3X OC 12G ----
-        elseif (preg_match('/^MSI\s*(RTX|GTX|GT|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
+        // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI GeForce RTX 4070 VENTUS 3X OC 12G ----
+        elseif (preg_match('/^MSI\s*(?:GeForce|Radeon)?\s*(RTX|GTX|GT|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z0-9\s]+?)\s+(\d+)G/i', $cleanSku, $m)) {
             $brand = 'MSI';
             $series = strtoupper($m[1]);
             $gpuModel = $m[2];
@@ -552,7 +575,46 @@ class OpenAIService
             $description = "Logitech {$prodType}. SKU: {$sku}";
         }
 
+        // If SKU had a brand prefix, try ALSO matching the stripped version for a more specific result
+        // e.g. "ASUS DUAL-RTX3050-O6G" matched generic NVIDIA catch-all → but "DUAL-RTX3050-O6G"
+        //       matches the ASUS-specific pattern, giving a richer name with line/memory details
+        // Only prefer stripped result if it's more specific (non-generic brand or richer name)
+        $genericBrandNames = ['NVIDIA', 'AMD'];
+        if (!empty($skuBrand) && !empty($strippedSku)) {
+            $originalIsGeneric = empty($brand) || in_array($brand, $genericBrandNames);
+            // Only retry if original didn't match or matched a generic catch-all pattern
+            if (empty($name) || $originalIsGeneric) {
+                $strippedResult = $this->identifyProductFromSku($strippedSku);
+                if ($strippedResult['recognized']) {
+                    // Always prefer stripped result when original was generic -
+                    // the stripped SKU matches manufacturer-specific patterns with richer details
+                    $name = $strippedResult['name'];
+                    $brand = $strippedResult['brand'];
+                    $category = $strippedResult['category'];
+                    $shortDesc = $strippedResult['short_description'];
+                    $description = $strippedResult['description'];
+                }
+            }
+        }
+
         $recognized = !empty($name);
+
+        // If we detected a brand prefix from the SKU, it's the real manufacturer brand.
+        // Override generic chipset brands (NVIDIA, AMD) with the actual product brand.
+        // e.g. SKU "ASUS GT710-SL-2GD5-BRK" → skuBrand="ASUS" overrides empty brand from generic GPU pattern
+        if (!empty($skuBrand)) {
+            $genericBrands = ['NVIDIA', 'AMD'];
+            if (empty($brand) || in_array($brand, $genericBrands)) {
+                $brand = $skuBrand;
+            }
+        }
+
+        // Ensure brand name is always first in the product name
+        if ($recognized && !empty($brand) && !empty($name) && stripos($name, $brand) !== 0) {
+            // Remove any existing brand occurrence to avoid duplication then prepend
+            $nameWithoutBrand = preg_replace('/\b' . preg_quote($brand, '/') . '\b\s*/i', '', $name);
+            $name = $brand . ' ' . trim($nameWithoutBrand);
+        }
 
         return [
             'name' => $name,
@@ -565,13 +627,371 @@ class OpenAIService
     }
 
     /**
+     * Look up real product data from the web using search results.
+     * Searches for the product specs and returns combined search result data
+     * (titles + snippets + any fetchable pages) for AI context.
+     *
+     * @return string|null Extracted product data text, or null if lookup failed
+     */
+    public function fetchManufacturerData(string $sku, string $brand, string $productName): ?string
+    {
+        // Strategy 1: Search DuckDuckGo for product specs - extract titles + snippets
+        $searchData = $this->searchProductSpecs($sku, $brand, $productName);
+
+        // Strategy 2: Try to fetch a full product page for more detailed specs
+        $pageData = $this->searchAndFetchProductPage($sku, $brand, $productName);
+        if ($pageData) {
+            $pageText = $this->extractProductText($pageData);
+            if ($pageText && strlen($pageText) > 200) {
+                // Combine search snippets with full page data
+                $combined = $searchData ? $searchData . "\n\nDETAILED PRODUCT PAGE:\n" . $pageText : $pageText;
+                return substr($combined, 0, 5000);
+            }
+        }
+
+        return $searchData;
+    }
+
+    /**
+     * Detect bot-check, captcha, or rate-limit pages.
+     * Returns true if the response is NOT real content.
+     */
+    private function isBotCheckPage(?string $html): bool
+    {
+        if (empty($html)) return true;
+
+        $botIndicators = [
+            'bot check in progress',
+            'captcha',
+            'Select all squares',
+            'Please complete the following challenge',
+            'anomaly-modal',
+            'Automated bot check',
+            'Please verify you are a human',
+            'Access denied',
+            'Just a moment...',     // Cloudflare
+            'Enable JavaScript and cookies to continue', // Cloudflare
+            'Checking your browser', // Cloudflare
+            'cf-browser-verification',
+        ];
+
+        $htmlLower = strtolower($html);
+        foreach ($botIndicators as $indicator) {
+            if (strpos($htmlLower, strtolower($indicator)) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Search DuckDuckGo for the product and extract titles + snippets from results.
+     * Tries SKU first, falls back to product name if SKU returns no results.
+     */
+    private function searchProductSpecs(string $sku, string $brand, string $productName): ?string
+    {
+        // Clean the SKU for search - remove brand prefix to avoid redundancy
+        $searchSku = preg_replace('/^' . preg_quote($brand, '/') . '[\s\-]+/i', '', $sku);
+        if (empty($searchSku)) $searchSku = $sku;
+
+        // Try SKU-based search first, fall back to product name
+        $queries = [
+            "{$searchSku} specifications",
+        ];
+        // If product name is different from SKU, add it as a fallback query
+        if (!empty($productName) && $productName !== $sku && $productName !== $searchSku) {
+            $queries[] = "{$productName} specifications";
+        }
+
+        foreach ($queries as $query) {
+            $result = $this->performDDGSearch($query, $brand, $searchSku);
+            if ($result) return $result;
+        }
+
+        return null;
+    }
+
+    /**
+     * Perform a single DDG search and extract titles + snippets.
+     */
+    private function performDDGSearch(string $query, string $brand, string $searchSku): ?string
+    {
+        $searchQuery = urlencode($query);
+        $searchUrl = "https://html.duckduckgo.com/html/?q={$searchQuery}";
+
+        $html = $this->fetchPage($searchUrl);
+        if (empty($html) || $this->isBotCheckPage($html)) {
+            return null;
+        }
+
+        $html = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Extract titles and snippets from search results
+        $results = [];
+        if (preg_match_all('/<a class="result__a"[^>]*>(.+?)<\/a>/si', $html, $titleMatches)) {
+            foreach ($titleMatches[1] as $title) {
+                $results[] = strip_tags($title);
+            }
+        }
+
+        $snippets = [];
+        if (preg_match_all('/class="result__snippet"[^>]*>(.*?)<\/td>/si', $html, $snippetMatches)) {
+            foreach ($snippetMatches[1] as $snippet) {
+                $text = strip_tags($snippet);
+                $text = preg_replace('/\s+/', ' ', trim($text));
+                if (strlen($text) > 30) {
+                    $snippets[] = $text;
+                }
+            }
+        }
+
+        if (empty($results) && empty($snippets)) {
+            return null;
+        }
+
+        // Build context from search results
+        $output = "WEB SEARCH RESULTS for \"{$brand} {$searchSku}\":\n";
+        $maxResults = min(count($results), 6);
+        for ($i = 0; $i < $maxResults; $i++) {
+            $output .= "\n" . ($results[$i] ?? '');
+            if (!empty($snippets[$i])) {
+                $output .= "\n  " . $snippets[$i];
+            }
+        }
+
+        $output = trim($output);
+        return strlen($output) > 80 ? $output : null;
+    }
+
+    /**
+     * Build a direct manufacturer URL from the SKU/brand.
+     * Returns null for brands without predictable URL patterns.
+     */
+    private function buildManufacturerUrl(string $sku, string $brand, string $productName): ?string
+    {
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+
+        // Strip brand prefix from SKU for URL construction
+        $skuBody = preg_replace('/^' . preg_quote($brand, '/') . '[\s\-]+/i', '', $cleanSku);
+
+        switch (strtolower($brand)) {
+            case 'gigabyte':
+                // Gigabyte: model number maps directly to URL
+                // GV-N4070EAGLE OC-12GD → /Graphics-Card/GV-N4070EAGLE-OC-12GD/sp
+                $model = str_replace(' ', '-', $cleanSku);
+                return "https://www.gigabyte.com/Graphics-Card/{$model}/sp";
+
+            case 'asus':
+                // ASUS: product slug uses the SKU line name
+                // DUAL-RTX3050-O6G → try asus.com search
+                return null; // ASUS URLs are too complex to construct - use search fallback
+
+            case 'msi':
+                // MSI uses marketing names, not SKUs - construct from product name
+                // "MSI GeForce RTX 5090 Gaming X Trio 32GB" → GeForce-RTX-5090-32G-GAMING-X-TRIO
+                if (!empty($productName)) {
+                    $slug = preg_replace('/^MSI\s+/i', '', $productName);
+                    $slug = str_replace(' ', '-', $slug);
+                    return "https://www.msi.com/Graphics-Card/{$slug}/Specification";
+                }
+                return null;
+
+            case 'corsair':
+                // Corsair: part number is in the URL path
+                $partNum = strtolower($skuBody ?: $cleanSku);
+                return "https://www.corsair.com/us/en/p/memory/{$partNum}/";
+
+            case 'intel':
+                // Intel ARK search - use search fallback instead of direct URL
+                return null;
+
+            case 'amd':
+                // AMD: construct from Ryzen model name
+                // "AMD Ryzen 7 7800X3D" → /ryzen/7000-series/amd-ryzen-7-7800x3d.html
+                if (preg_match('/Ryzen\s+(\d)\s+(\d)(\d{3})(\w*)/i', $productName, $m)) {
+                    $tier = $m[1];
+                    $series = $m[2] . '000';
+                    $model = strtolower($m[2] . $m[3] . $m[4]);
+                    return "https://www.amd.com/en/products/processors/desktops/ryzen/{$series}-series/amd-ryzen-{$tier}-{$model}.html";
+                }
+                return null;
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Search DuckDuckGo for the product spec page and fetch it.
+     * Tries manufacturer site first, then trusted spec sites (TechPowerUp, Icecat, etc.)
+     */
+    private function searchAndFetchProductPage(string $sku, string $brand, string $productName): ?string
+    {
+        // Strategy A: Try direct manufacturer URL first (fastest, no DDG needed)
+        $directUrl = $this->buildManufacturerUrl($sku, $brand, $productName);
+        if ($directUrl) {
+            $page = $this->fetchPage($directUrl);
+            if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+                return $page;
+            }
+        }
+
+        // Strategy B: Search DuckDuckGo for the product spec page
+        $searchSku = preg_replace('/^' . preg_quote($brand, '/') . '[\s\-]+/i', '', $sku);
+        if (empty($searchSku)) $searchSku = $sku;
+
+        $searchQuery = urlencode("{$searchSku} {$brand} specifications");
+        $searchUrl = "https://html.duckduckgo.com/html/?q={$searchQuery}";
+
+        $html = $this->fetchPage($searchUrl);
+        if (empty($html) || $this->isBotCheckPage($html)) {
+            return null;
+        }
+
+        // Manufacturer domains (preferred) and trusted spec sites (fallback)
+        $brandDomains = [
+            'asus' => 'asus.com', 'gigabyte' => 'gigabyte.com', 'msi' => 'msi.com',
+            'intel' => 'intel.com', 'amd' => 'amd.com', 'corsair' => 'corsair.com',
+            'samsung' => 'samsung.com', 'kingston' => 'kingston.com', 'logitech' => 'logitech.com',
+            'razer' => 'razer.com', 'evga' => 'evga.com', 'zotac' => 'zotac.com',
+            'sapphire' => 'sapphire-tech.com', 'xfx' => 'xfxforce.com',
+            'powercolor' => 'powercolor.com', 'asrock' => 'asrock.com',
+        ];
+        $trustedSpecSites = [
+            'techpowerup.com', 'pangoly.com', 'icecat.biz',
+            'ark.intel.com', 'gpu-monkey.com', 'nanoreview.net',
+        ];
+
+        $manufacturerDomain = $brandDomains[strtolower($brand)] ?? null;
+
+        // Extract result URLs from DuckDuckGo HTML
+        $html = html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $resultUrls = [];
+        if (preg_match_all('/class="result__a"[^>]*href="([^"]+)"/i', $html, $matches)) {
+            foreach ($matches[1] as $rawUrl) {
+                if (preg_match('/uddg=([^&]+)/', $rawUrl, $urlMatch)) {
+                    $resultUrls[] = urldecode($urlMatch[1]);
+                }
+            }
+        }
+
+        // Try manufacturer site first
+        if ($manufacturerDomain) {
+            foreach ($resultUrls as $url) {
+                if (stripos($url, $manufacturerDomain) !== false) {
+                    $page = $this->fetchPage($url);
+                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) return $page;
+                }
+            }
+        }
+
+        // Fall back to trusted spec sites (these rarely block scraping)
+        foreach ($resultUrls as $url) {
+            foreach ($trustedSpecSites as $specSite) {
+                if (stripos($url, $specSite) !== false) {
+                    $page = $this->fetchPage($url);
+                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) return $page;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Fetch a URL with browser-like headers. Reuses the same approach as ProductImageService.
+     */
+    private function fetchPage(string $url): ?string
+    {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            CURLOPT_HTTPHEADER => [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: en-US,en;q=0.9',
+                'Accept-Encoding: gzip, deflate',
+                'Cache-Control: no-cache',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_COOKIEFILE => '',
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || empty($response)) {
+            return null;
+        }
+
+        return $response;
+    }
+
+    /**
+     * Extract useful product text from HTML page.
+     * Strips navigation, scripts, styles and keeps spec tables and descriptions.
+     * Truncates to a reasonable length for AI context.
+     */
+    private function extractProductText(string $html): ?string
+    {
+        // Remove scripts, styles, nav, header, footer
+        $html = preg_replace('/<script[^>]*>.*?<\/script>/si', '', $html);
+        $html = preg_replace('/<style[^>]*>.*?<\/style>/si', '', $html);
+        $html = preg_replace('/<nav[^>]*>.*?<\/nav>/si', '', $html);
+        $html = preg_replace('/<header[^>]*>.*?<\/header>/si', '', $html);
+        $html = preg_replace('/<footer[^>]*>.*?<\/footer>/si', '', $html);
+        $html = preg_replace('/<!--.*?-->/s', '', $html);
+
+        // Convert table cells to readable format
+        $html = preg_replace('/<\/t[hd]>/i', ' | ', $html);
+        $html = preg_replace('/<tr[^>]*>/i', "\n", $html);
+
+        // Convert list items and headings to lines
+        $html = preg_replace('/<\/li>/i', "\n", $html);
+        $html = preg_replace('/<\/[hH]\d>/i', "\n", $html);
+        $html = preg_replace('/<br\s*\/?>/i', "\n", $html);
+        $html = preg_replace('/<\/p>/i', "\n", $html);
+        $html = preg_replace('/<\/div>/i', "\n", $html);
+
+        // Strip all remaining HTML tags
+        $text = strip_tags($html);
+
+        // Clean up whitespace
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/[ \t]+/', ' ', $text);
+        $text = preg_replace('/\n\s*\n\s*\n+/', "\n\n", $text);
+        $text = trim($text);
+
+        // Truncate to ~4000 chars to keep AI prompt reasonable
+        if (strlen($text) > 4000) {
+            $text = substr($text, 0, 4000) . "\n[... truncated]";
+        }
+
+        // Only return if we got meaningful content (not just navigation/cookie text)
+        if (strlen($text) < 100) {
+            return null;
+        }
+
+        return $text;
+    }
+
+    /**
      * Generate a complete, production-ready product from SKU and/or short description.
      *
      * This is THE main method for all AI product generation. Every button and
      * every import path should call this. Architecture:
      *   1. identifyProductFromSku() decides the name (pattern matching, no AI)
-     *   2. AI writes descriptions, SEO, specs FOR that identified product
-     *   3. The AI name output is ALWAYS discarded; pattern name is forced
+     *   2. Fetch real specs from manufacturer website when possible
+     *   3. AI writes descriptions, SEO, specs using real manufacturer data
+     *   4. The AI name output is ALWAYS discarded; pattern name is forced
      *
      * @return array{success: bool, data: array}
      */
@@ -655,6 +1075,19 @@ class OpenAIService
             return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
         }
 
+        // STEP 1.5: Fetch real specs from manufacturer website (non-blocking - fails gracefully)
+        $manufacturerData = null;
+        if (!empty($verifiedBrand)) {
+            try {
+                $manufacturerData = $this->fetchManufacturerData($sku, $verifiedBrand, $productName);
+                if ($manufacturerData) {
+                    error_log("AI COMPLETE: Got manufacturer data for {$sku} (" . strlen($manufacturerData) . " chars)");
+                }
+            } catch (\Throwable $e) {
+                error_log("AI COMPLETE: Manufacturer lookup failed for {$sku}: " . $e->getMessage());
+            }
+        }
+
         // STEP 2: Ask AI to write content FOR the identified product
         $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store.\n\n";
 
@@ -676,6 +1109,11 @@ class OpenAIService
             }
             $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is CORRECT. ";
             $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number or brand. ***\n";
+            if ($manufacturerData) {
+                $prompt .= "\nMANUFACTURER PAGE DATA (real specs from the official product page - USE THESE for accurate specifications, descriptions, and technical details):\n";
+                $prompt .= "---\n{$manufacturerData}\n---\n";
+                $prompt .= "IMPORTANT: Base your specifications and description on the REAL data above. Do NOT guess specs when manufacturer data is available.\n";
+            }
         } else {
             // Pattern NOT matched - ask AI to IDENTIFY the product from the SKU
             $prompt .= "IDENTIFY this product from its SKU and write a COMPLETE product listing.\n\n";
@@ -714,38 +1152,52 @@ class OpenAIService
             $prompt .= "   BAD: 'Asus Graphics Cards Nvidia' (too generic!)\n";
             $prompt .= "   BAD: 'GT710-SL-2GD5-BRK-EVO' (raw SKU!)\n";
             $prompt .= "7. NEVER return a generic category name as the product name. Every product has a SPECIFIC model. ***\n";
+            if ($manufacturerData) {
+                $prompt .= "\nMANUFACTURER PAGE DATA (real specs from the official product page - USE THESE for accurate identification and specifications):\n";
+                $prompt .= "---\n{$manufacturerData}\n---\n";
+                $prompt .= "IMPORTANT: Use the manufacturer data above to identify the product name AND extract real specifications. Do NOT guess when this data is available.\n";
+            }
         }
 
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
         $prompt .= "{\n";
         $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
         $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four. Each point is a key spec or selling feature (max 20 words each). No intro text before bullets. Focus on specs: memory, interface, connectivity, power.\n";
-        $prompt .= "  \"description\": \"...\",         // DETAILED product description to HELP CUSTOMERS BUY. NO HTML TAGS. Use PLAIN TEXT with newlines (\\n). Must be 250-400 words. DO NOT repeat the short_description bullet points. Structure:\\n\\n";
-        $prompt .= "    Paragraph 1: Opening hook - What is this product and who is it for? Why should someone buy it? (3-4 sentences)\\n\\n";
-        $prompt .= "    Paragraph 2: Deep dive into what makes this product stand out from competitors. Talk about the technology, architecture, build quality, cooling solution, or design. Be SPECIFIC with real technical details - not vague marketing speak. (4-5 sentences)\\n\\n";
-        $prompt .= "    Paragraph 3: Real-world performance and use cases. What can the customer actually DO with this product? Gaming at what resolution/FPS? Content creation workflows? Everyday tasks? Give concrete examples that help the buyer picture using it. (3-4 sentences)\\n\\n";
-        $prompt .= "    Paragraph 4: Connectivity, compatibility, and practical details. What ports/slots/interfaces does it have? What systems is it compatible with? Any special requirements (PSU, case size, motherboard)? Installation considerations. (3-4 sentences)\\n\\n";
-        $prompt .= "    Paragraph 5: Closing - Summarize why this is a smart purchase. Include warranty/reliability note. End with a confident recommendation for the target buyer. (2-3 sentences)\\n\\n";
+        $prompt .= "  \"description\": \"...\",         // DETAILED product description in HTML format. Must be 250-400 words. DO NOT repeat short_description bullet points. Structure with these HTML sections:\\n\\n";
+        $prompt .= "    <h3>section title</h3> followed by <p>paragraph text</p> for each section. Use EXACTLY this structure:\\n\\n";
+        $prompt .= "    <h3>A compelling opening title about the product</h3>\\n<p>Opening hook - What is this product and who is it for? Why should someone buy it? (3-4 sentences)</p>\\n\\n";
+        $prompt .= "    <h3>A title about performance/technology/what makes it special</h3>\\n<p>Deep dive into what makes this product stand out. Technology, architecture, build quality, cooling. Be SPECIFIC with real technical details. (4-5 sentences)</p>\\n\\n";
+        $prompt .= "    <h3>A title about real-world usage and experience</h3>\\n<p>Real-world performance and use cases. What can the customer DO with this? Gaming, content creation, everyday tasks? Give concrete examples. (3-4 sentences)</p>\\n\\n";
+        $prompt .= "    <h3>A title about connectivity/compatibility</h3>\\n<p>Ports, interfaces, compatibility, system requirements, installation considerations. (3-4 sentences)</p>\\n\\n";
+        $prompt .= "    <h3>A closing title about value/recommendation</h3>\\n<p>Summarize why this is a smart purchase. Warranty/reliability note. Confident recommendation. (2-3 sentences)</p>\\n\\n";
         $prompt .= "    IMPORTANT RULES FOR DESCRIPTION:\\n";
         $prompt .= "    - Write in a knowledgeable, helpful tone like an expert advisor helping a customer choose\\n";
         $prompt .= "    - Use REAL technical details from the supplier info and specs - never make up performance numbers\\n";
-        $prompt .= "    - NO bullet points or feature lists in the description - that is what short_description is for\\n";
-        $prompt .= "    - NO headings with symbols (★ ✓ ⚡ 📦) - write flowing paragraphs\\n";
-        $prompt .= "    - NO HTML tags whatsoever - plain text with \\n for paragraph breaks\\n";
-        $prompt .= "    - Separate paragraphs with \\n\\n (double newline)\\n\n";
+        $prompt .= "    - Use ONLY <h3> and <p> tags. NO other HTML tags (no <ul>, <li>, <strong>, <br>, <div>, etc.)\\n";
+        $prompt .= "    - Each <h3> heading must be SHORT (3-7 words), SPECIFIC to this product, and NOT generic (e.g. 'Blazing 4K Gaming Performance' not 'Performance')\\n";
+        $prompt .= "    - NO emoji, NO symbols (★ ✓ ⚡ 📦) anywhere in the description\\n";
+        $prompt .= "    - NO bullet points in paragraphs - write flowing prose only\\n";
+        $prompt .= "    - The description value must be a single string with HTML tags inside it\\n\n";
         $prompt .= "  \"meta_title\": \"...\",          // Max 70 chars, SEO optimized\n";
         $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
         $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
-        $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 5 real specs\n";
+        $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 8 real specs. Include ALL specs from supplier info. Common specs: Chipset, Memory Size, Memory Type, Interface, Clock Speed, TDP/Power, Cores/Threads, Socket, Form Factor, Connectivity, Dimensions, etc.\n";
         $prompt .= "  \"suggested_category\": \"...\",  // Best category\n";
         $prompt .= "  \"brand\": \"{$verifiedBrand}\",\n";
-        $prompt .= "  \"weight\": 0.5                  // Estimated weight in kg\n";
+        $prompt .= "  \"weight\": 0.5,                 // Estimated product weight in kg (just the product, with retail packaging)\n";
+        $prompt .= "  \"length\": 30.0,                // Estimated package length in cm\n";
+        $prompt .= "  \"width\": 20.0,                 // Estimated package width in cm\n";
+        $prompt .= "  \"height\": 10.0,                // Estimated package height in cm\n";
+        $prompt .= "  \"is_new\": false                 // true ONLY if this is a current-generation product released within the last 12 months (e.g. RTX 50-series, Intel 15th gen, AMD 9000-series, DDR5 latest). false for older/established products.\n";
         $prompt .= "}\n";
         $prompt .= "\nRules: All prices in ZAR (R). Write for a South African premium online store. Include REAL specs from supplier info.\n";
         $prompt .= "CRITICAL FORMAT RULES:\n";
         $prompt .= "- short_description: EXACTLY 4 bullet points using • character, separated by \\n. Specs only. No prose.\n";
-        $prompt .= "- description: 250-400 words of flowing paragraphs (NO bullet points, NO headings, NO symbols). Separated by \\n\\n. Write like an expert helping someone decide to buy. Must be DIFFERENT content from short_description - do NOT repeat the same points.\n";
-        $prompt .= "- description MUST NOT contain any bullet points (•), checkmarks (✓), stars (★), or section headings. Only paragraphs.\n";
+        $prompt .= "- description: 250-400 words of HTML using ONLY <h3> and <p> tags. 5 sections, each with <h3>short heading</h3> then <p>paragraph</p>. Write like an expert helping someone decide to buy. Must be DIFFERENT content from short_description.\n";
+        $prompt .= "- description headings (<h3>) must be SHORT (3-7 words), creative, and specific to THIS product. NOT generic like 'Overview' or 'Performance'.\n";
+        $prompt .= "- description MUST NOT contain any bullet points (•), checkmarks (✓), stars (★), emoji, or symbols. Only <h3> and <p> tags with flowing text.\n";
+        $prompt .= "- specifications: Include ALL technical specs you can determine from the supplier info and SKU. Parse memory size, memory type, interface, bus width, clock speeds, TDP, cores/threads, socket type, ports, etc. from the supplier text. Minimum 8 specs for recognized products.\n";
+        $prompt .= "- weight/length/width/height: Estimate realistic shipping dimensions based on the product type. GPUs are typically 35x15x6cm, CPUs 13x13x8cm, RAM 22x14x4cm, SSDs 15x10x3cm. Use your knowledge of real product dimensions.\n";
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
@@ -755,7 +1207,7 @@ class OpenAIService
                     ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given.'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => 2500,
+                'max_tokens' => 4000,
                 'temperature' => 0.3,
             ]);
 
@@ -807,6 +1259,10 @@ class OpenAIService
                 'suggested_category' => $data['suggested_category'] ?? $verifiedCategory,
                 'brand' => $verifiedBrand,
                 'weight' => null,
+                'length' => null,
+                'width' => null,
+                'height' => null,
+                'is_new' => false,
                 'is_taxable' => true,
             ], $data);
 
@@ -1008,6 +1464,10 @@ class OpenAIService
                 'suggested_category' => $category,
                 'brand' => $brand,
                 'weight' => null,
+                'length' => null,
+                'width' => null,
+                'height' => null,
+                'is_new' => false,
                 'is_taxable' => true,
             ],
         ];

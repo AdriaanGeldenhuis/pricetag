@@ -604,8 +604,43 @@ class OpenAIService
             }
         }
 
-        // Final fallback name: use existing name if available, otherwise the SKU
-        $productName = $recognized ? $verifiedName : ($existingName ?: $sku);
+        // Extract product name from short description when pattern matching failed
+        // Supplier short descriptions contain the real product name, separated by ";" or "/"
+        // e.g. "GIGABYTE nVidia GeForce RTX 5090 GAMING OC - 32GB GDDR7; 512-Bit Memory Bus; ..."
+        // e.g. "ASUS Graphics Card/NVIDIA/PCIe2.0/2GB GDDR5/1xHDMI/1xD-Sub/1xDVI/300w/ 17x6.9x3.9cm."
+        $nameFromDesc = '';
+        if (!$recognized && !empty($shortDescription)) {
+            // Split on common supplier separators: semicolons or forward slashes
+            if (strpos($shortDescription, ';') !== false) {
+                $extractedName = trim(explode(';', $shortDescription)[0]);
+            } elseif (strpos($shortDescription, '/') !== false) {
+                $extractedName = trim(explode('/', $shortDescription)[0]);
+            } else {
+                $extractedName = trim($shortDescription);
+            }
+            // Clean up: remove trailing dots, dashes, and extra whitespace
+            $extractedName = rtrim($extractedName, ' .-');
+            if (!empty($extractedName) && strlen($extractedName) > 5 && strlen($extractedName) < 200) {
+                $nameFromDesc = $extractedName;
+                // Try to extract brand from the beginning of the name
+                if (empty($verifiedBrand)) {
+                    $firstWord = explode(' ', $extractedName)[0];
+                    $knownBrands = ['ASUS', 'Gigabyte', 'GIGABYTE', 'MSI', 'EVGA', 'Zotac', 'Corsair', 'Samsung',
+                        'Kingston', 'Seagate', 'Intel', 'AMD', 'Logitech', 'Razer', 'HyperX', 'Crucial',
+                        'Western', 'SanDisk', 'Thermaltake', 'Cooler', 'NZXT', 'be', 'Sapphire', 'XFX',
+                        'PowerColor', 'ASRock', 'Biostar', 'PNY', 'Palit', 'Gainward', 'Inno3D'];
+                    foreach ($knownBrands as $kb) {
+                        if (strcasecmp($firstWord, $kb) === 0) {
+                            $verifiedBrand = $kb;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Final product name: pattern match → extracted from description → existing name → SKU
+        $productName = $recognized ? $verifiedName : ($nameFromDesc ?: ($existingName ?: $sku));
 
         // If pattern recognized the product model but not the brand, prepend context brand
         // Also check the name doesn't already contain the brand to avoid duplication
@@ -623,9 +658,9 @@ class OpenAIService
         // STEP 2: Ask AI to write content FOR the identified product
         $prompt = "You are a senior e-commerce product specialist for Pricetag.co.za, a South African online store.\n\n";
 
-        if ($recognized) {
-            // Pattern matched - we know the product, lock in the name
-            $prompt .= "Write a COMPLETE product listing for the following VERIFIED product:\n\n";
+        if ($recognized || !empty($nameFromDesc)) {
+            // We have a known product name (from pattern or short description) - write content for it
+            $prompt .= "Write a COMPLETE product listing for the following product:\n\n";
             $prompt .= "PRODUCT NAME: {$productName}\n";
             $prompt .= "SKU: {$sku}\n";
             $prompt .= "BRAND: {$verifiedBrand}\n";
@@ -639,8 +674,8 @@ class OpenAIService
             if ($price > 0) {
                 $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
             }
-            $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is VERIFIED and CORRECT. ";
-            $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number. ***\n";
+            $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is CORRECT. ";
+            $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number or brand. ***\n";
         } else {
             // Pattern NOT matched - ask AI to IDENTIFY the product from the SKU
             $prompt .= "IDENTIFY this product from its SKU and write a COMPLETE product listing.\n\n";
@@ -739,13 +774,17 @@ class OpenAIService
             }
 
             // STEP 3: Enforce identity based on recognition status
-            if ($recognized) {
-                // Pattern matched - FORCE the verified name, discard AI name
+            if ($recognized || !empty($nameFromDesc)) {
+                // We have a known name (from pattern or short description) - FORCE it
                 $data['name'] = $productName;
-                $data['brand'] = $verifiedBrand;
-                $data['suggested_category'] = $verifiedCategory;
+                if (!empty($verifiedBrand)) {
+                    $data['brand'] = $verifiedBrand;
+                }
+                if ($verifiedCategory !== 'Electronics') {
+                    $data['suggested_category'] = $verifiedCategory;
+                }
             } else {
-                // Pattern NOT matched - TRUST the AI name (it was asked to identify)
+                // No name at all - TRUST the AI name (it was asked to identify)
                 // But validate: never allow the raw SKU as the name
                 $aiName = $data['name'] ?? '';
                 if (empty($aiName) || $aiName === $sku || $aiName === $cleanSku) {

@@ -2203,7 +2203,8 @@ class ProductController extends Controller
                         if (!empty($aiData['description']) && (empty($productData['description']) || strlen($productData['description']) < 50)) {
                             $productData['description'] = $aiData['description'];
                         }
-                        if (!empty($aiData['short_description']) && empty($productData['short_description'])) {
+                        // Always use AI short_description (bullet points) over raw supplier text
+                        if (!empty($aiData['short_description'])) {
                             $productData['short_description'] = $aiData['short_description'];
                         }
 

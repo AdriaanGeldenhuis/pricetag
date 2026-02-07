@@ -2192,11 +2192,10 @@ class ProductController extends Controller
                         $aiData = $aiResult['data'];
                         error_log("AI Import (complete) for SKU {$sku}: name=" . ($aiData['name'] ?? 'N/A'));
 
-                        // Apply AI-generated name - ALWAYS use AI name if current name is empty or is raw SKU
+                        // Always use AI-generated name - it's derived from SKU pattern matching
+                        // and short description parsing, so it's more accurate than generic CSV names
                         if (!empty($aiData['name']) && strcasecmp($aiData['name'], $sku) !== 0) {
-                            if (empty($productData['name']) || $productData['name'] === $sku) {
-                                $productData['name'] = $aiData['name'];
-                            }
+                            $productData['name'] = $aiData['name'];
                         }
 
                         // Apply ALL AI-generated descriptions (fill any empty fields)

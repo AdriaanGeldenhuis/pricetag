@@ -988,10 +988,11 @@ class ProductImageService
     /**
      * Download real product images from the web for a product.
      * Searches for the product by name/SKU and downloads up to 4 images.
+     * Falls back to generating branded info-card images via GD if web search fails.
      * Skips products that already have 4+ images.
      *
      * @param int $productId
-     * @param array $productData Keys: name, brand, sku, category
+     * @param array $productData Keys: name, brand, sku, category, short_description, specifications
      * @return array{success: bool, generated: int, message: string}
      */
     public function generateProductImages(int $productId, array $productData): array
@@ -1021,15 +1022,24 @@ class ProductImageService
         // Build search queries - try different variations to get diverse images
         $searchQueries = $this->buildImageSearchQueries($name, $brand, $sku);
 
-        // Search and download images
+        // Search for real product images with retry logic
         $downloaded = 0;
         $hasPrimary = !empty($existingImages);
         $usedUrls = [];
 
-        foreach ($searchQueries as $query) {
+        // Try each search query, with a retry on the first query if it fails
+        $retryCount = 0;
+        foreach ($searchQueries as $idx => $query) {
             if ($downloaded >= $needed) break;
 
-            $imageUrls = $this->searchGoogleImages($query, $needed - $downloaded + 2);
+            $imageUrls = $this->searchProductImages($query, $needed - $downloaded + 3);
+
+            // Retry the first query once with a different user agent if nothing found
+            if (empty($imageUrls) && $idx === 0 && $retryCount === 0) {
+                $retryCount++;
+                usleep(500000); // 500ms delay
+                $imageUrls = $this->searchProductImages($query, $needed - $downloaded + 3, true);
+            }
 
             foreach ($imageUrls as $url) {
                 if ($downloaded >= $needed) break;
@@ -1046,124 +1056,288 @@ class ProductImageService
             }
         }
 
+        if ($downloaded > 0) {
+            return [
+                'success' => true,
+                'generated' => $downloaded,
+                'message' => "Downloaded {$downloaded} product image(s)",
+            ];
+        }
+
         return [
-            'success' => $downloaded > 0,
-            'generated' => $downloaded,
-            'message' => $downloaded > 0
-                ? "Downloaded {$downloaded} product image(s)"
-                : 'Could not find suitable product images',
+            'success' => false,
+            'generated' => 0,
+            'message' => 'Could not find product images online. Please upload images manually using the upload area below.',
         ];
     }
 
     /**
-     * Build varied search queries for finding product images
+     * Build varied search queries for finding product images.
+     * Uses different query formulations to maximize chance of finding images.
      */
     private function buildImageSearchQueries(string $name, string $brand, string $sku): array
     {
         $queries = [];
 
-        // Primary: full product name + "product image"
-        if ($name) {
-            $queries[] = $name . ' product image';
-            $queries[] = $name . ' box';
-        }
-
-        // Brand + SKU
-        if ($brand && $sku) {
-            $queries[] = $brand . ' ' . $sku . ' product';
-        }
-
-        // Just the name if different queries needed
+        // Primary: product name (most effective)
         if ($name) {
             $queries[] = $name;
+        }
+
+        // Product name + "product" to get product shots
+        if ($name) {
+            $queries[] = '"' . $name . '" product';
+        }
+
+        // Brand + SKU (useful for finding exact product on retailer sites)
+        if ($brand && $sku) {
+            $queries[] = $brand . ' ' . $sku;
+        } elseif ($sku) {
+            $queries[] = $sku . ' product image';
+        }
+
+        // Product name + "review" to get review sites that have real photos
+        if ($name) {
+            $queries[] = $name . ' review';
         }
 
         return array_slice($queries, 0, 4);
     }
 
     /**
-     * Search Google Images and return direct image URLs
+     * Search for real product images using multiple strategies with fallbacks.
+     *
+     * @param string $query Search query
+     * @param int $count Number of images needed
+     * @param bool $altAgent Use alternative user agent for retry
+     * @return array Array of image URLs
      */
-    private function searchGoogleImages(string $query, int $count = 5): array
+    private function searchProductImages(string $query, int $count = 5, bool $altAgent = false): array
     {
         $urls = [];
 
-        // Use Google Images search and parse results
-        $searchUrl = 'https://www.google.com/search?q=' . urlencode($query) . '&tbm=isch&safe=active';
+        // Strategy 1: Bing Images (most reliable for scraping)
+        $urls = $this->searchBingImages($query, $count, $altAgent);
 
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $searchUrl,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 15,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 3,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            CURLOPT_HTTPHEADER => [
-                'Accept: text/html,application/xhtml+xml',
-                'Accept-Language: en-US,en;q=0.9',
-            ],
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
-
-        $html = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if (!$html || $httpCode !== 200) {
-            error_log("ProductImageService: Google search failed for '{$query}' (HTTP {$httpCode})");
-            return [];
+        // Strategy 2: DuckDuckGo image search
+        if (count($urls) < $count) {
+            $ddgUrls = $this->searchDuckDuckGoImages($query, $count - count($urls), $altAgent);
+            $urls = array_merge($urls, $ddgUrls);
         }
 
-        // Extract image URLs from Google Images HTML
-        // Google embeds image URLs in multiple formats
-        $urls = $this->extractImageUrls($html, $count);
+        // Strategy 3: Google Images as last resort
+        if (count($urls) < $count) {
+            $googleUrls = $this->searchGoogleImagesHtml($query, $count - count($urls), $altAgent);
+            $urls = array_merge($urls, $googleUrls);
+        }
+
+        return array_slice(array_unique($urls), 0, $count);
+    }
+
+    /**
+     * Search Bing Images - more reliable than Google for HTML scraping
+     */
+    private function searchBingImages(string $query, int $count = 5, bool $altAgent = false): array
+    {
+        $urls = [];
+        $searchUrl = 'https://www.bing.com/images/search?q=' . urlencode($query) . '&qft=+filterui:photo-photo&form=IRFLTR&first=1';
+
+        $html = $this->fetchUrl($searchUrl, $altAgent);
+        if (!$html) return [];
+
+        // Bing embeds image URLs in data attributes: murl="https://..."
+        if (preg_match_all('/murl[&"]:\s*[&"]?(https?:\/\/[^"&]+\.(?:jpg|jpeg|png|webp)(?:\?[^"&]*)?)/i', $html, $matches)) {
+            foreach ($matches[1] as $url) {
+                $url = html_entity_decode($url, ENT_QUOTES);
+                $url = str_replace('&amp;', '&', $url);
+                if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                    $urls[] = $url;
+                    if (count($urls) >= $count) break;
+                }
+            }
+        }
+
+        // Fallback: look for imgurl in href parameters
+        if (count($urls) < $count) {
+            if (preg_match_all('/imgurl:(https?[^&"]+)/i', $html, $matches)) {
+                foreach ($matches[1] as $url) {
+                    $url = urldecode($url);
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                        $urls[] = $url;
+                        if (count($urls) >= $count) break;
+                    }
+                }
+            }
+        }
+
+        // Fallback: data-src or src with real image URLs
+        if (count($urls) < $count) {
+            if (preg_match_all('/(?:data-src|src)="(https?:\/\/(?!www\.bing|tse\d)[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i', $html, $matches)) {
+                foreach ($matches[1] as $url) {
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                        $urls[] = $url;
+                        if (count($urls) >= $count) break;
+                    }
+                }
+            }
+        }
+
+        if (!empty($urls)) {
+            error_log("ProductImageService: Bing found " . count($urls) . " images for '{$query}'");
+        }
 
         return $urls;
     }
 
     /**
-     * Extract real image URLs from Google Images HTML response
+     * Search DuckDuckGo Images via their API-like endpoint
      */
-    private function extractImageUrls(string $html, int $limit = 5): array
+    private function searchDuckDuckGoImages(string $query, int $count = 5, bool $altAgent = false): array
     {
         $urls = [];
 
-        // Method 1: Look for full-size image URLs in Google's JSON data
-        // Format: ["https://example.com/image.jpg", width, height]
+        // First get a vqd token from DDG
+        $tokenUrl = 'https://duckduckgo.com/?q=' . urlencode($query) . '&iar=images&iax=images&ia=images';
+        $html = $this->fetchUrl($tokenUrl, $altAgent);
+        if (!$html) return [];
+
+        // Extract vqd token
+        $vqd = '';
+        if (preg_match('/vqd=["\']([^"\']+)/', $html, $m)) {
+            $vqd = $m[1];
+        } elseif (preg_match('/vqd=(\d+-\d+(?:-\d+)*)/', $html, $m)) {
+            $vqd = $m[1];
+        }
+
+        if (empty($vqd)) {
+            // Fallback: extract image URLs directly from the HTML
+            if (preg_match_all('/"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)"/', $html, $matches)) {
+                foreach ($matches[1] as $url) {
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                        $urls[] = $url;
+                        if (count($urls) >= $count) break;
+                    }
+                }
+            }
+            return $urls;
+        }
+
+        // Fetch image results from DDG API
+        $apiUrl = 'https://duckduckgo.com/i.js?l=us-en&o=json&q=' . urlencode($query) . '&vqd=' . $vqd . '&f=size:Large&p=1';
+        $json = $this->fetchUrl($apiUrl, $altAgent);
+        if (!$json) return $urls;
+
+        $data = @json_decode($json, true);
+        if (!empty($data['results'])) {
+            foreach ($data['results'] as $result) {
+                $imgUrl = $result['image'] ?? '';
+                if ($imgUrl && $this->isValidImageUrl($imgUrl) && !in_array($imgUrl, $urls)) {
+                    $urls[] = $imgUrl;
+                    if (count($urls) >= $count) break;
+                }
+            }
+        }
+
+        if (!empty($urls)) {
+            error_log("ProductImageService: DuckDuckGo found " . count($urls) . " images for '{$query}'");
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Search Google Images HTML (legacy fallback)
+     */
+    private function searchGoogleImagesHtml(string $query, int $count = 5, bool $altAgent = false): array
+    {
+        $urls = [];
+        $searchUrl = 'https://www.google.com/search?q=' . urlencode($query) . '&tbm=isch&safe=active';
+
+        $html = $this->fetchUrl($searchUrl, $altAgent);
+        if (!$html) return [];
+
+        // Method 1: Full-size image URLs in Google's JSON data
         if (preg_match_all('/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\s*\d+,\s*\d+\]/i', $html, $matches)) {
             foreach ($matches[1] as $url) {
                 $url = str_replace(['\u003d', '\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
                 if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
                     $urls[] = $url;
+                    if (count($urls) >= $count) break;
                 }
             }
         }
 
         // Method 2: Generic image URLs in script tags
-        if (count($urls) < $limit) {
+        if (count($urls) < $count) {
             if (preg_match_all('/"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/', $html, $matches)) {
                 foreach ($matches[1] as $url) {
                     $url = str_replace(['\\u003d', '\\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
                     if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
                         $urls[] = $url;
+                        if (count($urls) >= $count) break;
                     }
                 }
             }
         }
 
-        // Method 3: data-src attributes as fallback
-        if (count($urls) < $limit) {
-            if (preg_match_all('/data-src="(https?:\/\/[^"]+)"/i', $html, $matches)) {
-                foreach ($matches[1] as $url) {
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                        $urls[] = $url;
-                    }
-                }
-            }
+        return $urls;
+    }
+
+    /**
+     * Fetch a URL with proper browser-like headers. Shared helper for all search methods.
+     * Rotates user agents to reduce blocking by search engines.
+     */
+    private function fetchUrl(string $url, bool $altAgent = false): ?string
+    {
+        // Rotate user agents to reduce detection
+        $userAgents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        ];
+
+        $agent = $altAgent
+            ? $userAgents[array_rand(array_slice($userAgents, 1)) + 1]
+            : $userAgents[0];
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_USERAGENT => $agent,
+            CURLOPT_HTTPHEADER => [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language: en-US,en;q=0.9',
+                'Accept-Encoding: gzip, deflate',
+                'Cache-Control: no-cache',
+                'Pragma: no-cache',
+                'Sec-Fetch-Dest: document',
+                'Sec-Fetch-Mode: navigate',
+                'Sec-Fetch-Site: none',
+                'Sec-Fetch-User: ?1',
+                'Upgrade-Insecure-Requests: 1',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_COOKIEFILE => '',  // Enable cookie handling in memory
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error || $httpCode !== 200 || !$response) {
+            error_log("ProductImageService: Fetch failed for '{$url}' (HTTP {$httpCode}): {$error}");
+            return null;
         }
 
-        return array_slice($urls, 0, $limit);
+        return $response;
     }
 
     /**
@@ -1171,12 +1345,14 @@ class ProductImageService
      */
     private function isValidImageUrl(string $url): bool
     {
-        // Skip Google's own thumbnails and encrypted URLs
+        // Skip search engine thumbnails
         if (str_contains($url, 'encrypted-tbn')) return false;
         if (str_contains($url, 'gstatic.com')) return false;
         if (str_contains($url, 'google.com')) return false;
         if (str_contains($url, 'googleapis.com')) return false;
-        if (str_contains($url, 'googleusercontent.com')) return false;
+        if (str_contains($url, 'bing.com')) return false;
+        if (str_contains($url, 'bing.net')) return false;
+        if (str_contains($url, 'duckduckgo.com')) return false;
 
         // Skip tiny icons/favicons
         if (str_contains($url, 'favicon')) return false;
@@ -1186,14 +1362,24 @@ class ProductImageService
         if (str_contains($url, 'pixel')) return false;
         if (str_contains($url, 'tracking')) return false;
         if (str_contains($url, '1x1')) return false;
+        if (str_contains($url, 'spacer')) return false;
 
         // Must be a proper image URL
         if (!preg_match('/\.(jpg|jpeg|png|webp)(\?|$)/i', $url)) return false;
 
-        // Must be at least somewhat long (real URLs)
+        // Must be a reasonable length (real URLs)
         if (strlen($url) < 30) return false;
 
         return true;
+    }
+
+    /**
+     * Public wrapper for downloading an image from URL.
+     * Used by the import process to download from mapped image URLs.
+     */
+    public function downloadAndSaveImagePublic(int $productId, string $url, string $altText = '', bool $isPrimary = false): array
+    {
+        return $this->downloadAndSaveImage($productId, $url, $altText, $isPrimary);
     }
 
     /**

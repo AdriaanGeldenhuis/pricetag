@@ -695,11 +695,11 @@
                         <p>Continue importing even if some rows fail</p>
                     </div>
                 </label>
-                <label class="import-option">
+                <label class="import-option" style="border: 1px solid rgba(139, 92, 246, 0.4); background: rgba(139, 92, 246, 0.08);">
                     <input type="checkbox" id="aiGenerate">
                     <div class="import-option-content">
-                        <h5>AI Generate Missing Data</h5>
-                        <p>Use AI to fill in empty fields</p>
+                        <h5 style="color: #a78bfa;">AI Generate Missing Data</h5>
+                        <p>Fill ALL empty fields: names, descriptions, SEO, specs, categories, brand, weight, and product images. Only SKU is required.</p>
                     </div>
                 </label>
             </div>
@@ -1148,8 +1148,9 @@ document.addEventListener('DOMContentLoaded', function() {
     clearMappingBtn.addEventListener('click', clearAllMappings);
 
     function checkMappingComplete() {
-        // Check if required fields are mapped
-        const requiredFields = ['sku', 'name', 'price'];
+        // When AI is enabled, only SKU is required - AI fills everything else
+        const aiEnabled = document.getElementById('aiGenerate').checked;
+        const requiredFields = aiEnabled ? ['sku'] : ['sku', 'name', 'price'];
         const allMapped = requiredFields.every(f => columnMapping[f]);
 
         if (allMapped) {
@@ -1191,6 +1192,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
+    });
+
+    // AI Generate checkbox - re-check required mappings when toggled
+    document.getElementById('aiGenerate').addEventListener('change', () => {
+        checkMappingComplete();
     });
 
     // AI Generate buttons

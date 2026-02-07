@@ -163,6 +163,24 @@ set_exception_handler(function (Throwable $e) {
 
     error_log($message, 3, $logFile);
 
+    // Detect AJAX/JSON requests - return JSON error instead of HTML
+    $isAjax = (
+        (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+        || (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'))
+    );
+
+    if ($isAjax) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Internal server error',
+            'message' => env('APP_DEBUG', false) ? $e->getMessage() : 'Something went wrong. Please try again.',
+        ]);
+        exit(1);
+    }
+
     if (env('APP_DEBUG', false)) {
         echo '<h1>Error</h1>';
         echo '<pre>' . htmlspecialchars($message) . '</pre>';

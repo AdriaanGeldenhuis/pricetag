@@ -1079,7 +1079,14 @@ class ProductImageService
     {
         $queries = [];
 
-        // Primary: product name (most effective)
+        // Primary: Brand + SKU (most precise - finds exact product on retailer sites)
+        if ($brand && $sku) {
+            $queries[] = $brand . ' ' . $sku;
+        } elseif ($sku) {
+            $queries[] = $sku . ' product image';
+        }
+
+        // Product name (effective when name is properly identified)
         if ($name) {
             $queries[] = $name;
         }
@@ -1087,13 +1094,6 @@ class ProductImageService
         // Product name + "product" to get product shots
         if ($name) {
             $queries[] = '"' . $name . '" product';
-        }
-
-        // Brand + SKU (useful for finding exact product on retailer sites)
-        if ($brand && $sku) {
-            $queries[] = $brand . ' ' . $sku;
-        } elseif ($sku) {
-            $queries[] = $sku . ' product image';
         }
 
         // Product name + "review" to get review sites that have real photos

@@ -382,28 +382,6 @@ class OpenAIService
             $description = "AMD processor. SKU: {$sku}";
         }
 
-        // ---- NVIDIA GPUs ----
-        elseif (preg_match('/(RTX|GTX)\s*(\d{4})\s*(Ti|SUPER)?/i', $sku, $m)) {
-            $brand = 'NVIDIA';
-            $series = strtoupper($m[1]); $model = $m[2];
-            $variant = isset($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
-            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
-            $category = 'Graphics Cards';
-            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
-            $description = "The {$name} delivers outstanding performance for gaming, streaming, and creative applications. Features ray tracing and DLSS support.";
-        }
-
-        // ---- AMD GPUs ----
-        elseif (preg_match('/RX\s*(\d{4})\s*(XT|XTX)?/i', $sku, $m)) {
-            $brand = 'AMD';
-            $model = $m[1];
-            $variant = isset($m[2]) ? ' ' . strtoupper($m[2]) : '';
-            $name = "AMD Radeon RX {$model}{$variant}";
-            $category = 'Graphics Cards';
-            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
-            $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
-        }
-
         // ---- GIGABYTE NVIDIA GPUs: GV-N{model}{variant}-{memory}GD ----
         // e.g. GV-N5090GAMING OC-32GD -> Gigabyte GeForce RTX 5090 Gaming OC 32GB
         // e.g. GV-N4070EAGLE OC-12GD -> Gigabyte GeForce RTX 4070 Eagle OC 12GB
@@ -437,8 +415,8 @@ class OpenAIService
             $description = "The {$name} graphics card delivers outstanding gaming performance. Built with Gigabyte's advanced cooling for optimal thermals.";
         }
 
-        // ---- ASUS GPUs: ROG-STRIX-RTX5090-O32G, TUF-RTX4070TI-O12G, DUAL-RTX4060-O8G ----
-        elseif (preg_match('/^(ROG[- ]?STRIX|TUF|DUAL|PRIME|PROART)[- ]?(RTX|GTX|RX)\s*(\d{4})\s*(Ti|SUPER|XT|XTX)?[- ]?O?(\d+)G/i', $cleanSku, $m)) {
+        // ---- ASUS GPUs (Premium lines): ROG-STRIX-RTX5090-O32G, TUF-RTX4070TI-O12G, DUAL-RTX4060-O8G ----
+        elseif (preg_match('/^(ROG[- ]?STRIX|TUF|DUAL|PRIME|PROART)[- ]?(RTX|GTX|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?[- ]?O?(\d+)G/i', $cleanSku, $m)) {
             $brand = 'ASUS';
             $line = str_replace('-', ' ', strtoupper($m[1])); // ROG STRIX, TUF, DUAL
             $series = strtoupper($m[2]); // RTX, GTX, RX
@@ -453,8 +431,31 @@ class OpenAIService
             $description = "The {$name} features ASUS's premium {$line} design with advanced cooling and factory overclocking. Delivers exceptional performance for 4K gaming and content creation.";
         }
 
+        // ---- ASUS GPUs (Standard/Budget): GT710-SL-2GD5-BRK-EVO, PH-GTX1650-O4G, EX-RX570-O4G ----
+        // Matches: GT(X){model}-{variant}-{mem}GD{ver} or PH/EX-{series}{model}-{mem}G
+        elseif (preg_match('/^(?:(?:(PH|EX|Phoenix)[- ]?)?(GT|GTX|RTX|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?[- ]).*?(\d+)GD?\d?/i', $cleanSku, $m)) {
+            $brand = 'ASUS';
+            $linePart = !empty($m[1]) ? strtoupper($m[1]) : '';
+            $series = strtoupper($m[2]); // GT, GTX, RTX, RX
+            $gpuModel = $m[3]; // 710, 1030, 1650, etc.
+            $variant = !empty($m[4]) ? ' ' . ucfirst(strtolower($m[4])) : '';
+            $memory = $m[5];
+
+            $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
+            $lineName = '';
+            if ($linePart === 'PH' || $linePart === 'PHOENIX') {
+                $lineName = 'Phoenix ';
+            } elseif ($linePart === 'EX') {
+                $lineName = '';
+            }
+            $name = "ASUS {$lineName}{$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB";
+            $category = 'Graphics Cards';
+            $shortDesc = "ASUS {$lineName}{$gpuBrand} {$series} {$gpuModel}{$variant} with {$memory}GB memory. Reliable graphics solution.";
+            $description = "The {$name} is a reliable ASUS graphics card designed for everyday computing, multimedia, and light gaming. Features ASUS quality components and build quality.";
+        }
+
         // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI RTX 4070 VENTUS 3X OC 12G ----
-        elseif (preg_match('/^MSI\s*(RTX|GTX|RX)\s*(\d{4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
+        elseif (preg_match('/^MSI\s*(RTX|GTX|GT|RX)\s*(\d{3,4})\s*(Ti|SUPER|XT|XTX)?\s*([A-Z\s]+?)\s*(\d+)G/i', $cleanSku, $m)) {
             $brand = 'MSI';
             $series = strtoupper($m[1]);
             $gpuModel = $m[2];
@@ -486,6 +487,28 @@ class OpenAIService
             $category = 'Graphics Cards';
             $shortDesc = "Zotac Gaming graphics card for gaming performance.";
             $description = "Zotac Gaming graphics card. SKU: {$sku}. Compact design with efficient cooling.";
+        }
+
+        // ---- NVIDIA GPUs (generic catch-all, after manufacturer-specific patterns) ----
+        elseif (preg_match('/(RTX|GTX|GT)\s*(\d{3,4})\s*(Ti|SUPER)?/i', $sku, $m)) {
+            $brand = 'NVIDIA';
+            $series = strtoupper($m[1]); $model = $m[2];
+            $variant = isset($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
+            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
+            $description = "The {$name} delivers outstanding performance for gaming, streaming, and creative applications. Features ray tracing and DLSS support.";
+        }
+
+        // ---- AMD GPUs (generic catch-all, after manufacturer-specific patterns) ----
+        elseif (preg_match('/RX\s*(\d{3,4})\s*(XT|XTX)?/i', $sku, $m)) {
+            $brand = 'AMD';
+            $model = $m[1];
+            $variant = isset($m[2]) ? ' ' . strtoupper($m[2]) : '';
+            $name = "AMD Radeon RX {$model}{$variant}";
+            $category = 'Graphics Cards';
+            $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
+            $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
         }
 
         // ---- CORSAIR products: CMx/CMK (RAM), RM/HX/AX (PSU), etc. ----

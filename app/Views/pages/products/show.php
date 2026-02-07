@@ -380,7 +380,11 @@
                 <div class="pt-tab-panel is-active" id="pt-tab-description" role="tabpanel">
                     <?php if ($product->description): ?>
                     <div class="pt-prose">
-                        <?= nl2br(e($product->description)) ?>
+                        <?php if (strpos($product->description, '<h3>') !== false): ?>
+                            <?= strip_tags($product->description, '<h3><p>') ?>
+                        <?php else: ?>
+                            <?= nl2br(e($product->description)) ?>
+                        <?php endif; ?>
                     </div>
                     <?php else: ?>
                     <p class="pt-empty">No description available.</p>

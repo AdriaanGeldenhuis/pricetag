@@ -174,7 +174,8 @@ class ProductApiController extends Controller
                         $stmt->execute([$category['id'], $id]);
 
                         while ($data = $stmt->fetch()) {
-                            $p = new Product($data);
+                            $p = new Product();
+                            $p->setOriginal($data);
                             $p->exists = true;
                             $related[] = $p;
                         }

@@ -700,6 +700,86 @@
   };
 
   // ==========================================================================
+  // PRODUCT CARD MENU (3-DOT)
+  // ==========================================================================
+
+  const ProductMenu = {
+    activeMenu: null,
+
+    init() {
+      // Toggle menu on 3-dot button click
+      document.addEventListener('click', (e) => {
+        const toggleBtn = e.target.closest('[data-product-menu-toggle]');
+        if (toggleBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggle(toggleBtn);
+          return;
+        }
+
+        const closeBtn = e.target.closest('[data-product-menu-close]');
+        if (closeBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeAll();
+          return;
+        }
+
+        // Clicking a dropdown item (not compare checkbox) closes menu
+        const dropdownItem = e.target.closest('.product-dropdown-item:not(.product-dropdown-compare)');
+        if (dropdownItem && dropdownItem.closest('.product-card-dropdown')) {
+          // Let the item's own handler fire, then close
+          setTimeout(() => this.closeAll(), 50);
+          return;
+        }
+
+        // Click outside closes any open menu
+        if (!e.target.closest('.product-card-menu-wrapper')) {
+          this.closeAll();
+        }
+      });
+
+      // Close on escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') this.closeAll();
+      });
+    },
+
+    toggle(btn) {
+      const wrapper = btn.closest('.product-card-menu-wrapper');
+      const dropdown = wrapper.querySelector('[data-product-dropdown]');
+      if (!dropdown) return;
+
+      const isOpen = dropdown.classList.contains('is-open');
+
+      // Close any other open menus first
+      this.closeAll();
+
+      if (!isOpen) {
+        dropdown.classList.add('is-open');
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-expanded', 'true');
+        this.activeMenu = { dropdown, btn };
+      }
+    },
+
+    closeAll() {
+      if (this.activeMenu) {
+        this.activeMenu.dropdown.classList.remove('is-open');
+        this.activeMenu.btn.classList.remove('is-active');
+        this.activeMenu.btn.setAttribute('aria-expanded', 'false');
+        this.activeMenu = null;
+      }
+      // Also close any stale open menus
+      $$('.product-card-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+      $$('.product-card-menu-btn.is-active').forEach(b => {
+        b.classList.remove('is-active');
+        b.setAttribute('aria-expanded', 'false');
+      });
+    },
+  };
+
+  // ==========================================================================
   // ADD TO CART BUTTONS
   // ==========================================================================
 
@@ -1145,6 +1225,7 @@
     MobileMenu.init();
     CartDrawer.init();
     Search.init();
+    ProductMenu.init();
     AddToCart.init();
     Wishlist.init();
     QuickView.init();

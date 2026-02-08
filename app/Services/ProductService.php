@@ -191,7 +191,11 @@ class ProductService
                 $stmt = $this->db->prepare("UPDATE products SET status = 'deleted', deleted_at = NOW() WHERE id = ?");
                 $result = $stmt->execute([$id]);
             } else {
-                // Hard delete - remove product and related data
+                // Hard delete - delete image files from disk before removing DB records
+                $imageService = new ProductImageService();
+                $imageService->deleteAllProductImages($id);
+
+                // Remove remaining related data (categories, attributes, specs, variants, reviews)
                 $this->deleteProductRelatedData($id);
                 $result = $product->delete();
             }
@@ -472,8 +476,10 @@ class ProductService
                 $stmt = $this->db->prepare($sql);
                 $stmt->execute($ids);
             } else {
-                // Delete related data first
+                // Delete image files from disk + related data for each product
+                $imageService = new ProductImageService();
                 foreach ($ids as $id) {
+                    $imageService->deleteAllProductImages($id);
                     $this->deleteProductRelatedData($id);
                 }
 
@@ -1183,7 +1189,7 @@ class ProductService
     {
         $tables = [
             'product_categories',
-            'product_images',
+            // product_images handled by ProductImageService::deleteAllProductImages() (deletes files + DB records)
             'product_attributes',
             'product_specifications',
             'product_variants',

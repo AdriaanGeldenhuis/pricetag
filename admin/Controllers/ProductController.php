@@ -346,6 +346,10 @@ class ProductController extends Controller
         $product = Product::find((int) $id);
 
         if ($product) {
+            // Delete all product images (files from disk + DB records) before deleting product
+            $imageService = new ProductImageService();
+            $imageService->deleteAllProductImages((int) $id);
+
             $product->delete();
             flash('success', 'Product deleted');
         }

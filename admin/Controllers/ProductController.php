@@ -1272,6 +1272,12 @@ class ProductController extends Controller
             $productService->saveSpecifications($product->id, $aiData['specifications']);
         }
 
+        // Handle filterable attributes (Series, Memory Size, etc.)
+        if (!empty($aiData['attributes'])) {
+            $productService = $productService ?? ProductService::getInstance();
+            $productService->saveProductAttributes($product->id, $aiData['attributes']);
+        }
+
         // Handle category auto-assignment if product has no categories
         if (empty($categories) && !empty($aiData['suggested_category'])) {
             $productService = $productService ?? ProductService::getInstance();
@@ -2341,6 +2347,12 @@ class ProductController extends Controller
                         $productService->saveSpecifications($productId, $aiCompleteData['specifications']);
                     }
 
+                    // Save AI-generated filterable attributes (Series, Memory Size, etc.)
+                    if ($aiGenerate && !empty($aiCompleteData['attributes'])) {
+                        $productService = $productService ?? ProductService::getInstance();
+                        $productService->saveProductAttributes($productId, $aiCompleteData['attributes']);
+                    }
+
                     // Handle image: download from mapped URL first, then AI search for remaining
                     $this->importHandleImages($productId, $productData, $brandValue, $aiCompleteData, $row['image'] ?? '', $aiGenerate);
                 }
@@ -2369,6 +2381,11 @@ class ProductController extends Controller
                         // Save specs if product has none
                         if (!empty($aiCompleteData['specifications'])) {
                             $productService->saveSpecifications($existingId, $aiCompleteData['specifications']);
+                        }
+
+                        // Save filterable attributes if product has none
+                        if (!empty($aiCompleteData['attributes'])) {
+                            $productService->saveProductAttributes($existingId, $aiCompleteData['attributes']);
                         }
 
                         // Handle images for existing products too

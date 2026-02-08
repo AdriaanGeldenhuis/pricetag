@@ -231,6 +231,115 @@ class OpenAIService
     }
 
     // =========================================================================
+    // CATEGORY ATTRIBUTES - defines filterable attributes per product category
+    // =========================================================================
+
+    /**
+     * Category-to-attributes mapping.
+     * Defines which filterable attributes should be generated for each product category.
+     * Keys = category name patterns (matched case-insensitively).
+     * Values = array of attribute names the AI must populate.
+     */
+    private const CATEGORY_ATTRIBUTES = [
+        'Graphics Cards' => [
+            'Series'      => 'GPU model series (e.g. RTX 5090, RTX 4070, RX 7800 XT, GTX 1650)',
+            'Memory Size' => 'Video memory capacity (e.g. 8GB, 12GB, 16GB, 24GB, 32GB)',
+            'Memory Type' => 'Video memory technology (e.g. GDDR5, GDDR6, GDDR6X, GDDR7)',
+            'GPU Brand'   => 'GPU chip manufacturer (NVIDIA or AMD)',
+        ],
+        'Processors' => [
+            'Series'      => 'CPU series (e.g. Core i9, Core i7, Core i5, Core i3, Ryzen 9, Ryzen 7, Ryzen 5, Celeron, Pentium)',
+            'Socket'      => 'CPU socket type (e.g. LGA 1700, LGA 1851, AM5, AM4)',
+            'Core Count'  => 'Number of CPU cores (e.g. 6, 8, 12, 16, 24)',
+            'Generation'  => 'Processor generation (e.g. 12th Gen, 13th Gen, 14th Gen, Zen 4, Zen 5)',
+        ],
+        'Memory' => [
+            'Capacity'    => 'Total memory capacity (e.g. 8GB, 16GB, 32GB, 64GB)',
+            'Type'        => 'Memory generation (e.g. DDR4, DDR5)',
+            'Speed'       => 'Memory clock speed (e.g. 3200MHz, 3600MHz, 5600MHz, 6000MHz)',
+            'Modules'     => 'Module configuration (e.g. 1x8GB, 2x8GB, 2x16GB)',
+        ],
+        'Storage' => [
+            'Capacity'    => 'Storage capacity (e.g. 256GB, 512GB, 1TB, 2TB, 4TB)',
+            'Type'        => 'Storage technology (e.g. NVMe SSD, SATA SSD, HDD)',
+            'Interface'   => 'Connection interface (e.g. M.2 PCIe 4.0, M.2 PCIe 5.0, SATA III, USB)',
+            'Form Factor' => 'Physical form factor (e.g. M.2 2280, 2.5-inch, 3.5-inch)',
+        ],
+        'Motherboards' => [
+            'Socket'      => 'CPU socket (e.g. LGA 1700, LGA 1851, AM5, AM4)',
+            'Chipset'     => 'Motherboard chipset (e.g. Z790, B650, X670E, B760)',
+            'Form Factor' => 'Board size (e.g. ATX, Micro-ATX, Mini-ITX, E-ATX)',
+            'Memory Type' => 'Supported memory type (e.g. DDR4, DDR5)',
+        ],
+        'Laptops' => [
+            'CPU'         => 'Processor model (e.g. Intel Core i7-13700H, AMD Ryzen 7 7840HS)',
+            'GPU'         => 'Graphics card (e.g. RTX 4060, Integrated, Radeon 780M)',
+            'RAM'         => 'Installed memory (e.g. 8GB, 16GB, 32GB)',
+            'Screen Size' => 'Display size in inches (e.g. 14-inch, 15.6-inch, 16-inch)',
+            'Storage'     => 'Storage capacity and type (e.g. 512GB SSD, 1TB NVMe)',
+        ],
+        'Monitors' => [
+            'Screen Size'  => 'Display diagonal in inches (e.g. 24-inch, 27-inch, 32-inch, 34-inch)',
+            'Resolution'   => 'Display resolution (e.g. 1920x1080, 2560x1440, 3840x2160)',
+            'Panel Type'   => 'Display panel technology (e.g. IPS, VA, TN, OLED)',
+            'Refresh Rate' => 'Maximum refresh rate (e.g. 60Hz, 144Hz, 165Hz, 240Hz)',
+        ],
+        'Power Supplies' => [
+            'Wattage'    => 'Power output in watts (e.g. 550W, 650W, 750W, 850W, 1000W)',
+            'Efficiency' => 'Efficiency certification (e.g. 80+ Bronze, 80+ Gold, 80+ Platinum)',
+            'Modularity' => 'Cable management type (e.g. Full Modular, Semi-Modular, Non-Modular)',
+        ],
+        'Cases' => [
+            'Form Factor'  => 'Supported motherboard size (e.g. ATX, Micro-ATX, Mini-ITX)',
+            'Type'         => 'Case size category (e.g. Full Tower, Mid Tower, Mini Tower, SFF)',
+        ],
+        'Cooling' => [
+            'Type'        => 'Cooling method (e.g. Air Cooler, AIO Liquid, Custom Loop)',
+            'Socket'      => 'Compatible CPU sockets (e.g. LGA 1700, AM5, Universal)',
+            'Radiator'    => 'Radiator size for liquid coolers (e.g. 120mm, 240mm, 280mm, 360mm)',
+        ],
+        'Peripherals' => [
+            'Type'         => 'Peripheral category (e.g. Mouse, Keyboard, Headset, Webcam, Mousepad)',
+            'Connectivity' => 'Connection type (e.g. Wired, Wireless, Bluetooth, 2.4GHz)',
+        ],
+        'Networking' => [
+            'Type'  => 'Network device type (e.g. Router, Switch, Access Point, Network Card)',
+            'Speed' => 'Maximum network speed (e.g. Wi-Fi 6, Wi-Fi 7, 1Gbps, 2.5Gbps)',
+        ],
+    ];
+
+    /**
+     * Get the attributes for a given category.
+     * Matches category name loosely (contains match, case-insensitive).
+     *
+     * @return array<string, string> Attribute name => description for AI prompt
+     */
+    public function getCategoryAttributes(string $category): array
+    {
+        if (empty($category)) {
+            return [];
+        }
+
+        $categoryLower = strtolower($category);
+
+        // Try exact match first, then contains match
+        foreach (self::CATEGORY_ATTRIBUTES as $catPattern => $attrs) {
+            if (strtolower($catPattern) === $categoryLower) {
+                return $attrs;
+            }
+        }
+
+        foreach (self::CATEGORY_ATTRIBUTES as $catPattern => $attrs) {
+            if (str_contains($categoryLower, strtolower($catPattern))
+                || str_contains(strtolower($catPattern), $categoryLower)) {
+                return $attrs;
+            }
+        }
+
+        return [];
+    }
+
+    // =========================================================================
     // PRODUCT AI - IDENTIFICATION & CONTENT GENERATION
     // =========================================================================
     //
@@ -1190,6 +1299,26 @@ class OpenAIService
         $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
         $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
         $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 8 real specs. Include ALL specs from supplier info. Common specs: Chipset, Memory Size, Memory Type, Interface, Clock Speed, TDP/Power, Cores/Threads, Socket, Form Factor, Connectivity, Dimensions, etc.\n";
+
+        // Build category-specific attributes instruction
+        $categoryAttrs = $this->getCategoryAttributes($verifiedCategory);
+        if (!empty($categoryAttrs)) {
+            $attrExample = '{';
+            $attrComments = [];
+            foreach ($categoryAttrs as $attrName => $attrDesc) {
+                $attrExample .= "\"{$attrName}\": \"...\", ";
+                $attrComments[] = "    {$attrName}: {$attrDesc}";
+            }
+            $attrExample = rtrim($attrExample, ', ') . '}';
+            $prompt .= "  \"attributes\": {$attrExample},  // REQUIRED filterable attributes for this category. These are used for product filtering on the storefront. Extract accurate values from the product specs/SKU/supplier info.\n";
+            $prompt .= "    // Attribute guidelines:\n";
+            foreach ($attrComments as $comment) {
+                $prompt .= "    //{$comment}\n";
+            }
+        } else {
+            $prompt .= "  \"attributes\": {},              // Filterable attributes as {\"name\": \"value\"} pairs. Include relevant attributes like Series, Memory Size, Type, etc. based on the product category.\n";
+        }
+
         $prompt .= "  \"suggested_category\": \"...\",  // Best category\n";
         $prompt .= "  \"brand\": \"{$verifiedBrand}\",\n";
         $prompt .= "  \"weight\": 0.5,                 // Estimated product weight in kg (just the product, with retail packaging)\n";
@@ -1264,6 +1393,7 @@ class OpenAIService
                 'meta_description' => '',
                 'meta_keywords' => '',
                 'specifications' => [],
+                'attributes' => [],
                 'suggested_category' => $data['suggested_category'] ?? $verifiedCategory,
                 'brand' => $verifiedBrand,
                 'weight' => null,
@@ -1469,6 +1599,7 @@ class OpenAIService
                 'meta_description' => substr(($identity['short_description'] ?: $shortDescription) . ' Shop at Pricetag.co.za - fast delivery across South Africa.', 0, 160),
                 'meta_keywords' => implode(', ', array_filter([$brand, $category, 'buy online', 'South Africa', 'Pricetag'])),
                 'specifications' => [],
+                'attributes' => [],
                 'suggested_category' => $category,
                 'brand' => $brand,
                 'weight' => null,

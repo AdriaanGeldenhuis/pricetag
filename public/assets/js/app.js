@@ -700,6 +700,553 @@
   };
 
   // ==========================================================================
+  // PRODUCT CARD MENU (3-DOT)
+  // ==========================================================================
+
+  const ProductMenu = {
+    activeMenu: null,
+
+    init() {
+      // Toggle menu on 3-dot button click
+      document.addEventListener('click', (e) => {
+        const toggleBtn = e.target.closest('[data-product-menu-toggle]');
+        if (toggleBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggle(toggleBtn);
+          return;
+        }
+
+        const closeBtn = e.target.closest('[data-product-menu-close]');
+        if (closeBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeAll();
+          return;
+        }
+
+        // Clicking a dropdown item (not compare checkbox) closes menu
+        const dropdownItem = e.target.closest('.product-dropdown-item:not(.product-dropdown-compare)');
+        if (dropdownItem && dropdownItem.closest('.product-card-dropdown')) {
+          // Let the item's own handler fire, then close
+          setTimeout(() => this.closeAll(), 50);
+          return;
+        }
+
+        // Click outside closes any open menu
+        if (!e.target.closest('.product-card-menu-wrapper')) {
+          this.closeAll();
+        }
+      });
+
+      // Close on escape
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') this.closeAll();
+      });
+    },
+
+    toggle(btn) {
+      const wrapper = btn.closest('.product-card-menu-wrapper');
+      const dropdown = wrapper.querySelector('[data-product-dropdown]');
+      if (!dropdown) return;
+
+      const isOpen = dropdown.classList.contains('is-open');
+
+      // Close any other open menus first
+      this.closeAll();
+
+      if (!isOpen) {
+        dropdown.classList.add('is-open');
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-expanded', 'true');
+        this.activeMenu = { dropdown, btn };
+      }
+    },
+
+    closeAll() {
+      if (this.activeMenu) {
+        this.activeMenu.dropdown.classList.remove('is-open');
+        this.activeMenu.btn.classList.remove('is-active');
+        this.activeMenu.btn.setAttribute('aria-expanded', 'false');
+        this.activeMenu = null;
+      }
+      // Also close any stale open menus
+      $$('.product-card-dropdown.is-open').forEach(d => d.classList.remove('is-open'));
+      $$('.product-card-menu-btn.is-active').forEach(b => {
+        b.classList.remove('is-active');
+        b.setAttribute('aria-expanded', 'false');
+      });
+    },
+  };
+
+  // ==========================================================================
+  // SIMILAR PRODUCTS MODAL
+  // ==========================================================================
+
+  const SimilarProducts = {
+    modal: null,
+
+    init() {
+      this.createModal();
+
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-similar-products]');
+        if (!btn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        const productId = btn.dataset.similarProducts;
+        await this.open(productId);
+      });
+    },
+
+    createModal() {
+      if ($('#similar-products-modal')) {
+        this.modal = $('#similar-products-modal');
+        return;
+      }
+
+      const html = `
+        <div class="modal similar-products-modal" id="similar-products-modal" aria-hidden="true">
+          <div class="modal-backdrop" data-close-similar></div>
+          <div class="modal-content modal-content-lg">
+            <div class="modal-header">
+              <h3 class="modal-title">Similar Products</h3>
+              <button class="modal-close" data-close-similar aria-label="Close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body" id="similar-products-body">
+              <div class="modal-loading">
+                <svg class="search-spinner" width="24" height="24" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="60" stroke-dashoffset="20"/>
+                </svg>
+                Loading similar products...
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+      this.modal = $('#similar-products-modal');
+
+      this.modal.addEventListener('click', (e) => {
+        if (e.target.closest('[data-close-similar]')) this.close();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.modal.classList.contains('is-open')) this.close();
+      });
+    },
+
+    async open(productId) {
+      this.modal.classList.add('is-open');
+      this.modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      const body = $('#similar-products-body');
+      body.innerHTML = `
+        <div class="modal-loading">
+          <svg class="search-spinner" width="24" height="24" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="60" stroke-dashoffset="20"/>
+          </svg>
+          Loading similar products...
+        </div>
+      `;
+
+      try {
+        const data = await fetchJSON(`${window.Pricetag.baseUrl}/api/products/${productId}/similar`);
+
+        if (data.success && data.products.length > 0) {
+          body.innerHTML = `
+            <div class="similar-products-grid">
+              ${data.products.map(p => `
+                <a href="${window.Pricetag.baseUrl}/products/${p.slug}" class="similar-product-card">
+                  <div class="similar-product-image">
+                    ${p.image
+                      ? `<img src="${window.Pricetag.baseUrl}/storage/uploads/${p.image}" alt="${this.esc(p.name)}" loading="lazy">`
+                      : `<div class="similar-product-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>`
+                    }
+                  </div>
+                  <div class="similar-product-info">
+                    ${p.category ? `<span class="similar-product-category">${this.esc(p.category)}</span>` : ''}
+                    <h4 class="similar-product-name">${this.esc(p.name)}</h4>
+                    <div class="similar-product-price">
+                      <span class="similar-price-current">${formatPrice(p.price)}</span>
+                      ${p.compare_price && p.compare_price > p.price
+                        ? `<span class="similar-price-original">${formatPrice(p.compare_price)}</span>`
+                        : ''
+                      }
+                    </div>
+                  </div>
+                </a>
+              `).join('')}
+            </div>
+          `;
+        } else {
+          body.innerHTML = `
+            <div class="modal-empty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              <p>No similar products found</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        body.innerHTML = `<div class="modal-empty"><p>Failed to load similar products. Please try again.</p></div>`;
+      }
+    },
+
+    close() {
+      if (document.activeElement && this.modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+      this.modal.classList.remove('is-open');
+      this.modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    },
+
+    esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    },
+  };
+
+  // ==========================================================================
+  // ASK A QUESTION MODAL
+  // ==========================================================================
+
+  const AskQuestion = {
+    modal: null,
+    currentProductId: null,
+
+    init() {
+      this.createModal();
+
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-ask-question]');
+        if (!btn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        const productId = btn.dataset.askQuestion;
+
+        // Get product name from the card
+        const card = btn.closest('.product-card');
+        const nameEl = card?.querySelector('.product-card-title a');
+        const productName = nameEl ? nameEl.textContent.trim() : 'this product';
+
+        this.open(productId, productName);
+      });
+    },
+
+    createModal() {
+      if ($('#ask-question-modal')) {
+        this.modal = $('#ask-question-modal');
+        return;
+      }
+
+      const html = `
+        <div class="modal ask-question-modal" id="ask-question-modal" aria-hidden="true">
+          <div class="modal-backdrop" data-close-question></div>
+          <div class="modal-content modal-content-sm">
+            <div class="modal-header">
+              <h3 class="modal-title">Ask a Question</h3>
+              <button class="modal-close" data-close-question aria-label="Close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="modal-body">
+              <p class="ask-question-about" id="ask-question-about"></p>
+              <form id="ask-question-form" class="ask-question-form">
+                <div class="form-group">
+                  <label for="aq-name">Your Name</label>
+                  <input type="text" id="aq-name" name="name" required minlength="2" placeholder="John Doe" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label for="aq-email">Email Address</label>
+                  <input type="email" id="aq-email" name="email" required placeholder="john@example.com" class="form-input">
+                </div>
+                <div class="form-group">
+                  <label for="aq-question">Your Question</label>
+                  <textarea id="aq-question" name="question" required minlength="10" rows="4" placeholder="What would you like to know about this product?" class="form-input"></textarea>
+                </div>
+                <div class="form-actions">
+                  <button type="button" class="btn btn-ghost" data-close-question>Cancel</button>
+                  <button type="submit" class="btn btn-primary" id="aq-submit">
+                    <span class="aq-submit-text">Submit Question</span>
+                    <svg class="aq-submit-spinner" width="18" height="18" viewBox="0 0 24 24" style="display:none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="60" stroke-dashoffset="20"/>
+                    </svg>
+                  </button>
+                </div>
+              </form>
+              <div id="ask-question-success" class="ask-question-success" style="display:none">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                  <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <h4>Question Submitted!</h4>
+                <p>We'll get back to you via email as soon as possible.</p>
+                <button type="button" class="btn btn-primary" data-close-question>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+      this.modal = $('#ask-question-modal');
+
+      this.modal.addEventListener('click', (e) => {
+        if (e.target.closest('[data-close-question]')) this.close();
+      });
+
+      $('#ask-question-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.submit();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.modal.classList.contains('is-open')) this.close();
+      });
+    },
+
+    open(productId, productName) {
+      this.currentProductId = productId;
+      $('#ask-question-about').textContent = `About: ${productName}`;
+      $('#ask-question-form').style.display = '';
+      $('#ask-question-success').style.display = 'none';
+      $('#ask-question-form').reset();
+      this.modal.classList.add('is-open');
+      this.modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => $('#aq-name').focus(), 200);
+    },
+
+    close() {
+      if (document.activeElement && this.modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+      this.modal.classList.remove('is-open');
+      this.modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      this.currentProductId = null;
+    },
+
+    async submit() {
+      const submitBtn = $('#aq-submit');
+      const spinner = submitBtn.querySelector('.aq-submit-spinner');
+      const text = submitBtn.querySelector('.aq-submit-text');
+
+      submitBtn.disabled = true;
+      text.style.display = 'none';
+      spinner.style.display = '';
+
+      try {
+        const data = await postForm(
+          `${window.Pricetag.baseUrl}/api/products/${this.currentProductId}/question`,
+          {
+            name: $('#aq-name').value.trim(),
+            email: $('#aq-email').value.trim(),
+            question: $('#aq-question').value.trim(),
+          }
+        );
+
+        if (data.success) {
+          $('#ask-question-form').style.display = 'none';
+          $('#ask-question-success').style.display = '';
+        } else {
+          Toast.error(data.message || 'Failed to submit question');
+        }
+      } catch (err) {
+        Toast.error('Failed to submit question. Please try again.');
+      } finally {
+        submitBtn.disabled = false;
+        text.style.display = '';
+        spinner.style.display = 'none';
+      }
+    },
+  };
+
+  // ==========================================================================
+  // COMPARE LIST
+  // ==========================================================================
+
+  const CompareList = {
+    items: [],
+    bar: null,
+    MAX_ITEMS: 4,
+
+    init() {
+      this.items = JSON.parse(localStorage.getItem('pricetag_compare') || '[]');
+      this.createBar();
+      this.syncCheckboxes();
+      if (this.items.length > 0) this.showBar();
+
+      // Listen for compare checkbox changes
+      document.addEventListener('change', (e) => {
+        const checkbox = e.target.closest('[data-compare]');
+        if (!checkbox) return;
+
+        e.stopPropagation();
+        const productId = checkbox.dataset.compare;
+        const card = checkbox.closest('.product-card');
+
+        if (checkbox.checked) {
+          this.add(productId, card);
+        } else {
+          this.remove(productId);
+        }
+      });
+    },
+
+    createBar() {
+      if ($('#compare-bar')) {
+        this.bar = $('#compare-bar');
+        return;
+      }
+
+      const html = `
+        <div class="compare-bar" id="compare-bar" style="display:none">
+          <div class="compare-bar-inner">
+            <div class="compare-bar-items" id="compare-bar-items"></div>
+            <div class="compare-bar-actions">
+              <span class="compare-bar-count" id="compare-bar-count">0 items</span>
+              <button type="button" class="btn btn-primary btn-sm" id="compare-bar-view" disabled>Compare Now</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="compare-bar-clear">Clear All</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', html);
+      this.bar = $('#compare-bar');
+
+      $('#compare-bar-clear').addEventListener('click', () => this.clearAll());
+      $('#compare-bar-view').addEventListener('click', () => this.viewComparison());
+    },
+
+    add(productId, card) {
+      if (this.items.length >= this.MAX_ITEMS) {
+        Toast.warning(`You can compare up to ${this.MAX_ITEMS} products at a time`);
+        // Uncheck the checkbox
+        const cb = card?.querySelector(`[data-compare="${productId}"]`);
+        if (cb) cb.checked = false;
+        return;
+      }
+
+      if (this.items.find(i => i.id === productId)) return;
+
+      // Get product info from the card
+      const nameEl = card?.querySelector('.product-card-title a');
+      const imgEl = card?.querySelector('.product-card-img');
+
+      this.items.push({
+        id: productId,
+        name: nameEl?.textContent?.trim() || 'Product',
+        image: imgEl?.src || '',
+        url: nameEl?.href || '#',
+      });
+
+      this.save();
+      this.render();
+      this.showBar();
+      Toast.success('Added to compare list');
+    },
+
+    remove(productId) {
+      this.items = this.items.filter(i => i.id !== productId);
+      this.save();
+      this.render();
+      this.syncCheckboxes();
+
+      if (this.items.length === 0) this.hideBar();
+    },
+
+    clearAll() {
+      this.items = [];
+      this.save();
+      this.render();
+      this.syncCheckboxes();
+      this.hideBar();
+    },
+
+    save() {
+      localStorage.setItem('pricetag_compare', JSON.stringify(this.items));
+    },
+
+    syncCheckboxes() {
+      $$('[data-compare]').forEach(cb => {
+        cb.checked = this.items.some(i => i.id === cb.dataset.compare);
+      });
+    },
+
+    render() {
+      const container = $('#compare-bar-items');
+      const count = $('#compare-bar-count');
+      const viewBtn = $('#compare-bar-view');
+
+      if (!container) return;
+
+      container.innerHTML = this.items.map(item => `
+        <div class="compare-bar-item" data-compare-item="${item.id}">
+          ${item.image
+            ? `<img src="${item.image}" alt="${item.name}">`
+            : `<div class="compare-bar-placeholder"></div>`
+          }
+          <button type="button" class="compare-bar-item-remove" data-remove-compare="${item.id}" aria-label="Remove">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+
+      // Add empty slots
+      for (let i = this.items.length; i < this.MAX_ITEMS; i++) {
+        container.innerHTML += `<div class="compare-bar-item compare-bar-item-empty"><span>+</span></div>`;
+      }
+
+      count.textContent = `${this.items.length} of ${this.MAX_ITEMS}`;
+      viewBtn.disabled = this.items.length < 2;
+
+      // Attach remove events
+      $$('[data-remove-compare]', container).forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.remove(btn.dataset.removeCompare);
+        });
+      });
+    },
+
+    showBar() {
+      this.bar.style.display = '';
+      this.render();
+    },
+
+    hideBar() {
+      this.bar.style.display = 'none';
+    },
+
+    viewComparison() {
+      if (this.items.length < 2) return;
+      const ids = this.items.map(i => i.id).join(',');
+      window.location.href = `${window.Pricetag.baseUrl}/products?compare=${ids}`;
+    },
+  };
+
+  // ==========================================================================
   // ADD TO CART BUTTONS
   // ==========================================================================
 
@@ -735,9 +1282,23 @@
         const productId = btn.dataset.wishlistToggle;
 
         try {
-          const data = await postForm(window.Pricetag.baseUrl + '/wishlist/toggle', {
-            product_id: productId,
+          const response = await fetch(window.Pricetag.baseUrl + '/wishlist/toggle', {
+            method: 'POST',
+            body: (() => {
+              const fd = new FormData();
+              fd.append('_token', window.Pricetag.csrfToken);
+              fd.append('product_id', productId);
+              return fd;
+            })(),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
           });
+
+          if (response.status === 401) {
+            Toast.warning('Please log in to add items to your wishlist');
+            return;
+          }
+
+          const data = await response.json();
 
           if (data.success) {
             btn.classList.toggle('is-active', data.in_wishlist);
@@ -756,9 +1317,11 @@
             }
 
             Toast.success(data.in_wishlist ? 'Added to wishlist' : 'Removed from wishlist');
+          } else {
+            Toast.error(data.message || 'Could not update wishlist');
           }
         } catch (err) {
-          Toast.error('Please login to use wishlist');
+          Toast.error('Something went wrong. Please try again.');
         }
       });
     },
@@ -893,11 +1456,13 @@
     async open(productId) {
       try {
         const data = await fetchJSON(`${window.Pricetag.baseUrl}/api/products/${productId}`);
-        if (data.product) {
+        if (data.success && data.product) {
           this.render(data.product);
           this.modal.classList.add('is-open');
           this.modal.setAttribute('aria-hidden', 'false');
           document.body.style.overflow = 'hidden';
+        } else {
+          Toast.error(data.message || 'Product not available');
         }
       } catch (err) {
         Toast.error('Failed to load product details');
@@ -905,6 +1470,9 @@
     },
 
     close() {
+      if (document.activeElement && this.modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       this.modal.classList.remove('is-open');
       this.modal.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
@@ -1145,6 +1713,10 @@
     MobileMenu.init();
     CartDrawer.init();
     Search.init();
+    ProductMenu.init();
+    SimilarProducts.init();
+    AskQuestion.init();
+    CompareList.init();
     AddToCart.init();
     Wishlist.init();
     QuickView.init();

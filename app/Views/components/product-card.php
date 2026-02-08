@@ -9,25 +9,27 @@ $primaryCategory = $product->getPrimaryCategory();
 $discount = $product->getDiscountPercentage();
 $inStock = $product->isInStock();
 $stockStatus = $product->getStockStatus();
+$productUrl = url('/products/' . $product->slug);
 ?>
 <article class="product-card <?php echo !$inStock ? 'product-card-out-of-stock' : ''; ?>">
+    <!-- Full card clickable link -->
+    <a href="<?php echo $productUrl; ?>" class="product-card-link" aria-label="<?php echo e($product->name); ?>"></a>
+
     <div class="product-card-image">
-        <a href="<?php echo url('/products/' . $product->slug); ?>">
-            <?php if ($primaryImage): ?>
-            <img src="<?php echo url('storage/uploads/' . e($primaryImage)); ?>"
-                 alt="<?php echo e($product->name); ?>"
-                 class="product-card-img"
-                 loading="lazy">
-            <?php else: ?>
-            <div class="product-card-placeholder">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                    <polyline points="21 15 16 10 5 21"></polyline>
-                </svg>
-            </div>
-            <?php endif; ?>
-        </a>
+        <?php if ($primaryImage): ?>
+        <img src="<?php echo url('storage/uploads/' . e($primaryImage)); ?>"
+             alt="<?php echo e($product->name); ?>"
+             class="product-card-img"
+             loading="lazy">
+        <?php else: ?>
+        <div class="product-card-placeholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+        </div>
+        <?php endif; ?>
 
         <!-- Badges -->
         <?php if (!$inStock || ($product->is_on_sale && $discount) || $product->is_new): ?>
@@ -45,34 +47,80 @@ $stockStatus = $product->getStockStatus();
         </div>
         <?php endif; ?>
 
-        <!-- Quick Actions -->
-        <div class="product-card-actions">
+    </div>
+
+    <!-- 3-Dot Menu Button (outside image for overflow visibility) -->
+    <div class="product-card-menu-wrapper">
+        <button type="button"
+                class="product-card-menu-btn"
+                data-product-menu-toggle
+                aria-label="Product options"
+                aria-haspopup="true"
+                aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                <circle cx="12" cy="5" r="2"></circle>
+                <circle cx="12" cy="12" r="2"></circle>
+                <circle cx="12" cy="19" r="2"></circle>
+            </svg>
+        </button>
+
+        <!-- Dropdown Menu -->
+        <div class="product-card-dropdown" data-product-dropdown>
             <button type="button"
-                    class="product-action-btn"
-                    data-quick-view="<?php echo $product->id; ?>"
-                    aria-label="Quick view">
+                    class="product-dropdown-item"
+                    data-quick-view="<?php echo $product->id; ?>">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                     <circle cx="12" cy="12" r="3"></circle>
                 </svg>
+                Quick Look
             </button>
             <button type="button"
-                    class="product-action-btn"
-                    data-wishlist-toggle="<?php echo $product->id; ?>"
-                    aria-label="Add to wishlist">
+                    class="product-dropdown-item"
+                    data-wishlist-toggle="<?php echo $product->id; ?>">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                 </svg>
+                Wishlist
             </button>
             <button type="button"
-                    class="product-action-btn product-action-cart <?php echo !$inStock ? 'disabled' : ''; ?>"
-                    data-add-to-cart="<?php echo $product->id; ?>"
-                    aria-label="<?php echo $inStock ? 'Add to cart' : 'Out of stock'; ?>"
-                    <?php echo !$inStock ? 'disabled' : ''; ?>>
+                    class="product-dropdown-item"
+                    data-similar-products="<?php echo $product->id; ?>">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="9" cy="21" r="1"></circle>
-                    <circle cx="20" cy="21" r="1"></circle>
-                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                Similar Products
+            </button>
+            <button type="button"
+                    class="product-dropdown-item"
+                    data-ask-question="<?php echo $product->id; ?>">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Ask a Question
+            </button>
+            <label class="product-dropdown-item product-dropdown-compare">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 3 21 3 21 8"></polyline>
+                    <line x1="4" y1="20" x2="21" y2="3"></line>
+                    <polyline points="21 16 21 21 16 21"></polyline>
+                    <line x1="15" y1="15" x2="21" y2="21"></line>
+                    <line x1="4" y1="4" x2="9" y2="9"></line>
+                </svg>
+                Compare List
+                <input type="checkbox" class="product-compare-checkbox" data-compare="<?php echo $product->id; ?>">
+                <span class="product-compare-check"></span>
+            </label>
+            <button type="button"
+                    class="product-dropdown-close"
+                    data-product-menu-close
+                    aria-label="Close menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
             </button>
         </div>
@@ -84,7 +132,7 @@ $stockStatus = $product->getStockStatus();
         <?php endif; ?>
 
         <h3 class="product-card-title">
-            <a href="<?php echo url('/products/' . $product->slug); ?>"><?php echo e($product->name); ?></a>
+            <a href="<?php echo $productUrl; ?>"><?php echo e($product->name); ?></a>
         </h3>
 
         <?php if ($product->rating_count > 0): ?>
@@ -112,11 +160,13 @@ $stockStatus = $product->getStockStatus();
 <style>
 /* Product Card - Dark Theme */
 .product-card {
+    position: relative;
     background-color: var(--color-background-elevated);
     border: var(--border-1) solid var(--color-border);
     border-radius: var(--radius-xl);
-    overflow: hidden;
     transition: var(--transition-all);
+    display: flex;
+    flex-direction: column;
 }
 
 .product-card:hover {
@@ -125,11 +175,19 @@ $stockStatus = $product->getStockStatus();
     transform: translateY(-4px);
 }
 
+/* Full card clickable overlay */
+.product-card-link {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
+
 .product-card-image {
     position: relative;
     aspect-ratio: 1 / 1;
     background-color: var(--color-background);
     overflow: hidden;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .product-card-img {
@@ -167,6 +225,7 @@ $stockStatus = $product->getStockStatus();
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    z-index: 2;
 }
 
 .product-badge {
@@ -202,65 +261,181 @@ $stockStatus = $product->getStockStatus();
     transform: none;
 }
 
-.product-action-btn.disabled,
-.product-action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
-/* Quick Actions */
-.product-card-actions {
+/* ===== 3-DOT MENU ===== */
+.product-card-menu-wrapper {
     position: absolute;
-    bottom: var(--space-3);
-    left: var(--space-3);
+    top: var(--space-3);
     right: var(--space-3);
-    display: flex;
-    justify-content: center;
-    gap: var(--space-2);
-    opacity: 0;
-    transform: translateY(10px);
-    transition: var(--transition-all);
+    z-index: 3;
 }
 
-.product-card:hover .product-card-actions {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-.product-action-btn {
-    width: 40px;
-    height: 40px;
+.product-card-menu-btn {
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--color-background-elevated);
-    border: var(--border-1) solid var(--color-border);
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--radius-lg);
-    color: var(--color-text-secondary);
-    transition: var(--transition-colors);
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 1;
+    transform: scale(1);
 }
 
-.product-action-btn:hover {
-    background-color: var(--color-background-hover);
-    color: var(--color-text);
-    border-color: var(--color-neutral-500);
-}
-
-.product-action-btn.product-action-cart:hover {
-    background-color: var(--color-primary);
+.product-card-menu-btn:hover {
+    background: rgba(0, 0, 0, 0.75);
     color: white;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.product-card-menu-btn.is-active {
+    opacity: 1;
+    transform: scale(1);
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+.product-card-menu-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Dropdown */
+.product-card-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 190px;
+    background: rgba(30, 30, 40, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-xl);
+    padding: var(--space-2);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px) scale(0.95);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.product-card-dropdown.is-open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+.product-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: rgba(255, 255, 255, 0.85);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.product-dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+}
+
+.product-dropdown-item svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.product-dropdown-item:hover svg {
+    opacity: 1;
+}
+
+/* Compare checkbox */
+.product-dropdown-compare {
+    position: relative;
+    cursor: pointer;
+}
+
+.product-compare-checkbox {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.product-compare-check {
+    margin-left: auto;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-radius: var(--radius-default);
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.product-compare-checkbox:checked + .product-compare-check {
+    background: var(--color-primary);
     border-color: var(--color-primary);
 }
 
-.product-action-btn svg {
-    width: 18px;
-    height: 18px;
+.product-compare-checkbox:checked + .product-compare-check::after {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 9px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin: 1px auto 0;
+}
+
+/* Close button */
+.product-dropdown-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: var(--space-2);
+    margin-top: var(--space-1);
+    background: rgba(255, 255, 255, 0.05);
+    border: none;
+    border-radius: var(--radius-lg);
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.product-dropdown-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.product-dropdown-close svg {
+    width: 16px;
+    height: 16px;
 }
 
 /* Card Body */
 .product-card-body {
     padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
 }
 
 .product-card-category {
@@ -280,11 +455,14 @@ $stockStatus = $product->getStockStatus();
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    flex: 1;
 }
 
 .product-card-title a {
     color: var(--color-text);
     transition: var(--transition-colors);
+    position: relative;
+    z-index: 2;
 }
 
 .product-card-title a:hover {
@@ -318,9 +496,9 @@ $stockStatus = $product->getStockStatus();
 /* Price */
 .product-card-price {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1);
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-top: auto;
 }
 
 .product-price-current {
@@ -333,13 +511,5 @@ $stockStatus = $product->getStockStatus();
     font-size: var(--text-sm);
     color: var(--color-text-muted);
     text-decoration: line-through;
-}
-
-@media (min-width: 640px) {
-    .product-card-price {
-        flex-direction: row;
-        align-items: center;
-        gap: var(--space-2);
-    }
 }
 </style>

@@ -654,7 +654,6 @@
 /* Product Carousel */
 .product-carousel {
     position: relative;
-    overflow: hidden;
 }
 
 .product-carousel-track {
@@ -677,6 +676,7 @@
     flex: 0 0 calc(50% - var(--space-2));
     scroll-snap-align: start;
     min-width: 0;
+    display: flex;
 }
 
 @media (min-width: 640px) {

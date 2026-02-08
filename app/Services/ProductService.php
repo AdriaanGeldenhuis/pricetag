@@ -191,7 +191,11 @@ class ProductService
                 $stmt = $this->db->prepare("UPDATE products SET status = 'deleted', deleted_at = NOW() WHERE id = ?");
                 $result = $stmt->execute([$id]);
             } else {
-                // Hard delete - remove product and related data
+                // Hard delete - delete image files from disk before removing DB records
+                $imageService = new ProductImageService();
+                $imageService->deleteAllProductImages($id);
+
+                // Remove remaining related data (categories, attributes, specs, variants, reviews)
                 $this->deleteProductRelatedData($id);
                 $result = $product->delete();
             }
@@ -472,8 +476,10 @@ class ProductService
                 $stmt = $this->db->prepare($sql);
                 $stmt->execute($ids);
             } else {
-                // Delete related data first
+                // Delete image files from disk + related data for each product
+                $imageService = new ProductImageService();
                 foreach ($ids as $id) {
+                    $imageService->deleteAllProductImages($id);
                     $this->deleteProductRelatedData($id);
                 }
 
@@ -1111,6 +1117,82 @@ class ProductService
         }
     }
 
+    /**
+     * Save AI-generated product attributes.
+     * Finds or creates attribute definitions and values, then links them to the product.
+     * Follows the same pattern as handleBrandAttribute() but for any attribute.
+     *
+     * @param int $productId Product ID
+     * @param array $attributes Associative array of attribute_name => attribute_value (e.g. ['Series' => 'RTX 5090', 'Memory Size' => '32GB'])
+     */
+    public function saveProductAttributes(int $productId, array $attributes): void
+    {
+        if (empty($attributes)) {
+            return;
+        }
+
+        // Don't overwrite existing attributes if we already have them
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM product_attributes WHERE product_id = ?");
+        $stmt->execute([$productId]);
+        $existingCount = (int) $stmt->fetchColumn();
+
+        if ($existingCount > 0) {
+            return; // Keep existing attributes
+        }
+
+        foreach ($attributes as $attrName => $attrValue) {
+            $attrName = trim((string) $attrName);
+            $attrValue = trim((string) $attrValue);
+
+            if (empty($attrName) || empty($attrValue)) {
+                continue;
+            }
+
+            try {
+                // Find or create the attribute definition
+                $slug = slugify($attrName);
+                $stmt = $this->db->prepare("SELECT id FROM attributes WHERE slug = ? LIMIT 1");
+                $stmt->execute([$slug]);
+                $attributeId = $stmt->fetchColumn();
+
+                if (!$attributeId) {
+                    $stmt = $this->db->prepare(
+                        "INSERT INTO attributes (name, slug, type, is_filterable, is_visible) VALUES (?, ?, 'select', 1, 1)"
+                    );
+                    $stmt->execute([$attrName, $slug]);
+                    $attributeId = (int) $this->db->lastInsertId();
+                }
+
+                // Find or create the attribute value
+                $valueSlug = slugify($attrValue);
+                $stmt = $this->db->prepare(
+                    "SELECT id FROM attribute_values WHERE attribute_id = ? AND LOWER(value) = LOWER(?) LIMIT 1"
+                );
+                $stmt->execute([$attributeId, $attrValue]);
+                $valueId = $stmt->fetchColumn();
+
+                if (!$valueId) {
+                    $stmt = $this->db->prepare(
+                        "INSERT INTO attribute_values (attribute_id, value, slug) VALUES (?, ?, ?)"
+                    );
+                    $stmt->execute([$attributeId, $attrValue, $valueSlug]);
+                    $valueId = (int) $this->db->lastInsertId();
+                }
+
+                // Link attribute value to product
+                $stmt = $this->db->prepare(
+                    "INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)"
+                );
+                $stmt->execute([$productId, $attributeId, $valueId]);
+
+            } catch (\Throwable $e) {
+                logMessage('debug', "Could not save attribute '{$attrName}' for product {$productId}", [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     // =========================================================================
     // Helper Methods
     // =========================================================================
@@ -1183,7 +1265,7 @@ class ProductService
     {
         $tables = [
             'product_categories',
-            'product_images',
+            // product_images handled by ProductImageService::deleteAllProductImages() (deletes files + DB records)
             'product_attributes',
             'product_specifications',
             'product_variants',

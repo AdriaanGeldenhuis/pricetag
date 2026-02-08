@@ -231,6 +231,115 @@ class OpenAIService
     }
 
     // =========================================================================
+    // CATEGORY ATTRIBUTES - defines filterable attributes per product category
+    // =========================================================================
+
+    /**
+     * Category-to-attributes mapping.
+     * Defines which filterable attributes should be generated for each product category.
+     * Keys = category name patterns (matched case-insensitively).
+     * Values = array of attribute names the AI must populate.
+     */
+    private const CATEGORY_ATTRIBUTES = [
+        'Graphics Cards' => [
+            'Series'      => 'GPU model series (e.g. RTX 5090, RTX 4070, RX 7800 XT, GTX 1650)',
+            'Memory Size' => 'Video memory capacity (e.g. 8GB, 12GB, 16GB, 24GB, 32GB)',
+            'Memory Type' => 'Video memory technology (e.g. GDDR5, GDDR6, GDDR6X, GDDR7)',
+            'GPU Brand'   => 'GPU chip manufacturer (NVIDIA or AMD)',
+        ],
+        'Processors' => [
+            'Series'      => 'CPU series (e.g. Core i9, Core i7, Core i5, Core i3, Ryzen 9, Ryzen 7, Ryzen 5, Celeron, Pentium)',
+            'Socket'      => 'CPU socket type (e.g. LGA 1700, LGA 1851, AM5, AM4)',
+            'Core Count'  => 'Number of CPU cores (e.g. 6, 8, 12, 16, 24)',
+            'Generation'  => 'Processor generation (e.g. 12th Gen, 13th Gen, 14th Gen, Zen 4, Zen 5)',
+        ],
+        'Memory' => [
+            'Capacity'    => 'Total memory capacity (e.g. 8GB, 16GB, 32GB, 64GB)',
+            'Type'        => 'Memory generation (e.g. DDR4, DDR5)',
+            'Speed'       => 'Memory clock speed (e.g. 3200MHz, 3600MHz, 5600MHz, 6000MHz)',
+            'Modules'     => 'Module configuration (e.g. 1x8GB, 2x8GB, 2x16GB)',
+        ],
+        'Storage' => [
+            'Capacity'    => 'Storage capacity (e.g. 256GB, 512GB, 1TB, 2TB, 4TB)',
+            'Type'        => 'Storage technology (e.g. NVMe SSD, SATA SSD, HDD)',
+            'Interface'   => 'Connection interface (e.g. M.2 PCIe 4.0, M.2 PCIe 5.0, SATA III, USB)',
+            'Form Factor' => 'Physical form factor (e.g. M.2 2280, 2.5-inch, 3.5-inch)',
+        ],
+        'Motherboards' => [
+            'Socket'      => 'CPU socket (e.g. LGA 1700, LGA 1851, AM5, AM4)',
+            'Chipset'     => 'Motherboard chipset (e.g. Z790, B650, X670E, B760)',
+            'Form Factor' => 'Board size (e.g. ATX, Micro-ATX, Mini-ITX, E-ATX)',
+            'Memory Type' => 'Supported memory type (e.g. DDR4, DDR5)',
+        ],
+        'Laptops' => [
+            'CPU'         => 'Processor model (e.g. Intel Core i7-13700H, AMD Ryzen 7 7840HS)',
+            'GPU'         => 'Graphics card (e.g. RTX 4060, Integrated, Radeon 780M)',
+            'RAM'         => 'Installed memory (e.g. 8GB, 16GB, 32GB)',
+            'Screen Size' => 'Display size in inches (e.g. 14-inch, 15.6-inch, 16-inch)',
+            'Storage'     => 'Storage capacity and type (e.g. 512GB SSD, 1TB NVMe)',
+        ],
+        'Monitors' => [
+            'Screen Size'  => 'Display diagonal in inches (e.g. 24-inch, 27-inch, 32-inch, 34-inch)',
+            'Resolution'   => 'Display resolution (e.g. 1920x1080, 2560x1440, 3840x2160)',
+            'Panel Type'   => 'Display panel technology (e.g. IPS, VA, TN, OLED)',
+            'Refresh Rate' => 'Maximum refresh rate (e.g. 60Hz, 144Hz, 165Hz, 240Hz)',
+        ],
+        'Power Supplies' => [
+            'Wattage'    => 'Power output in watts (e.g. 550W, 650W, 750W, 850W, 1000W)',
+            'Efficiency' => 'Efficiency certification (e.g. 80+ Bronze, 80+ Gold, 80+ Platinum)',
+            'Modularity' => 'Cable management type (e.g. Full Modular, Semi-Modular, Non-Modular)',
+        ],
+        'Cases' => [
+            'Form Factor'  => 'Supported motherboard size (e.g. ATX, Micro-ATX, Mini-ITX)',
+            'Type'         => 'Case size category (e.g. Full Tower, Mid Tower, Mini Tower, SFF)',
+        ],
+        'Cooling' => [
+            'Type'        => 'Cooling method (e.g. Air Cooler, AIO Liquid, Custom Loop)',
+            'Socket'      => 'Compatible CPU sockets (e.g. LGA 1700, AM5, Universal)',
+            'Radiator'    => 'Radiator size for liquid coolers (e.g. 120mm, 240mm, 280mm, 360mm)',
+        ],
+        'Peripherals' => [
+            'Type'         => 'Peripheral category (e.g. Mouse, Keyboard, Headset, Webcam, Mousepad)',
+            'Connectivity' => 'Connection type (e.g. Wired, Wireless, Bluetooth, 2.4GHz)',
+        ],
+        'Networking' => [
+            'Type'  => 'Network device type (e.g. Router, Switch, Access Point, Network Card)',
+            'Speed' => 'Maximum network speed (e.g. Wi-Fi 6, Wi-Fi 7, 1Gbps, 2.5Gbps)',
+        ],
+    ];
+
+    /**
+     * Get the attributes for a given category.
+     * Matches category name loosely (contains match, case-insensitive).
+     *
+     * @return array<string, string> Attribute name => description for AI prompt
+     */
+    public function getCategoryAttributes(string $category): array
+    {
+        if (empty($category)) {
+            return [];
+        }
+
+        $categoryLower = strtolower($category);
+
+        // Try exact match first, then contains match
+        foreach (self::CATEGORY_ATTRIBUTES as $catPattern => $attrs) {
+            if (strtolower($catPattern) === $categoryLower) {
+                return $attrs;
+            }
+        }
+
+        foreach (self::CATEGORY_ATTRIBUTES as $catPattern => $attrs) {
+            if (str_contains($categoryLower, strtolower($catPattern))
+                || str_contains(strtolower($catPattern), $categoryLower)) {
+                return $attrs;
+            }
+        }
+
+        return [];
+    }
+
+    // =========================================================================
     // PRODUCT AI - IDENTIFICATION & CONTENT GENERATION
     // =========================================================================
     //
@@ -418,10 +527,10 @@ class OpenAIService
             $gpuSeries = ((int)$gpuModel >= 2000) ? 'RTX' : 'GTX';
             $variantClean = ucwords(strtolower($variant)); // "Gaming Oc" -> clean up
 
-            $name = "Gigabyte GeForce {$gpuSeries} {$gpuModel} {$variantClean} {$memory}GB";
+            $name = "Gigabyte GeForce {$gpuSeries} {$gpuModel} {$variantClean} {$memory}GB Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "Gigabyte GeForce {$gpuSeries} {$gpuModel} {$variantClean} with {$memory}GB GDDR memory for high-performance gaming.";
-            $description = "The {$name} graphics card delivers exceptional gaming and creative performance. Built with Gigabyte's advanced cooling solution for optimal thermals and low noise. Features NVIDIA Ray Tracing and DLSS for next-gen visuals.";
+            $description = "The {$name} delivers exceptional gaming and creative performance. Built with Gigabyte's advanced cooling solution for optimal thermals and low noise. Features NVIDIA Ray Tracing and DLSS for next-gen visuals.";
         }
 
         // ---- GIGABYTE AMD GPUs: GV-R{model}{variant}-{memory}GD ----
@@ -432,10 +541,10 @@ class OpenAIService
             $memory = $m[3];
             $variantClean = ucwords(strtolower($variant));
 
-            $name = "Gigabyte Radeon RX {$gpuModel} {$variantClean} {$memory}GB";
+            $name = "Gigabyte Radeon RX {$gpuModel} {$variantClean} {$memory}GB Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "Gigabyte Radeon RX {$gpuModel} {$variantClean} with {$memory}GB memory for high-performance gaming.";
-            $description = "The {$name} graphics card delivers outstanding gaming performance. Built with Gigabyte's advanced cooling for optimal thermals.";
+            $description = "The {$name} delivers outstanding gaming performance. Built with Gigabyte's advanced cooling for optimal thermals.";
         }
 
         // ---- ASUS GPUs (Premium lines): ROG-STRIX-RTX5090-O32G, TUF-RTX4070TI-O12G, DUAL-RTX4060-O8G ----
@@ -448,7 +557,7 @@ class OpenAIService
             $memory = $m[5];
 
             $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
-            $name = "ASUS {$line} {$gpuBrand} {$series} {$gpuModel}{$variant} OC {$memory}GB";
+            $name = "ASUS {$line} {$gpuBrand} {$series} {$gpuModel}{$variant} OC {$memory}GB Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "ASUS {$line} {$gpuBrand} {$series} {$gpuModel}{$variant} with {$memory}GB memory. Factory overclocked for maximum performance.";
             $description = "The {$name} features ASUS's premium {$line} design with advanced cooling and factory overclocking. Delivers exceptional performance for 4K gaming and content creation.";
@@ -464,10 +573,10 @@ class OpenAIService
             $memory = $m[4];
 
             $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
-            $name = "{$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB";
+            $name = "{$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "{$gpuBrand} {$series} {$gpuModel}{$variant} graphics card with {$memory}GB memory.";
-            $description = "The {$gpuBrand} {$series} {$gpuModel}{$variant} {$memory}GB is a reliable graphics card for everyday computing, multimedia, and gaming.";
+            $description = "The {$name} is a reliable graphics card for everyday computing, multimedia, and gaming.";
         }
 
         // ---- MSI GPUs: MSI RTX 5090 GAMING X TRIO 32G, MSI GeForce RTX 4070 VENTUS 3X OC 12G ----
@@ -480,7 +589,7 @@ class OpenAIService
             $memory = $m[5];
 
             $gpuBrand = ($series === 'RX') ? 'Radeon' : 'GeForce';
-            $name = "MSI {$gpuBrand} {$series} {$gpuModel}{$variant} {$line} {$memory}GB";
+            $name = "MSI {$gpuBrand} {$series} {$gpuModel}{$variant} {$line} {$memory}GB Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "MSI {$gpuBrand} {$series} {$gpuModel}{$variant} {$line} with {$memory}GB memory for gaming and creative work.";
             $description = "The {$name} features MSI's premium cooling and build quality. Designed for maximum performance in gaming and content creation.";
@@ -490,10 +599,10 @@ class OpenAIService
         elseif (preg_match('/^(\d{2})G-P(\d)-(\d{4})/i', $cleanSku, $m)) {
             $brand = 'EVGA';
             $memory = $m[1];
-            $name = "EVGA GeForce Graphics Card ({$sku})";
+            $name = "EVGA GeForce {$memory}GB Graphics Card ({$sku})";
             $category = 'Graphics Cards';
             $shortDesc = "EVGA GeForce graphics card with {$memory}GB memory.";
-            $description = "EVGA graphics card. SKU: {$sku}. Known for excellent cooling and customer support.";
+            $description = "The {$name} is known for excellent cooling and customer support.";
         }
 
         // ---- ZOTAC GPUs: ZT-{model} ----
@@ -501,8 +610,8 @@ class OpenAIService
             $brand = 'Zotac';
             $name = "Zotac Gaming GeForce Graphics Card ({$sku})";
             $category = 'Graphics Cards';
-            $shortDesc = "Zotac Gaming graphics card for gaming performance.";
-            $description = "Zotac Gaming graphics card. SKU: {$sku}. Compact design with efficient cooling.";
+            $shortDesc = "Zotac Gaming GeForce graphics card for gaming performance.";
+            $description = "The {$name} features a compact design with efficient cooling.";
         }
 
         // ---- NVIDIA GPUs (generic catch-all, after manufacturer-specific patterns) ----
@@ -510,7 +619,7 @@ class OpenAIService
             $brand = 'NVIDIA';
             $series = strtoupper($m[1]); $model = $m[2];
             $variant = isset($m[3]) ? ' ' . ucfirst(strtolower($m[3])) : '';
-            $name = "NVIDIA GeForce {$series} {$model}{$variant}";
+            $name = "NVIDIA GeForce {$series} {$model}{$variant} Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "NVIDIA GeForce {$series} {$model}{$variant} graphics card for gaming and creative work.";
             $description = "The {$name} delivers outstanding performance for gaming, streaming, and creative applications. Features ray tracing and DLSS support.";
@@ -521,7 +630,7 @@ class OpenAIService
             $brand = 'AMD';
             $model = $m[1];
             $variant = isset($m[2]) ? ' ' . strtoupper($m[2]) : '';
-            $name = "AMD Radeon RX {$model}{$variant}";
+            $name = "AMD Radeon RX {$model}{$variant} Graphics Card";
             $category = 'Graphics Cards';
             $shortDesc = "AMD Radeon RX {$model}{$variant} graphics card for gaming and content creation.";
             $description = "The {$name} provides exceptional gaming performance. Built on AMD's RDNA architecture.";
@@ -535,7 +644,7 @@ class OpenAIService
             $modules = $m[4];
             $speed = $m[6];
             $perModule = (int)$totalMem / (int)$modules;
-            $name = "Corsair Vengeance DDR{$ddrGen} {$totalMem}GB ({$modules}x{$perModule}GB) {$speed}MHz";
+            $name = "Corsair Vengeance DDR{$ddrGen} {$totalMem}GB ({$modules}x{$perModule}GB) {$speed}MHz Desktop Memory";
             $category = 'Memory / RAM';
             $shortDesc = "Corsair Vengeance DDR{$ddrGen} {$totalMem}GB ({$modules}x{$perModule}GB) desktop memory running at {$speed}MHz.";
             $description = "The {$name} delivers high-performance memory for gaming and productivity. XMP support for easy overclocking.";
@@ -544,19 +653,19 @@ class OpenAIService
         // ---- SAMSUNG SSDs: MZ-V{gen}... ----
         elseif (preg_match('/^MZ-/i', $cleanSku)) {
             $brand = 'Samsung';
-            $name = "Samsung SSD ({$sku})";
+            $name = "Samsung Solid State Drive ({$sku})";
             $category = 'Storage';
             $shortDesc = "Samsung solid-state drive for fast storage performance.";
-            $description = "Samsung SSD. SKU: {$sku}. Industry-leading performance and reliability.";
+            $description = "The {$name} delivers industry-leading performance and reliability.";
         }
 
         // ---- WESTERN DIGITAL / WD: WD prefix or WDS ----
         elseif (preg_match('/^WD[S]?\d/i', $cleanSku)) {
             $brand = 'Western Digital';
-            $name = "Western Digital Drive ({$sku})";
+            $name = "Western Digital Storage Drive ({$sku})";
             $category = 'Storage';
             $shortDesc = "Western Digital storage drive for reliable data storage.";
-            $description = "Western Digital drive. SKU: {$sku}";
+            $description = "The {$name} delivers reliable data storage performance.";
         }
 
         // ---- LOGITECH: prefix 910- (mice), 920- (keyboards), 981- (headsets) ----
@@ -1025,21 +1134,28 @@ class OpenAIService
         }
 
         // Extract product name from short description when pattern matching failed
-        // Supplier short descriptions contain the real product name, separated by ";" or "/"
+        // Supplier short descriptions contain the real product name, separated by ";", "/" or "|"
         // e.g. "GIGABYTE nVidia GeForce RTX 5090 GAMING OC - 32GB GDDR7; 512-Bit Memory Bus; ..."
         // e.g. "ASUS Graphics Card/NVIDIA/PCIe2.0/2GB GDDR5/1xHDMI/1xD-Sub/1xDVI/300w/ 17x6.9x3.9cm."
+        // e.g. "Aspire Lite AL16-54P-57MK| i5-1334U| 16"| UMA| 16GB DDR5..."
         $nameFromDesc = '';
         if (!$recognized && !empty($shortDescription)) {
-            // Split on common supplier separators: semicolons or forward slashes
+            // Split on common supplier separators: semicolons, pipes, or forward slashes
             if (strpos($shortDescription, ';') !== false) {
                 $extractedName = trim(explode(';', $shortDescription)[0]);
+            } elseif (strpos($shortDescription, '|') !== false) {
+                $extractedName = trim(explode('|', $shortDescription)[0]);
             } elseif (strpos($shortDescription, '/') !== false) {
                 $extractedName = trim(explode('/', $shortDescription)[0]);
             } else {
                 $extractedName = trim($shortDescription);
             }
-            // Clean up: remove trailing dots, dashes, and extra whitespace
-            $extractedName = rtrim($extractedName, ' .-');
+            // Clean up: remove trailing dots, dashes, pipes, and extra whitespace
+            $extractedName = rtrim($extractedName, ' .-|');
+            // For pipe-separated supplier data, DON'T use the extracted fragment as a final name
+            // because it's usually just a model number without proper formatting.
+            // Instead, pass the full raw text to the AI and let it construct a proper name.
+            $isRawSupplierData = (strpos($shortDescription, '|') !== false);
             if (!empty($extractedName) && strlen($extractedName) > 5 && strlen($extractedName) < 200) {
                 $nameFromDesc = $extractedName;
                 // Try to extract brand from the beginning of the name
@@ -1048,13 +1164,22 @@ class OpenAIService
                     $knownBrands = ['ASUS', 'Gigabyte', 'GIGABYTE', 'MSI', 'EVGA', 'Zotac', 'Corsair', 'Samsung',
                         'Kingston', 'Seagate', 'Intel', 'AMD', 'Logitech', 'Razer', 'HyperX', 'Crucial',
                         'Western', 'SanDisk', 'Thermaltake', 'Cooler', 'NZXT', 'be', 'Sapphire', 'XFX',
-                        'PowerColor', 'ASRock', 'Biostar', 'PNY', 'Palit', 'Gainward', 'Inno3D'];
+                        'PowerColor', 'ASRock', 'Biostar', 'PNY', 'Palit', 'Gainward', 'Inno3D',
+                        'Acer', 'HP', 'Dell', 'Lenovo', 'Apple', 'Huawei', 'LG', 'BenQ', 'ViewSonic',
+                        'AOC', 'Epson', 'Canon', 'Brother', 'Xerox', 'Sony', 'JBL', 'SteelSeries',
+                        'Deepcool', 'Antec', 'Fractal', 'Lian', 'Phanteks', 'Seasonic', 'Silverstone',
+                        'Netgear', 'TP-Link', 'Ubiquiti', 'MikroTik', 'Synology', 'QNAP'];
                     foreach ($knownBrands as $kb) {
                         if (strcasecmp($firstWord, $kb) === 0) {
                             $verifiedBrand = $kb;
                             break;
                         }
                     }
+                }
+                // If this is raw pipe-separated supplier data, let the AI reformat the name
+                // rather than using the extracted fragment (which is usually incomplete)
+                if ($isRawSupplierData) {
+                    $nameFromDesc = ''; // Force AI to generate a proper name
                 }
             }
         }
@@ -1109,6 +1234,9 @@ class OpenAIService
             }
             $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is CORRECT. ";
             $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number or brand. ***\n";
+            $prompt .= "\nNAMING CONVENTION: Product names MUST follow this structure: {Brand} {Series/Model} {Key Specs} {Category Type}.\n";
+            $prompt .= "The brand is ALWAYS first, followed by series/model info and key specs, with the category type ALWAYS last.\n";
+            $prompt .= "Examples: 'ASUS ROG Strix GeForce RTX 4070 OC 12GB Graphics Card', 'Intel Core i9-14900K Processor', 'Corsair Vengeance DDR5 32GB Desktop Memory', 'Acer Aspire 5 i5-1335U 8GB 15.6-inch Laptop', 'BenQ TH685P DLP 1080p 3500 Lumens Projector'.\n";
             if ($manufacturerData) {
                 $prompt .= "\nMANUFACTURER PAGE DATA (real specs from the official product page - USE THESE for accurate specifications, descriptions, and technical details):\n";
                 $prompt .= "---\n{$manufacturerData}\n---\n";
@@ -1137,8 +1265,16 @@ class OpenAIService
                 $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
             }
             $prompt .= "\n*** CRITICAL IDENTIFICATION RULES:\n";
-            $prompt .= "1. Decode the SKU to determine the EXACT product model. SKUs encode manufacturer, model, variant, and specs.\n";
-            $prompt .= "2. USE THE SUPPLIER INFO - it often contains the brand, chipset, memory, and interface details. Parse it carefully.\n";
+            $prompt .= "1. Decode the SKU and SUPPLIER INFO to determine the EXACT product. SKUs encode manufacturer, model, variant, and specs.\n";
+            $prompt .= "2. SUPPLIER INFO is often RAW data with pipe (|) or semicolon (;) separators containing specs like CPU, RAM, screen size, etc.\n";
+            $prompt .= "   You MUST parse these fields and construct a CLEAN, human-readable product name from them.\n";
+            $prompt .= "   Example supplier data and how to convert it:\n";
+            $prompt .= "   RAW: 'Aspire Lite AL16-54P-57MK| i5-1334U| 16\"| UMA| 16GB DDR5| 512GB SSD'\n";
+            $prompt .= "   CLEAN NAME: 'Acer Aspire Lite AL16-54P i5-1334U 16GB 16-inch Laptop'\n";
+            $prompt .= "   RAW: 'Acer | TMX414-51-TCO | U5-226V | 14\" WUXGA OLED'\n";
+            $prompt .= "   CLEAN NAME: 'Acer TravelMate X414 U5-226V 14-inch OLED Laptop'\n";
+            $prompt .= "   RAW: 'Acer S1387 DLP 3D WXGA 4000 Lm 20000:1 Short Throw'\n";
+            $prompt .= "   CLEAN NAME: 'Acer S1387 DLP WXGA 4000 Lumens Short Throw Projector'\n";
             $prompt .= "3. Common GPU SKU formats:\n";
             $prompt .= "   - ASUS: GT710-SL-2GD5-BRK, DUAL-RTX4060-O8G, ROG-STRIX-RTX5090-O32G, PH-GTX1650-O4G\n";
             $prompt .= "   - Gigabyte: GV-N4070EAGLE OC-12GD, GV-R76XTGAMING OC-16GD\n";
@@ -1147,11 +1283,29 @@ class OpenAIService
             $prompt .= "   - Zotac: ZT-T20610D-10M\n";
             $prompt .= "4. Common non-GPU SKU formats: CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital, BX80 = Intel CPU.\n";
             $prompt .= "5. GPU memory in SKUs: 2GD5 = 2GB GDDR5, 8GD6 = 8GB GDDR6, O8G = OC 8GB, 32GD = 32GB GDDR.\n";
-            $prompt .= "6. The 'name' MUST be a SPECIFIC customer-facing product name with brand, model, and key specs.\n";
-            $prompt .= "   GOOD: 'ASUS GeForce GT 710 2GB GDDR5 Silent Low Profile'\n";
-            $prompt .= "   BAD: 'Asus Graphics Cards Nvidia' (too generic!)\n";
-            $prompt .= "   BAD: 'GT710-SL-2GD5-BRK-EVO' (raw SKU!)\n";
-            $prompt .= "7. NEVER return a generic category name as the product name. Every product has a SPECIFIC model. ***\n";
+            $prompt .= "6. The 'name' MUST be a CLEAN, customer-facing product name. NEVER copy raw supplier text with pipes or semicolons.\n";
+            $prompt .= "   GOOD: 'Acer Aspire Lite AL16-54P i5-1334U 16GB 16-inch Laptop'\n";
+            $prompt .= "   GOOD: 'ASUS GeForce GT 710 2GB GDDR5 Silent Low Profile Graphics Card'\n";
+            $prompt .= "   GOOD: 'Acer S1387 DLP WXGA 4000 Lumens Short Throw Projector'\n";
+            $prompt .= "   BAD: 'Aspire Lite AL16-54P-57MK| i5-1334U| 16\"| UMA| 16GB DDR5' (raw supplier data with pipes!)\n";
+            $prompt .= "   BAD: 'Asus Graphics Cards Nvidia' (too generic, no model!)\n";
+            $prompt .= "   BAD: 'GT710-SL-2GD5-BRK-EVO' (raw SKU, not a name!)\n";
+            $prompt .= "   BAD: 'ASUS GeForce GT 710 2GB GDDR5' (missing category type at end!)\n";
+            $prompt .= "7. NEVER return a generic category name as the product name. Every product has a SPECIFIC model.\n";
+            $prompt .= "8. NAMING CONVENTION: Product names MUST follow this structure: {Brand} {Series/Model} {Key Specs} {Category Type}.\n";
+            $prompt .= "   The brand is ALWAYS first, followed by series/model and key specs, with the category type ALWAYS last.\n";
+            $prompt .= "   For LAPTOPS include: brand, model line, CPU, RAM, screen size, then 'Laptop'.\n";
+            $prompt .= "   For PROJECTORS include: brand, model, technology, brightness, then 'Projector'.\n";
+            $prompt .= "   For MONITORS include: brand, model, screen size, resolution, then 'Monitor'.\n";
+            $prompt .= "   For PRINTERS include: brand, model, type, then 'Printer'.\n";
+            $prompt .= "   Examples:\n";
+            $prompt .= "   'ASUS ROG Strix GeForce RTX 4070 OC 12GB Graphics Card'\n";
+            $prompt .= "   'Acer Aspire 5 A515-58M i5-1335U 8GB 15.6-inch Laptop'\n";
+            $prompt .= "   'Lenovo ThinkPad X1 Carbon Gen 11 i7-1365U 16GB 14-inch Laptop'\n";
+            $prompt .= "   'BenQ TH685P DLP 1080p 3500 Lumens Projector'\n";
+            $prompt .= "   'Dell UltraSharp U2723QE 27-inch 4K IPS Monitor'\n";
+            $prompt .= "   'Gigabyte B650 Aorus Elite AX DDR5 Motherboard'\n";
+            $prompt .= "   Category types: Graphics Card, Processor, Laptop, Desktop Memory, Solid State Drive, Hard Drive, Motherboard, Power Supply, Monitor, Projector, Mouse, Keyboard, Headset, Webcam, Router, Printer, etc. ***\n";
             if ($manufacturerData) {
                 $prompt .= "\nMANUFACTURER PAGE DATA (real specs from the official product page - USE THESE for accurate identification and specifications):\n";
                 $prompt .= "---\n{$manufacturerData}\n---\n";
@@ -1161,7 +1315,11 @@ class OpenAIService
 
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
         $prompt .= "{\n";
-        $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
+        if ($recognized || !empty($nameFromDesc)) {
+            $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
+        } else {
+            $prompt .= "  \"name\": \"...\",               // Generate a CLEAN product name following the naming convention: {Brand} {Model} {Key Specs} {Category Type}. NEVER use raw supplier text with pipes or semicolons.\n";
+        }
         $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four. Each point is a key spec or selling feature (max 20 words each). No intro text before bullets. Focus on specs: memory, interface, connectivity, power.\n";
         $prompt .= "  \"description\": \"...\",         // DETAILED product description in HTML format. Must be 250-400 words. DO NOT repeat short_description bullet points. Structure with these HTML sections:\\n\\n";
         $prompt .= "    <h3>section title</h3> followed by <p>paragraph text</p> for each section. Use EXACTLY this structure:\\n\\n";
@@ -1182,6 +1340,26 @@ class OpenAIService
         $prompt .= "  \"meta_description\": \"...\",    // Max 160 chars, with call-to-action\n";
         $prompt .= "  \"meta_keywords\": \"...\",       // Comma-separated, max 8 keywords\n";
         $prompt .= "  \"specifications\": [{\"name\": \"...\", \"value\": \"...\"}],  // At least 8 real specs. Include ALL specs from supplier info. Common specs: Chipset, Memory Size, Memory Type, Interface, Clock Speed, TDP/Power, Cores/Threads, Socket, Form Factor, Connectivity, Dimensions, etc.\n";
+
+        // Build category-specific attributes instruction
+        $categoryAttrs = $this->getCategoryAttributes($verifiedCategory);
+        if (!empty($categoryAttrs)) {
+            $attrExample = '{';
+            $attrComments = [];
+            foreach ($categoryAttrs as $attrName => $attrDesc) {
+                $attrExample .= "\"{$attrName}\": \"...\", ";
+                $attrComments[] = "    {$attrName}: {$attrDesc}";
+            }
+            $attrExample = rtrim($attrExample, ', ') . '}';
+            $prompt .= "  \"attributes\": {$attrExample},  // REQUIRED filterable attributes for this category. These are used for product filtering on the storefront. Extract accurate values from the product specs/SKU/supplier info.\n";
+            $prompt .= "    // Attribute guidelines:\n";
+            foreach ($attrComments as $comment) {
+                $prompt .= "    //{$comment}\n";
+            }
+        } else {
+            $prompt .= "  \"attributes\": {},              // Filterable attributes as {\"name\": \"value\"} pairs. Include relevant attributes like Series, Memory Size, Type, etc. based on the product category.\n";
+        }
+
         $prompt .= "  \"suggested_category\": \"...\",  // Best category\n";
         $prompt .= "  \"brand\": \"{$verifiedBrand}\",\n";
         $prompt .= "  \"weight\": 0.5,                 // Estimated product weight in kg (just the product, with retail packaging)\n";
@@ -1204,7 +1382,7 @@ class OpenAIService
             $response = $this->makeRequest('/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
-                    ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given.'],
+                    ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given. Product names MUST follow the structure: Brand first, then series/model/specs, then category type last (e.g. "ASUS ROG Strix RTX 4070 12GB Graphics Card").'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
                 'max_tokens' => 4000,
@@ -1256,6 +1434,7 @@ class OpenAIService
                 'meta_description' => '',
                 'meta_keywords' => '',
                 'specifications' => [],
+                'attributes' => [],
                 'suggested_category' => $data['suggested_category'] ?? $verifiedCategory,
                 'brand' => $verifiedBrand,
                 'weight' => null,
@@ -1461,6 +1640,7 @@ class OpenAIService
                 'meta_description' => substr(($identity['short_description'] ?: $shortDescription) . ' Shop at Pricetag.co.za - fast delivery across South Africa.', 0, 160),
                 'meta_keywords' => implode(', ', array_filter([$brand, $category, 'buy online', 'South Africa', 'Pricetag'])),
                 'specifications' => [],
+                'attributes' => [],
                 'suggested_category' => $category,
                 'brand' => $brand,
                 'weight' => null,

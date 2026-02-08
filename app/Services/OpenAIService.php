@@ -1134,21 +1134,28 @@ class OpenAIService
         }
 
         // Extract product name from short description when pattern matching failed
-        // Supplier short descriptions contain the real product name, separated by ";" or "/"
+        // Supplier short descriptions contain the real product name, separated by ";", "/" or "|"
         // e.g. "GIGABYTE nVidia GeForce RTX 5090 GAMING OC - 32GB GDDR7; 512-Bit Memory Bus; ..."
         // e.g. "ASUS Graphics Card/NVIDIA/PCIe2.0/2GB GDDR5/1xHDMI/1xD-Sub/1xDVI/300w/ 17x6.9x3.9cm."
+        // e.g. "Aspire Lite AL16-54P-57MK| i5-1334U| 16"| UMA| 16GB DDR5..."
         $nameFromDesc = '';
         if (!$recognized && !empty($shortDescription)) {
-            // Split on common supplier separators: semicolons or forward slashes
+            // Split on common supplier separators: semicolons, pipes, or forward slashes
             if (strpos($shortDescription, ';') !== false) {
                 $extractedName = trim(explode(';', $shortDescription)[0]);
+            } elseif (strpos($shortDescription, '|') !== false) {
+                $extractedName = trim(explode('|', $shortDescription)[0]);
             } elseif (strpos($shortDescription, '/') !== false) {
                 $extractedName = trim(explode('/', $shortDescription)[0]);
             } else {
                 $extractedName = trim($shortDescription);
             }
-            // Clean up: remove trailing dots, dashes, and extra whitespace
-            $extractedName = rtrim($extractedName, ' .-');
+            // Clean up: remove trailing dots, dashes, pipes, and extra whitespace
+            $extractedName = rtrim($extractedName, ' .-|');
+            // For pipe-separated supplier data, DON'T use the extracted fragment as a final name
+            // because it's usually just a model number without proper formatting.
+            // Instead, pass the full raw text to the AI and let it construct a proper name.
+            $isRawSupplierData = (strpos($shortDescription, '|') !== false);
             if (!empty($extractedName) && strlen($extractedName) > 5 && strlen($extractedName) < 200) {
                 $nameFromDesc = $extractedName;
                 // Try to extract brand from the beginning of the name
@@ -1157,13 +1164,22 @@ class OpenAIService
                     $knownBrands = ['ASUS', 'Gigabyte', 'GIGABYTE', 'MSI', 'EVGA', 'Zotac', 'Corsair', 'Samsung',
                         'Kingston', 'Seagate', 'Intel', 'AMD', 'Logitech', 'Razer', 'HyperX', 'Crucial',
                         'Western', 'SanDisk', 'Thermaltake', 'Cooler', 'NZXT', 'be', 'Sapphire', 'XFX',
-                        'PowerColor', 'ASRock', 'Biostar', 'PNY', 'Palit', 'Gainward', 'Inno3D'];
+                        'PowerColor', 'ASRock', 'Biostar', 'PNY', 'Palit', 'Gainward', 'Inno3D',
+                        'Acer', 'HP', 'Dell', 'Lenovo', 'Apple', 'Huawei', 'LG', 'BenQ', 'ViewSonic',
+                        'AOC', 'Epson', 'Canon', 'Brother', 'Xerox', 'Sony', 'JBL', 'SteelSeries',
+                        'Deepcool', 'Antec', 'Fractal', 'Lian', 'Phanteks', 'Seasonic', 'Silverstone',
+                        'Netgear', 'TP-Link', 'Ubiquiti', 'MikroTik', 'Synology', 'QNAP'];
                     foreach ($knownBrands as $kb) {
                         if (strcasecmp($firstWord, $kb) === 0) {
                             $verifiedBrand = $kb;
                             break;
                         }
                     }
+                }
+                // If this is raw pipe-separated supplier data, let the AI reformat the name
+                // rather than using the extracted fragment (which is usually incomplete)
+                if ($isRawSupplierData) {
+                    $nameFromDesc = ''; // Force AI to generate a proper name
                 }
             }
         }
@@ -1218,9 +1234,9 @@ class OpenAIService
             }
             $prompt .= "\n*** CRITICAL: The product name \"{$productName}\" is CORRECT. ";
             $prompt .= "You MUST use this EXACT name in the 'name' field. Do NOT change the model number or brand. ***\n";
-            $prompt .= "\nNAMING CONVENTION: Product names MUST follow this structure: {Brand} {Series/Model} {Specs} {Category Type}.\n";
-            $prompt .= "The brand is ALWAYS first, followed by series/model info and specs, with the category type ALWAYS last.\n";
-            $prompt .= "Examples: 'ASUS ROG Strix GeForce RTX 4070 OC 12GB Graphics Card', 'Intel Core i9-14900K Processor', 'Corsair Vengeance DDR5 32GB Desktop Memory'.\n";
+            $prompt .= "\nNAMING CONVENTION: Product names MUST follow this structure: {Brand} {Series/Model} {Key Specs} {Category Type}.\n";
+            $prompt .= "The brand is ALWAYS first, followed by series/model info and key specs, with the category type ALWAYS last.\n";
+            $prompt .= "Examples: 'ASUS ROG Strix GeForce RTX 4070 OC 12GB Graphics Card', 'Intel Core i9-14900K Processor', 'Corsair Vengeance DDR5 32GB Desktop Memory', 'Acer Aspire 5 i5-1335U 8GB 15.6-inch Laptop', 'BenQ TH685P DLP 1080p 3500 Lumens Projector'.\n";
             if ($manufacturerData) {
                 $prompt .= "\nMANUFACTURER PAGE DATA (real specs from the official product page - USE THESE for accurate specifications, descriptions, and technical details):\n";
                 $prompt .= "---\n{$manufacturerData}\n---\n";
@@ -1249,8 +1265,16 @@ class OpenAIService
                 $prompt .= "PRICE: R" . number_format((float)$price, 2) . "\n";
             }
             $prompt .= "\n*** CRITICAL IDENTIFICATION RULES:\n";
-            $prompt .= "1. Decode the SKU to determine the EXACT product model. SKUs encode manufacturer, model, variant, and specs.\n";
-            $prompt .= "2. USE THE SUPPLIER INFO - it often contains the brand, chipset, memory, and interface details. Parse it carefully.\n";
+            $prompt .= "1. Decode the SKU and SUPPLIER INFO to determine the EXACT product. SKUs encode manufacturer, model, variant, and specs.\n";
+            $prompt .= "2. SUPPLIER INFO is often RAW data with pipe (|) or semicolon (;) separators containing specs like CPU, RAM, screen size, etc.\n";
+            $prompt .= "   You MUST parse these fields and construct a CLEAN, human-readable product name from them.\n";
+            $prompt .= "   Example supplier data and how to convert it:\n";
+            $prompt .= "   RAW: 'Aspire Lite AL16-54P-57MK| i5-1334U| 16\"| UMA| 16GB DDR5| 512GB SSD'\n";
+            $prompt .= "   CLEAN NAME: 'Acer Aspire Lite AL16-54P i5-1334U 16GB 16-inch Laptop'\n";
+            $prompt .= "   RAW: 'Acer | TMX414-51-TCO | U5-226V | 14\" WUXGA OLED'\n";
+            $prompt .= "   CLEAN NAME: 'Acer TravelMate X414 U5-226V 14-inch OLED Laptop'\n";
+            $prompt .= "   RAW: 'Acer S1387 DLP 3D WXGA 4000 Lm 20000:1 Short Throw'\n";
+            $prompt .= "   CLEAN NAME: 'Acer S1387 DLP WXGA 4000 Lumens Short Throw Projector'\n";
             $prompt .= "3. Common GPU SKU formats:\n";
             $prompt .= "   - ASUS: GT710-SL-2GD5-BRK, DUAL-RTX4060-O8G, ROG-STRIX-RTX5090-O32G, PH-GTX1650-O4G\n";
             $prompt .= "   - Gigabyte: GV-N4070EAGLE OC-12GD, GV-R76XTGAMING OC-16GD\n";
@@ -1259,16 +1283,29 @@ class OpenAIService
             $prompt .= "   - Zotac: ZT-T20610D-10M\n";
             $prompt .= "4. Common non-GPU SKU formats: CMK = Corsair RAM, MZ- = Samsung SSD, WD = Western Digital, BX80 = Intel CPU.\n";
             $prompt .= "5. GPU memory in SKUs: 2GD5 = 2GB GDDR5, 8GD6 = 8GB GDDR6, O8G = OC 8GB, 32GD = 32GB GDDR.\n";
-            $prompt .= "6. The 'name' MUST be a SPECIFIC customer-facing product name with brand, model, and key specs.\n";
+            $prompt .= "6. The 'name' MUST be a CLEAN, customer-facing product name. NEVER copy raw supplier text with pipes or semicolons.\n";
+            $prompt .= "   GOOD: 'Acer Aspire Lite AL16-54P i5-1334U 16GB 16-inch Laptop'\n";
             $prompt .= "   GOOD: 'ASUS GeForce GT 710 2GB GDDR5 Silent Low Profile Graphics Card'\n";
+            $prompt .= "   GOOD: 'Acer S1387 DLP WXGA 4000 Lumens Short Throw Projector'\n";
+            $prompt .= "   BAD: 'Aspire Lite AL16-54P-57MK| i5-1334U| 16\"| UMA| 16GB DDR5' (raw supplier data with pipes!)\n";
             $prompt .= "   BAD: 'Asus Graphics Cards Nvidia' (too generic, no model!)\n";
             $prompt .= "   BAD: 'GT710-SL-2GD5-BRK-EVO' (raw SKU, not a name!)\n";
             $prompt .= "   BAD: 'ASUS GeForce GT 710 2GB GDDR5' (missing category type at end!)\n";
             $prompt .= "7. NEVER return a generic category name as the product name. Every product has a SPECIFIC model.\n";
-            $prompt .= "8. NAMING CONVENTION: Product names MUST follow this structure: {Brand} {Series/Model} {Specs} {Category Type}.\n";
-            $prompt .= "   The brand is ALWAYS first, followed by series/model info and specs, with the category type ALWAYS last.\n";
-            $prompt .= "   Examples: 'ASUS ROG Strix GeForce RTX 4070 OC 12GB Graphics Card', 'Lenovo ThinkPad X1 Carbon i7 16GB Laptop', 'Gigabyte B650 Aorus Elite AX Motherboard'.\n";
-            $prompt .= "   Category types: Graphics Card, Processor, Laptop, Desktop Memory, Solid State Drive, Hard Drive, Motherboard, Power Supply, Monitor, Mouse, Keyboard, Headset, etc. ***\n";
+            $prompt .= "8. NAMING CONVENTION: Product names MUST follow this structure: {Brand} {Series/Model} {Key Specs} {Category Type}.\n";
+            $prompt .= "   The brand is ALWAYS first, followed by series/model and key specs, with the category type ALWAYS last.\n";
+            $prompt .= "   For LAPTOPS include: brand, model line, CPU, RAM, screen size, then 'Laptop'.\n";
+            $prompt .= "   For PROJECTORS include: brand, model, technology, brightness, then 'Projector'.\n";
+            $prompt .= "   For MONITORS include: brand, model, screen size, resolution, then 'Monitor'.\n";
+            $prompt .= "   For PRINTERS include: brand, model, type, then 'Printer'.\n";
+            $prompt .= "   Examples:\n";
+            $prompt .= "   'ASUS ROG Strix GeForce RTX 4070 OC 12GB Graphics Card'\n";
+            $prompt .= "   'Acer Aspire 5 A515-58M i5-1335U 8GB 15.6-inch Laptop'\n";
+            $prompt .= "   'Lenovo ThinkPad X1 Carbon Gen 11 i7-1365U 16GB 14-inch Laptop'\n";
+            $prompt .= "   'BenQ TH685P DLP 1080p 3500 Lumens Projector'\n";
+            $prompt .= "   'Dell UltraSharp U2723QE 27-inch 4K IPS Monitor'\n";
+            $prompt .= "   'Gigabyte B650 Aorus Elite AX DDR5 Motherboard'\n";
+            $prompt .= "   Category types: Graphics Card, Processor, Laptop, Desktop Memory, Solid State Drive, Hard Drive, Motherboard, Power Supply, Monitor, Projector, Mouse, Keyboard, Headset, Webcam, Router, Printer, etc. ***\n";
             if ($manufacturerData) {
                 $prompt .= "\nMANUFACTURER PAGE DATA (real specs from the official product page - USE THESE for accurate identification and specifications):\n";
                 $prompt .= "---\n{$manufacturerData}\n---\n";
@@ -1278,7 +1315,11 @@ class OpenAIService
 
         $prompt .= "\nGenerate ALL of the following fields as valid JSON:\n";
         $prompt .= "{\n";
-        $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
+        if ($recognized || !empty($nameFromDesc)) {
+            $prompt .= "  \"name\": \"{$productName}\",   // USE THIS EXACT NAME\n";
+        } else {
+            $prompt .= "  \"name\": \"...\",               // Generate a CLEAN product name following the naming convention: {Brand} {Model} {Key Specs} {Category Type}. NEVER use raw supplier text with pipes or semicolons.\n";
+        }
         $prompt .= "  \"short_description\": \"...\",  // MUST be exactly 4 bullet points. Use bullet character. Format: \\n• Point one\\n• Point two\\n• Point three\\n• Point four. Each point is a key spec or selling feature (max 20 words each). No intro text before bullets. Focus on specs: memory, interface, connectivity, power.\n";
         $prompt .= "  \"description\": \"...\",         // DETAILED product description in HTML format. Must be 250-400 words. DO NOT repeat short_description bullet points. Structure with these HTML sections:\\n\\n";
         $prompt .= "    <h3>section title</h3> followed by <p>paragraph text</p> for each section. Use EXACTLY this structure:\\n\\n";

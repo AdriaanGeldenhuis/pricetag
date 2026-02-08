@@ -70,11 +70,30 @@ class ProductApiController extends Controller
                 return;
             }
 
-            // Get additional data
-            $images = $this->productModel->getProductImages($id);
-            $variants = $this->productModel->getProductVariants($id);
-            $category = $product->getPrimaryCategory();
-            $primaryImage = $product->getPrimaryImage();
+            // Get additional data - each wrapped so partial failures don't break the response
+            $images = [];
+            try {
+                $images = $this->productModel->getProductImages($id);
+            } catch (\Throwable $e) {
+            }
+
+            $variants = [];
+            try {
+                $variants = $this->productModel->getProductVariants($id);
+            } catch (\Throwable $e) {
+            }
+
+            $category = null;
+            try {
+                $category = $product->getPrimaryCategory();
+            } catch (\Throwable $e) {
+            }
+
+            $primaryImage = $product->featured_image ?? null;
+            try {
+                $primaryImage = $product->getPrimaryImage() ?: $primaryImage;
+            } catch (\Throwable $e) {
+            }
 
             jsonResponse([
                 'success' => true,
@@ -82,7 +101,7 @@ class ProductApiController extends Controller
                     'id' => $product->id,
                     'name' => $product->name,
                     'slug' => $product->slug,
-                    'sku' => $product->sku,
+                    'sku' => $product->sku ?? '',
                     'description' => $product->description ?? '',
                     'short_description' => $product->short_description ?? '',
                     'price' => (float) ($product->price ?? 0),
@@ -131,34 +150,50 @@ class ProductApiController extends Controller
                 return;
             }
 
-            // Try explicit related products first
-            $related = $product->getRelatedProducts(8);
+            $related = [];
+
+            // Try explicit related products first (table may not exist)
+            try {
+                $related = $product->getRelatedProducts(8);
+            } catch (\Throwable $e) {
+            }
 
             // Fall back to same-category products
             if (empty($related)) {
-                $category = $product->getPrimaryCategory();
-                if ($category) {
-                    $db = Database::getInstance();
-                    $stmt = $db->prepare("
-                        SELECT p.* FROM products p
-                        JOIN product_categories pc ON pc.product_id = p.id
-                        WHERE pc.category_id = ? AND p.id != ? AND p.status = 'active'
-                        ORDER BY p.sold_count DESC
-                        LIMIT 8
-                    ");
-                    $stmt->execute([$category['id'], $id]);
+                try {
+                    $category = $product->getPrimaryCategory();
+                    if ($category) {
+                        $db = Database::getInstance();
+                        $stmt = $db->prepare("
+                            SELECT p.* FROM products p
+                            JOIN product_categories pc ON pc.product_id = p.id
+                            WHERE pc.category_id = ? AND p.id != ? AND p.status = 'active'
+                            ORDER BY p.sold_count DESC
+                            LIMIT 8
+                        ");
+                        $stmt->execute([$category['id'], $id]);
 
-                    while ($data = $stmt->fetch()) {
-                        $p = new Product($data);
-                        $p->exists = true;
-                        $related[] = $p;
+                        while ($data = $stmt->fetch()) {
+                            $p = new Product($data);
+                            $p->exists = true;
+                            $related[] = $p;
+                        }
                     }
+                } catch (\Throwable $e) {
                 }
             }
 
             $products = array_map(function ($p) {
-                $image = $p->getPrimaryImage();
-                $cat = $p->getPrimaryCategory();
+                $image = $p->featured_image ?? null;
+                try {
+                    $image = $p->getPrimaryImage() ?: $image;
+                } catch (\Throwable $e) {
+                }
+                $cat = null;
+                try {
+                    $cat = $p->getPrimaryCategory();
+                } catch (\Throwable $e) {
+                }
                 return [
                     'id' => $p->id,
                     'name' => $p->name,

@@ -163,6 +163,13 @@ class Router
 
     private function executeHandler($handler, array $params): void
     {
+        // Cast numeric route parameters to int for type-hinted controller methods
+        foreach ($params as $key => $value) {
+            if (is_string($value) && ctype_digit($value)) {
+                $params[$key] = (int) $value;
+            }
+        }
+
         if (is_callable($handler)) {
             call_user_func_array($handler, $params);
             return;

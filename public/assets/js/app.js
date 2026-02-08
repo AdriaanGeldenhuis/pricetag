@@ -905,6 +905,9 @@
     },
 
     close() {
+      if (document.activeElement && this.modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       this.modal.classList.remove('is-open');
       this.modal.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
@@ -1032,6 +1035,9 @@
     },
 
     close() {
+      if (document.activeElement && this.modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       this.modal.classList.remove('is-open');
       this.modal.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
@@ -1276,9 +1282,23 @@
         const productId = btn.dataset.wishlistToggle;
 
         try {
-          const data = await postForm(window.Pricetag.baseUrl + '/wishlist/toggle', {
-            product_id: productId,
+          const response = await fetch(window.Pricetag.baseUrl + '/wishlist/toggle', {
+            method: 'POST',
+            body: (() => {
+              const fd = new FormData();
+              fd.append('_token', window.Pricetag.csrfToken);
+              fd.append('product_id', productId);
+              return fd;
+            })(),
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
           });
+
+          if (response.status === 401) {
+            Toast.warning('Please log in to add items to your wishlist');
+            return;
+          }
+
+          const data = await response.json();
 
           if (data.success) {
             btn.classList.toggle('is-active', data.in_wishlist);
@@ -1297,9 +1317,11 @@
             }
 
             Toast.success(data.in_wishlist ? 'Added to wishlist' : 'Removed from wishlist');
+          } else {
+            Toast.error(data.message || 'Could not update wishlist');
           }
         } catch (err) {
-          Toast.error('Please login to use wishlist');
+          Toast.error('Something went wrong. Please try again.');
         }
       });
     },
@@ -1434,11 +1456,13 @@
     async open(productId) {
       try {
         const data = await fetchJSON(`${window.Pricetag.baseUrl}/api/products/${productId}`);
-        if (data.product) {
+        if (data.success && data.product) {
           this.render(data.product);
           this.modal.classList.add('is-open');
           this.modal.setAttribute('aria-hidden', 'false');
           document.body.style.overflow = 'hidden';
+        } else {
+          Toast.error(data.message || 'Product not available');
         }
       } catch (err) {
         Toast.error('Failed to load product details');
@@ -1446,6 +1470,9 @@
     },
 
     close() {
+      if (document.activeElement && this.modal.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       this.modal.classList.remove('is-open');
       this.modal.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';

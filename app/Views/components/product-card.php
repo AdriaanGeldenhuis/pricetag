@@ -283,11 +283,6 @@ $productUrl = url('/products/' . $product->slug);
     color: rgba(255, 255, 255, 0.85);
     cursor: pointer;
     transition: all 0.2s ease;
-    opacity: 0;
-    transform: scale(0.85);
-}
-
-.product-card:hover .product-card-menu-btn {
     opacity: 1;
     transform: scale(1);
 }

@@ -112,6 +112,8 @@ $router->group(['prefix' => 'api'], function ($router) {
     // Products API
     $router->get('/products', 'App\Controllers\Api\ProductApiController@index');
     $router->get('/products/{id}', 'App\Controllers\Api\ProductApiController@show');
+    $router->get('/products/{id}/similar', 'App\Controllers\Api\ProductApiController@similar');
+    $router->post('/products/{id}/question', 'App\Controllers\Api\ProductApiController@submitQuestion');
 
     // Cart API
     $router->get('/cart', 'App\Controllers\Api\CartApiController@index');

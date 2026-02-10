@@ -301,20 +301,20 @@ function renderPagination($pagination, $baseUrl) {
     <?php renderPagination($pagination, url('/admin/products')); ?>
 
     <div class="overflow-x-auto">
-        <table class="admin-table" style="width: 100%; border-collapse: collapse;">
+        <table class="admin-table">
             <thead>
-                <tr style="background: #f9fafb; border-bottom: 2px solid #e5e7eb;">
-                    <th style="width: 40px; padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: left;">
+                <tr>
+                    <th style="width: 40px;">
                         <input type="checkbox" id="select-all" class="form-checkbox">
                     </th>
-                    <th style="width: 60px; padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280;"></th>
-                    <th style="padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: left;">Product</th>
-                    <th style="padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: left;">SKU</th>
-                    <th style="padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: left;">Category</th>
-                    <th style="padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: right;">Price</th>
-                    <th style="padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: center;">Stock</th>
-                    <th style="padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; text-align: center;">Status</th>
-                    <th style="width: 100px; padding: 10px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280;">Actions</th>
+                    <th style="width: 60px;"></th>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>Category</th>
+                    <th style="text-align: right;">Price</th>
+                    <th style="text-align: center;">Stock</th>
+                    <th style="text-align: center;">Status</th>
+                    <th style="width: 80px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -328,89 +328,76 @@ function renderPagination($pagination, $baseUrl) {
                 </tr>
                 <?php else: ?>
                 <?php foreach ($products as $product): ?>
-                <tr data-product-id="<?= $product['id'] ?>" style="border-bottom: 1px solid #f3f4f6;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='transparent'">
-                    <td style="padding: 10px 12px; vertical-align: middle;">
+                <tr data-product-id="<?= $product['id'] ?>">
+                    <td>
                         <input type="checkbox" class="form-checkbox product-checkbox" value="<?= $product['id'] ?>">
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle;">
+                    <td>
                         <?php if ($product['image']): ?>
                         <img src="<?= url('storage/uploads/' . e($product['image'])) ?>"
-                             alt="" style="width: 44px; height: 44px; border-radius: 6px; object-fit: cover; border: 1px solid #e5e7eb;">
+                             alt="" class="w-10 h-10 rounded object-cover">
                         <?php else: ?>
-                        <div style="width: 44px; height: 44px; border-radius: 6px; background: #f3f4f6; border: 1px solid #e5e7eb;"></div>
+                        <div class="w-10 h-10 rounded bg-neutral-100"></div>
                         <?php endif; ?>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle;">
-                        <div style="display: flex; flex-direction: column; gap: 2px;">
-                            <a href="<?= url('/admin/products/' . $product['id'] . '/edit') ?>" style="font-weight: 600; color: #111827; text-decoration: none; line-height: 1.3;">
-                                <?= e($product['name']) ?>
-                            </a>
-                            <?php if (!empty($product['is_featured'])): ?>
-                            <span style="display: inline-flex; align-items: center; gap: 3px; font-size: 11px; background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 4px; width: fit-content; font-weight: 500;">
-                                <svg viewBox="0 0 24 24" fill="currentColor" style="width: 10px; height: 10px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
-                                Featured
-                            </span>
-                            <?php endif; ?>
-                        </div>
+                    <td>
+                        <a href="<?= url('/admin/products/' . $product['id'] . '/edit') ?>" class="font-medium text-primary" style="font-size: 13px;">
+                            <?= e($product['name']) ?>
+                        </a>
+                        <?php if (!empty($product['is_featured'])): ?>
+                        <span class="badge badge-accent ml-2">Featured</span>
+                        <?php endif; ?>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle; white-space: nowrap;">
-                        <code style="font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;"><?= e($product['sku']) ?></code>
-                    </td>
-                    <td style="padding: 10px 12px; vertical-align: middle;">
+                    <td class="text-muted text-sm" style="white-space: nowrap;"><?= e($product['sku']) ?></td>
+                    <td style="white-space: nowrap;">
                         <?php if (!empty($product['category_name'])): ?>
-                        <span style="display: inline-block; font-size: 12px; background: #ede9fe; color: #5b21b6; padding: 3px 10px; border-radius: 20px; font-weight: 500; white-space: nowrap;"><?= e($product['category_name']) ?></span>
+                        <span class="badge badge-info"><?= e($product['category_name']) ?></span>
                         <?php else: ?>
-                        <span style="color: #d1d5db; font-size: 12px;">No category</span>
+                        <span class="text-muted text-sm">-</span>
                         <?php endif; ?>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle; text-align: right; white-space: nowrap;">
-                        <span style="font-weight: 600; color: #111827;"><?= formatPrice($product['price']) ?></span>
+                    <td style="white-space: nowrap; text-align: right;">
+                        <span class="font-medium"><?= formatPrice($product['price']) ?></span>
                         <?php if ($product['compare_price']): ?>
-                        <br><span style="font-size: 11px; color: #9ca3af; text-decoration: line-through;"><?= formatPrice($product['compare_price']) ?></span>
+                        <span class="text-xs text-muted line-through block"><?= formatPrice($product['compare_price']) ?></span>
                         <?php endif; ?>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle; text-align: center;">
+                    <td style="white-space: nowrap; text-align: center;">
                         <?php if (!empty($product['manage_stock'])): ?>
                             <?php if ($product['stock_quantity'] <= 0): ?>
-                            <span style="display: inline-block; font-size: 11px; background: #fef2f2; color: #dc2626; padding: 3px 10px; border-radius: 20px; font-weight: 500;">Out of Stock</span>
+                            <span class="badge badge-danger">Out of Stock</span>
                             <?php elseif ($product['stock_quantity'] <= ($product['low_stock_threshold'] ?? 10)): ?>
-                            <span style="display: inline-block; font-size: 11px; background: #fffbeb; color: #d97706; padding: 3px 10px; border-radius: 20px; font-weight: 500;"><?= $product['stock_quantity'] ?> left</span>
+                            <span class="badge badge-warning"><?= $product['stock_quantity'] ?> left</span>
                             <?php else: ?>
-                            <span style="font-size: 13px; color: #6b7280;"><?= $product['stock_quantity'] ?></span>
+                            <span class="text-success"><?= $product['stock_quantity'] ?></span>
                             <?php endif; ?>
                         <?php else: ?>
-                        <span style="color: #d1d5db; font-size: 12px;">-</span>
+                        <span class="text-muted">-</span>
                         <?php endif; ?>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle; text-align: center;">
+                    <td style="white-space: nowrap; text-align: center;">
                         <?php
                         $statusColors = [
-                            'active' => ['bg' => '#ecfdf5', 'color' => '#059669'],
-                            'draft' => ['bg' => '#f3f4f6', 'color' => '#6b7280'],
-                            'inactive' => ['bg' => '#fffbeb', 'color' => '#d97706'],
-                            'out_of_stock' => ['bg' => '#fef2f2', 'color' => '#dc2626'],
+                            'active' => 'success',
+                            'draft' => 'neutral',
+                            'inactive' => 'warning',
+                            'out_of_stock' => 'danger',
                         ];
-                        $sc = $statusColors[$product['status']] ?? ['bg' => '#f3f4f6', 'color' => '#6b7280'];
+                        $color = $statusColors[$product['status']] ?? 'neutral';
                         ?>
-                        <span style="display: inline-block; font-size: 11px; background: <?= $sc['bg'] ?>; color: <?= $sc['color'] ?>; padding: 3px 10px; border-radius: 20px; font-weight: 500;"><?= ucfirst($product['status']) ?></span>
+                        <span class="badge badge-<?= $color ?>"><?= ucfirst($product['status']) ?></span>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle;">
-                        <div style="display: flex; gap: 2px; justify-content: flex-end;">
+                    <td>
+                        <div class="flex gap-2">
                             <a href="<?= url('/admin/products/' . $product['id'] . '/edit') ?>"
-                               style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6b7280; text-decoration: none;"
-                               title="Edit"
-                               onmouseover="this.style.background='#ede9fe';this.style.color='#5b21b6'"
-                               onmouseout="this.style.background='transparent';this.style.color='#6b7280'">
+                               class="btn btn-ghost btn-sm btn-icon" title="Edit">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                                     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
                                 </svg>
                             </a>
                             <a href="<?= url('/products/' . $product['slug']) ?>" target="_blank"
-                               style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: #6b7280; text-decoration: none;"
-                               title="View on site"
-                               onmouseover="this.style.background='#f3f4f6';this.style.color='#111827'"
-                               onmouseout="this.style.background='transparent';this.style.color='#6b7280'">
+                               class="btn btn-ghost btn-sm btn-icon" title="View">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
                                     <polyline points="15 3 21 3 21 9"/>

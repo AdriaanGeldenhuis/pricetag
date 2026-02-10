@@ -171,7 +171,7 @@ class OpenAIService
     /**
      * Make HTTP request to OpenAI API
      */
-    private function makeRequest(string $endpoint, array $data): array
+    private function makeRequest(string $endpoint, array $data, int $timeout = 30): array
     {
         $url = $this->baseUrl . $endpoint;
 
@@ -184,7 +184,7 @@ class OpenAIService
                 'Content-Type: application/json',
                 'Authorization: Bearer ' . $this->apiKey,
             ],
-            CURLOPT_TIMEOUT => 30,
+            CURLOPT_TIMEOUT => $timeout,
         ]);
 
         $response = curl_exec($ch);
@@ -1463,15 +1463,19 @@ class OpenAIService
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
+            // Use shorter timeout and fewer tokens for bulk imports to avoid 504
+            $apiTimeout = $isBulkImport ? 20 : 30;
+            $maxTokens = $isBulkImport ? 2000 : 4000;
+
             $response = $this->makeRequest('/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
                     ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given. Product names MUST follow the structure: Brand first, then series/model/specs, then category type last (e.g. "ASUS ROG Strix RTX 4070 12GB Graphics Card").'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => 4000,
+                'max_tokens' => $maxTokens,
                 'temperature' => 0.3,
-            ]);
+            ], $apiTimeout);
 
             $content = $response['choices'][0]['message']['content'] ?? '';
             $content = preg_replace('/^```json\s*/i', '', $content);

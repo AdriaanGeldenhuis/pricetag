@@ -2204,12 +2204,14 @@ class ProductController extends Controller
                     $aiCallCount++;
 
                     // Use the comprehensive generateCompleteProduct method
+                    // bulk_import=true skips slow web scraping to avoid 504 timeouts
                     $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
                         'brand' => $brandValue,
                         'category' => $row['category'] ?? '',
                         'price' => $price,
                         'existingName' => $name,
                         'existingDescription' => $productData['description'],
+                        'bulk_import' => true,
                     ]);
 
                     if (!empty($aiResult['success']) && !empty($aiResult['data'])) {

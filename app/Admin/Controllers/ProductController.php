@@ -1245,6 +1245,14 @@ class ProductController extends Controller
      */
     public function importProcess(): void
     {
+        // Extend PHP execution time for AI-powered bulk imports (AI calls take ~3-5s each)
+        set_time_limit(600);
+        // Prevent output buffering from holding up the connection
+        if (function_exists('apache_setenv')) {
+            @apache_setenv('no-gzip', '1');
+        }
+        @ini_set('zlib.output_compression', '0');
+
         header('Content-Type: application/json');
 
         if (!$this->validateCsrf()) {
@@ -1309,6 +1317,7 @@ class ProductController extends Controller
                                 'price' => $row['price'] ?? $existingProduct['price'] ?? 0,
                                 'existingName' => trim($row['name'] ?? $existingProduct['name'] ?? ''),
                                 'existingDescription' => $row['description'] ?? $existingProduct['description'] ?? '',
+                                'bulk_import' => true,
                             ]);
 
                             if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
@@ -1377,6 +1386,7 @@ class ProductController extends Controller
                                 'price' => $row['price'] ?? 0,
                                 'existingName' => $name,
                                 'existingDescription' => $row['description'] ?? '',
+                                'bulk_import' => true,
                             ]);
 
                             if (!empty($aiResult['success']) && !empty($aiResult['data'])) {

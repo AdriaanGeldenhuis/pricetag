@@ -1266,8 +1266,10 @@ class OpenAIService
         }
 
         // STEP 1.5: Fetch real specs from manufacturer website (non-blocking - fails gracefully)
+        // SKIP during bulk imports to avoid 504 timeouts - web scraping is too slow for batch processing
         $manufacturerData = null;
-        if (!empty($verifiedBrand)) {
+        $isBulkImport = !empty($context['bulk_import']);
+        if (!$isBulkImport && !empty($verifiedBrand)) {
             try {
                 $manufacturerData = $this->fetchManufacturerData($sku, $verifiedBrand, $productName);
                 if ($manufacturerData) {

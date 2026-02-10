@@ -932,7 +932,7 @@ class ProductController extends Controller
     /**
      * Create product from import data
      */
-    private function createProductFromImport(\PDO $db, array $row, array $categoryMap): void
+    private function createProductFromImport(\PDO $db, array $row, array $categoryMap): int
     {
         $name = trim($row['name']);
         $sku = trim($row['sku']);
@@ -976,12 +976,14 @@ class ProductController extends Controller
             isset($row['featured']) ? (int) $row['featured'] : 0,
         ]);
 
-        $productId = $db->lastInsertId();
+        $productId = (int) $db->lastInsertId();
 
         // Handle image URL
         if (!empty($row['image_url'])) {
             $this->importProductImage($db, $productId, $row['image_url']);
         }
+
+        return $productId;
     }
 
     /**
@@ -1270,6 +1272,7 @@ class ProductController extends Controller
             $errors = [];
 
             $categoryMap = $this->getCategoryMap($db);
+            $openai = null;
 
             foreach ($data as $index => $row) {
                 $rowNum = $index + 1;
@@ -1288,11 +1291,74 @@ class ProductController extends Controller
                     // Check if product exists
                     $existing = $db->query("SELECT id FROM products WHERE sku = ?", [$sku])->fetch();
 
+                    // Store AI data for post-insert operations (specs, attributes)
+                    $aiData = null;
+
                     if ($existing) {
                         if (!$updateExisting) {
                             continue;
                         }
+
+                        // AI Generate for existing products too - enrich missing data
+                        if ($aiGenerate) {
+                            $openai = $openai ?? new OpenAIService();
+                            $existingProduct = $db->query("SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
+                            $aiResult = $openai->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
+                                'brand' => $row['brand'] ?? '',
+                                'category' => $row['category'] ?? '',
+                                'price' => $row['price'] ?? $existingProduct['price'] ?? 0,
+                                'existingName' => trim($row['name'] ?? $existingProduct['name'] ?? ''),
+                                'existingDescription' => $row['description'] ?? $existingProduct['description'] ?? '',
+                            ]);
+
+                            if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                                $aiData = $aiResult['data'];
+                                // Fill in missing fields from AI for the update
+                                if (!empty($aiData['name']) && $aiData['name'] !== $sku && empty($row['name'])) {
+                                    $row['name'] = $aiData['name'];
+                                }
+                                if (empty($existingProduct['description']) && !empty($aiData['description'])) {
+                                    $row['description'] = $aiData['description'];
+                                }
+                                if (empty($existingProduct['short_description']) && !empty($aiData['short_description'])) {
+                                    $row['short_description'] = $aiData['short_description'];
+                                }
+                                if (empty($existingProduct['meta_title']) && !empty($aiData['meta_title'])) {
+                                    $row['meta_title'] = substr($aiData['meta_title'], 0, 255);
+                                }
+                                if (empty($existingProduct['meta_description']) && !empty($aiData['meta_description'])) {
+                                    $row['meta_description'] = $aiData['meta_description'];
+                                }
+                                if (empty($existingProduct['meta_keywords']) && !empty($aiData['meta_keywords'])) {
+                                    $row['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
+                                }
+                                if (!empty($aiData['weight']) && empty($existingProduct['weight'])) {
+                                    $row['weight'] = (float) $aiData['weight'];
+                                }
+                                if (!empty($aiData['length']) && empty($existingProduct['length'])) {
+                                    $row['length'] = (float) $aiData['length'];
+                                }
+                                if (!empty($aiData['width']) && empty($existingProduct['width'])) {
+                                    $row['width'] = (float) $aiData['width'];
+                                }
+                                if (!empty($aiData['height']) && empty($existingProduct['height'])) {
+                                    $row['height'] = (float) $aiData['height'];
+                                }
+                                // Use AI category suggestion if product has no category
+                                if (empty($existingProduct['category_id']) && !empty($aiData['suggested_category'])) {
+                                    $row['category'] = $aiData['suggested_category'];
+                                }
+                            }
+                        }
+
                         $this->updateProductFromImport($db, $existing['id'], $row, $categoryMap);
+
+                        // Save AI-generated specifications and attributes for existing products
+                        if ($aiData) {
+                            $this->saveProductSpecifications($db, $existing['id'], $aiData['specifications'] ?? []);
+                            $this->saveProductAttributes($db, $existing['id'], $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
+                        }
+
                         $updated++;
                     } else {
                         if (!$createNew) {
@@ -1315,15 +1381,21 @@ class ProductController extends Controller
 
                             if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
                                 $aiData = $aiResult['data'];
-                                if (empty($name) && !empty($aiData['name']) && $aiData['name'] !== $sku) {
+
+                                // AI-generated name: always prefer it when available and not raw SKU
+                                if (!empty($aiData['name']) && $aiData['name'] !== $sku) {
                                     $name = $aiData['name'];
                                 }
-                                if (empty($row['description']) && !empty($aiData['description'])) {
+
+                                // AI-generated descriptions
+                                if (!empty($aiData['description'])) {
                                     $row['description'] = $aiData['description'];
                                 }
                                 if (!empty($aiData['short_description'])) {
                                     $row['short_description'] = $aiData['short_description'];
                                 }
+
+                                // AI-generated SEO
                                 if (!empty($aiData['meta_title'])) {
                                     $row['meta_title'] = substr($aiData['meta_title'], 0, 255);
                                 }
@@ -1333,15 +1405,41 @@ class ProductController extends Controller
                                 if (!empty($aiData['meta_keywords'])) {
                                     $row['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
                                 }
+
+                                // AI-generated physical dimensions
                                 if (!empty($aiData['weight']) && empty($row['weight'])) {
                                     $row['weight'] = (float) $aiData['weight'];
+                                }
+                                if (!empty($aiData['length']) && empty($row['length'])) {
+                                    $row['length'] = (float) $aiData['length'];
+                                }
+                                if (!empty($aiData['width']) && empty($row['width'])) {
+                                    $row['width'] = (float) $aiData['width'];
+                                }
+                                if (!empty($aiData['height']) && empty($row['height'])) {
+                                    $row['height'] = (float) $aiData['height'];
+                                }
+
+                                // AI-generated category: use when no category in CSV
+                                if (empty($row['category']) && !empty($aiData['suggested_category'])) {
+                                    $row['category'] = $aiData['suggested_category'];
+                                    // Ensure category exists in map, create if needed
+                                    $catKey = strtolower(trim($aiData['suggested_category']));
+                                    if (!isset($categoryMap[$catKey])) {
+                                        $this->createCategoryIfNotExists($db, $aiData['suggested_category'], $categoryMap);
+                                    }
+                                }
+
+                                // AI-generated is_new flag
+                                if (!empty($aiData['is_new'])) {
+                                    $row['is_new'] = 1;
                                 }
                             }
                         }
 
                         if (empty($name)) {
                             if ($skipErrors) {
-                                $errors[] = "Row {$rowNum}: Name is required for new products";
+                                $errors[] = "Row {$rowNum}: Name is required for new products (AI could not identify SKU: {$sku})";
                                 $failed++;
                                 continue;
                             }
@@ -1350,7 +1448,14 @@ class ProductController extends Controller
 
                         $row['name'] = $name;
 
-                        $this->createProductFromImport($db, $row, $categoryMap);
+                        $productId = $this->createProductFromImport($db, $row, $categoryMap);
+
+                        // Save AI-generated specifications and attributes
+                        if ($aiData && $productId) {
+                            $this->saveProductSpecifications($db, $productId, $aiData['specifications'] ?? []);
+                            $this->saveProductAttributes($db, $productId, $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
+                        }
+
                         $created++;
                     }
 
@@ -1362,6 +1467,22 @@ class ProductController extends Controller
                     }
                     throw $e;
                 }
+            }
+
+            // Log the import
+            try {
+                $db->query("
+                    INSERT INTO product_import_logs (type, filename, status, total_products, created_products, updated_products, failed_products, errors, created_at, completed_at)
+                    VALUES ('ai_import', 'AI Import', 'completed', ?, ?, ?, ?, ?, NOW(), NOW())
+                ", [
+                    $created + $updated + $failed,
+                    $created,
+                    $updated,
+                    $failed,
+                    !empty($errors) ? json_encode(array_slice($errors, 0, 100)) : null,
+                ]);
+            } catch (\Exception $e) {
+                // Log table might not exist, ignore
             }
 
             echo json_encode([
@@ -1379,5 +1500,158 @@ class ProductController extends Controller
         exit;
     }
 
-    // Legacy AI methods removed - import now uses OpenAIService::generateCompleteProduct() directly
+    /**
+     * Save AI-generated product specifications.
+     * Replaces existing specs for the product with the new AI-generated ones.
+     */
+    private function saveProductSpecifications(\PDO $db, int $productId, array $specifications): void
+    {
+        if (empty($specifications)) {
+            return;
+        }
+
+        try {
+            // Check if product already has specs - only add if none exist
+            $existingCount = (int) $db->query(
+                "SELECT COUNT(*) FROM product_specifications WHERE product_id = ?",
+                [$productId]
+            )->fetchColumn();
+
+            if ($existingCount > 0) {
+                return; // Don't overwrite existing specs
+            }
+
+            $sortOrder = 0;
+            foreach ($specifications as $spec) {
+                $specName = trim($spec['name'] ?? '');
+                $specValue = trim($spec['value'] ?? '');
+
+                if (empty($specName) || empty($specValue)) {
+                    continue;
+                }
+
+                $db->query("
+                    INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order, created_at)
+                    VALUES (?, ?, ?, ?, NOW())
+                ", [$productId, substr($specName, 0, 100), substr($specValue, 0, 500), $sortOrder]);
+
+                $sortOrder++;
+            }
+        } catch (\Exception $e) {
+            error_log("Failed to save specifications for product {$productId}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save AI-generated product attributes (filterable attributes like Series, Memory Size, etc.)
+     * Creates attribute and attribute_value records if they don't exist.
+     */
+    private function saveProductAttributes(\PDO $db, int $productId, array $attributes, string $category): void
+    {
+        if (empty($attributes)) {
+            return;
+        }
+
+        try {
+            // Check if product already has attributes - only add if none exist
+            $existingCount = (int) $db->query(
+                "SELECT COUNT(*) FROM product_attributes WHERE product_id = ?",
+                [$productId]
+            )->fetchColumn();
+
+            if ($existingCount > 0) {
+                return; // Don't overwrite existing attributes
+            }
+
+            foreach ($attributes as $attrName => $attrValue) {
+                $attrName = trim($attrName);
+                $attrValue = trim($attrValue);
+
+                if (empty($attrName) || empty($attrValue)) {
+                    continue;
+                }
+
+                // Find or create the attribute
+                $attrSlug = $this->generateAttributeSlug($attrName);
+                $attribute = $db->query(
+                    "SELECT id FROM attributes WHERE slug = ?",
+                    [$attrSlug]
+                )->fetch();
+
+                if (!$attribute) {
+                    $db->query("
+                        INSERT INTO attributes (name, slug, type, is_filterable, is_visible, created_at)
+                        VALUES (?, ?, 'select', 1, 1, NOW())
+                    ", [$attrName, $attrSlug]);
+                    $attributeId = (int) $db->lastInsertId();
+                } else {
+                    $attributeId = (int) $attribute['id'];
+                }
+
+                // Find or create the attribute value
+                $valueSlug = $this->generateAttributeSlug($attrValue);
+                $value = $db->query(
+                    "SELECT id FROM attribute_values WHERE attribute_id = ? AND slug = ?",
+                    [$attributeId, $valueSlug]
+                )->fetch();
+
+                if (!$value) {
+                    $db->query("
+                        INSERT INTO attribute_values (attribute_id, value, slug, created_at)
+                        VALUES (?, ?, ?, NOW())
+                    ", [$attributeId, substr($attrValue, 0, 255), $valueSlug]);
+                    $valueId = (int) $db->lastInsertId();
+                } else {
+                    $valueId = (int) $value['id'];
+                }
+
+                // Link attribute value to product
+                $db->query("
+                    INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id)
+                    VALUES (?, ?, ?)
+                ", [$productId, $attributeId, $valueId]);
+            }
+        } catch (\Exception $e) {
+            error_log("Failed to save attributes for product {$productId}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Generate a URL-safe slug for attributes/values
+     */
+    private function generateAttributeSlug(string $text): string
+    {
+        $slug = strtolower(trim($text));
+        $slug = preg_replace('/[^a-z0-9\-]/', '-', $slug);
+        $slug = preg_replace('/-+/', '-', $slug);
+        $slug = trim($slug, '-');
+        return substr($slug, 0, 255) ?: 'unknown';
+    }
+
+    /**
+     * Create a category if it doesn't exist in the category map.
+     * Used when AI suggests a category that doesn't exist yet.
+     */
+    private function createCategoryIfNotExists(\PDO $db, string $categoryName, array &$categoryMap): void
+    {
+        $catKey = strtolower(trim($categoryName));
+        if (isset($categoryMap[$catKey])) {
+            return;
+        }
+
+        try {
+            $slug = $this->generateSlug($categoryName);
+            $db->query("
+                INSERT INTO categories (name, slug, parent_id, created_at, updated_at)
+                VALUES (?, ?, NULL, NOW(), NOW())
+            ", [$categoryName, $slug]);
+            $categoryMap[$catKey] = (int) $db->lastInsertId();
+        } catch (\Exception $e) {
+            // Category might already exist (race condition) - try to fetch it
+            $existing = $db->query("SELECT id FROM categories WHERE name = ?", [$categoryName])->fetch();
+            if ($existing) {
+                $categoryMap[$catKey] = (int) $existing['id'];
+            }
+        }
+    }
 }

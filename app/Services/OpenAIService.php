@@ -306,6 +306,44 @@ class OpenAIService
             'Type'  => 'Network device type (e.g. Router, Switch, Access Point, Network Card)',
             'Speed' => 'Maximum network speed (e.g. Wi-Fi 6, Wi-Fi 7, 1Gbps, 2.5Gbps)',
         ],
+        'Printers' => [
+            'Type'         => 'Printer technology (e.g. Laser, Inkjet, Thermal, Dot Matrix)',
+            'Function'     => 'Functionality (e.g. Print Only, Print/Scan/Copy, All-in-One)',
+            'Color'        => 'Color capability (e.g. Color, Monochrome)',
+            'Connectivity' => 'Connection types (e.g. USB, Wi-Fi, Ethernet, Bluetooth)',
+        ],
+        'Projectors' => [
+            'Technology'  => 'Projection technology (e.g. DLP, LCD, LED, Laser)',
+            'Resolution'  => 'Native resolution (e.g. SVGA, XGA, WXGA, 1080p, 4K)',
+            'Brightness'  => 'Brightness in lumens (e.g. 3000 Lumens, 4000 Lumens, 5000 Lumens)',
+            'Throw Type'  => 'Throw distance (e.g. Standard Throw, Short Throw, Ultra Short Throw)',
+        ],
+        'Desktops' => [
+            'CPU'         => 'Processor model (e.g. Intel Core i7-14700, AMD Ryzen 5 5600G)',
+            'RAM'         => 'Installed memory (e.g. 8GB, 16GB, 32GB)',
+            'Storage'     => 'Storage capacity and type (e.g. 512GB SSD, 1TB HDD)',
+            'Form Factor' => 'Desktop size (e.g. Tower, Mini PC, SFF, All-in-One)',
+        ],
+        'Tablets' => [
+            'Screen Size' => 'Display size in inches (e.g. 8-inch, 10.1-inch, 11-inch, 12.9-inch)',
+            'Storage'     => 'Internal storage (e.g. 64GB, 128GB, 256GB)',
+            'Connectivity' => 'Connectivity type (e.g. Wi-Fi Only, Wi-Fi + LTE, Wi-Fi + 5G)',
+        ],
+        'Software' => [
+            'Type'     => 'Software category (e.g. Operating System, Office Suite, Antivirus, Creative)',
+            'License'  => 'License type (e.g. Subscription, Perpetual, OEM)',
+            'Platform' => 'Supported platforms (e.g. Windows, Mac, Cross-platform)',
+        ],
+        'UPS' => [
+            'Capacity'   => 'Power capacity (e.g. 650VA, 1000VA, 1500VA, 3000VA)',
+            'Type'       => 'UPS topology (e.g. Standby, Line Interactive, Online Double Conversion)',
+            'Outlets'    => 'Number of outlets (e.g. 4, 6, 8)',
+        ],
+        'External Storage' => [
+            'Capacity'    => 'Storage capacity (e.g. 1TB, 2TB, 4TB, 5TB)',
+            'Type'        => 'Storage technology (e.g. Portable SSD, Portable HDD, Desktop HDD)',
+            'Interface'   => 'Connection interface (e.g. USB 3.0, USB-C, Thunderbolt)',
+        ],
     ];
 
     /**
@@ -1139,7 +1177,33 @@ class OpenAIService
         // e.g. "ASUS Graphics Card/NVIDIA/PCIe2.0/2GB GDDR5/1xHDMI/1xD-Sub/1xDVI/300w/ 17x6.9x3.9cm."
         // e.g. "Aspire Lite AL16-54P-57MK| i5-1334U| 16"| UMA| 16GB DDR5..."
         $nameFromDesc = '';
+        $parsedSupplier = null;
         if (!$recognized && !empty($shortDescription)) {
+            // Parse supplier data into structured fields for better AI context
+            $parsedSupplier = $this->parseSupplierData($shortDescription);
+
+            // Extract brand from supplier data if not yet known
+            if (empty($verifiedBrand) && !empty($parsedSupplier['brand'])) {
+                $verifiedBrand = $parsedSupplier['brand'];
+            }
+
+            // Try to detect category from supplier data
+            if ($verifiedCategory === 'Electronics' && !empty($parsedSupplier)) {
+                if (!empty($parsedSupplier['cpu']) && !empty($parsedSupplier['screen'])) {
+                    $verifiedCategory = 'Laptops';
+                } elseif (!empty($parsedSupplier['brightness']) || preg_match('/\b(projector|DLP|throw)\b/i', $shortDescription)) {
+                    $verifiedCategory = 'Projectors';
+                } elseif (preg_match('/\b(monitor|display)\b/i', $shortDescription) && !empty($parsedSupplier['screen'])) {
+                    $verifiedCategory = 'Monitors';
+                } elseif (preg_match('/\b(printer|laser|inkjet|toner)\b/i', $shortDescription)) {
+                    $verifiedCategory = 'Printers';
+                } elseif (preg_match('/\b(router|wi-?fi|mesh|access\s*point)\b/i', $shortDescription)) {
+                    $verifiedCategory = 'Networking';
+                } elseif (preg_match('/\b(mouse|keyboard|headset|webcam)\b/i', $shortDescription)) {
+                    $verifiedCategory = 'Peripherals';
+                }
+            }
+
             // Split on common supplier separators: semicolons, pipes, or forward slashes
             if (strpos($shortDescription, ';') !== false) {
                 $extractedName = trim(explode(';', $shortDescription)[0]);
@@ -1168,7 +1232,8 @@ class OpenAIService
                         'Acer', 'HP', 'Dell', 'Lenovo', 'Apple', 'Huawei', 'LG', 'BenQ', 'ViewSonic',
                         'AOC', 'Epson', 'Canon', 'Brother', 'Xerox', 'Sony', 'JBL', 'SteelSeries',
                         'Deepcool', 'Antec', 'Fractal', 'Lian', 'Phanteks', 'Seasonic', 'Silverstone',
-                        'Netgear', 'TP-Link', 'Ubiquiti', 'MikroTik', 'Synology', 'QNAP'];
+                        'Netgear', 'TP-Link', 'Ubiquiti', 'MikroTik', 'Synology', 'QNAP',
+                        'Toshiba', 'Hisense', 'TCL', 'Dynabook', 'Microsoft', 'Google'];
                     foreach ($knownBrands as $kb) {
                         if (strcasecmp($firstWord, $kb) === 0) {
                             $verifiedBrand = $kb;
@@ -1257,6 +1322,23 @@ class OpenAIService
             }
             if ($shortDescription) {
                 $prompt .= "SUPPLIER INFO: {$shortDescription}\n";
+            }
+            // Include parsed supplier data as structured context for the AI
+            if (!empty($parsedSupplier)) {
+                $parsedFields = [];
+                if (!empty($parsedSupplier['brand'])) $parsedFields[] = "Brand: {$parsedSupplier['brand']}";
+                if (!empty($parsedSupplier['model'])) $parsedFields[] = "Model: {$parsedSupplier['model']}";
+                if (!empty($parsedSupplier['cpu'])) $parsedFields[] = "CPU: {$parsedSupplier['cpu']}";
+                if (!empty($parsedSupplier['ram'])) $parsedFields[] = "RAM: {$parsedSupplier['ram']}";
+                if (!empty($parsedSupplier['screen'])) $parsedFields[] = "Screen: {$parsedSupplier['screen']}";
+                if (!empty($parsedSupplier['storage'])) $parsedFields[] = "Storage: {$parsedSupplier['storage']}";
+                if (!empty($parsedSupplier['gpu'])) $parsedFields[] = "GPU: {$parsedSupplier['gpu']}";
+                if (!empty($parsedSupplier['resolution'])) $parsedFields[] = "Resolution: {$parsedSupplier['resolution']}";
+                if (!empty($parsedSupplier['technology'])) $parsedFields[] = "Technology: {$parsedSupplier['technology']}";
+                if (!empty($parsedSupplier['brightness'])) $parsedFields[] = "Brightness: {$parsedSupplier['brightness']}";
+                if (!empty($parsedFields)) {
+                    $prompt .= "PARSED SPECS (pre-extracted from supplier data): " . implode(', ', $parsedFields) . "\n";
+                }
             }
             if ($existingDescription && strlen($existingDescription) > 20) {
                 $prompt .= "EXISTING DESCRIPTION: " . substr($existingDescription, 0, 300) . "\n";
@@ -1451,6 +1533,23 @@ class OpenAIService
                 $data['brand'] = $verifiedBrand;
             }
 
+            // STEP 4: Validate product name follows naming convention
+            // {Brand} {Series/Model} {Key Specs} {Category Type}
+            $finalCategory = $data['suggested_category'] ?: $verifiedCategory;
+            $finalBrand = $data['brand'] ?: $verifiedBrand;
+            $data['name'] = $this->validateProductName($data['name'], $finalBrand, $finalCategory);
+
+            // Ensure brand consistency
+            if (!empty($finalBrand)) {
+                $data['brand'] = $finalBrand;
+            }
+
+            // Clean up name: remove any raw supplier data characters that leaked through
+            $data['name'] = str_replace(['|', ';'], ' ', $data['name']);
+            $data['name'] = preg_replace('/\s+/', ' ', trim($data['name']));
+
+            error_log("AI COMPLETE: Final product name='{$data['name']}', brand='{$data['brand']}', category='{$data['suggested_category']}'");
+
             return ['success' => true, 'data' => $data];
 
         } catch (\Exception $e) {
@@ -1626,10 +1725,224 @@ class OpenAIService
     // =========================================================================
 
     /**
+     * Validate and fix product name to follow the naming convention:
+     * {Brand} {Series/Model} {Key Specs} {Category Type}
+     *
+     * Rules:
+     * 1. Brand MUST be the first word
+     * 2. Category type (e.g. "Graphics Card", "Laptop", "Processor") MUST be the last word(s)
+     * 3. No raw supplier text (pipes, semicolons)
+     * 4. No raw SKU codes as names
+     */
+    public function validateProductName(string $name, string $brand, string $category): string
+    {
+        // Clean raw supplier text
+        $name = str_replace(['|', ';'], ' ', $name);
+        $name = preg_replace('/\s+/', ' ', trim($name));
+
+        if (empty($name) || strlen($name) < 5) {
+            return $name;
+        }
+
+        // Map categories to their expected trailing type words
+        $categoryTypeMap = [
+            'Graphics Cards' => 'Graphics Card',
+            'Processors' => 'Processor',
+            'Memory' => 'Desktop Memory',
+            'Memory / RAM' => 'Desktop Memory',
+            'Storage' => 'Drive',
+            'Motherboards' => 'Motherboard',
+            'Laptops' => 'Laptop',
+            'Monitors' => 'Monitor',
+            'Power Supplies' => 'Power Supply',
+            'Cases' => 'Case',
+            'Cooling' => 'Cooler',
+            'Peripherals' => 'Peripheral',
+            'Networking' => 'Network Device',
+            'Printers' => 'Printer',
+            'Projectors' => 'Projector',
+            'Desktops' => 'Desktop PC',
+            'Tablets' => 'Tablet',
+            'Headsets' => 'Headset',
+            'Keyboards' => 'Keyboard',
+            'Mice' => 'Mouse',
+            'Webcams' => 'Webcam',
+            'Speakers' => 'Speaker',
+            'Routers' => 'Router',
+            'Switches' => 'Network Switch',
+            'Software' => 'Software',
+            'UPS' => 'UPS',
+            'External Storage' => 'External Drive',
+        ];
+
+        // Determine the expected category type suffix
+        $expectedType = '';
+        $categoryLower = strtolower($category);
+        foreach ($categoryTypeMap as $catPattern => $typeSuffix) {
+            if (strtolower($catPattern) === $categoryLower || str_contains($categoryLower, strtolower($catPattern)) || str_contains(strtolower($catPattern), $categoryLower)) {
+                $expectedType = $typeSuffix;
+                break;
+            }
+        }
+
+        // Also detect type from the name itself to avoid duplicating
+        $knownTypeSuffixes = [
+            'Graphics Card', 'Processor', 'Desktop Memory', 'Laptop Memory', 'Server Memory',
+            'Solid State Drive', 'Hard Drive', 'External Drive', 'NVMe Drive',
+            'Motherboard', 'Laptop', 'Notebook', 'Monitor', 'Display',
+            'Power Supply', 'PSU', 'Case', 'Chassis', 'Tower',
+            'CPU Cooler', 'AIO Cooler', 'Air Cooler', 'Liquid Cooler',
+            'Mouse', 'Keyboard', 'Headset', 'Webcam', 'Mousepad',
+            'Router', 'Network Switch', 'Access Point', 'Network Card',
+            'Printer', 'Projector', 'Desktop PC', 'Tablet', 'Speaker',
+            'UPS', 'Software',
+        ];
+
+        $nameHasType = false;
+        foreach ($knownTypeSuffixes as $suffix) {
+            if (preg_match('/\b' . preg_quote($suffix, '/') . '$/i', $name)) {
+                $nameHasType = true;
+                break;
+            }
+        }
+
+        // 1. Ensure brand is FIRST in the name
+        if (!empty($brand) && stripos($name, $brand) !== 0) {
+            // Remove brand from wherever it appears to avoid duplication
+            $nameWithoutBrand = preg_replace('/\b' . preg_quote($brand, '/') . '\b\s*/i', '', $name);
+            $name = $brand . ' ' . trim($nameWithoutBrand);
+        }
+
+        // 2. Ensure category type is LAST in the name
+        if (!$nameHasType && !empty($expectedType)) {
+            $name = trim($name) . ' ' . $expectedType;
+        }
+
+        // Clean up any double spaces
+        $name = preg_replace('/\s+/', ' ', trim($name));
+
+        return $name;
+    }
+
+    /**
+     * Parse supplier short description (pipe/semicolon/slash separated) into structured data.
+     * Returns extracted fields: brand, model, cpu, ram, screen, storage, gpu, etc.
+     */
+    public function parseSupplierData(string $shortDescription): array
+    {
+        $result = [
+            'brand' => '',
+            'model' => '',
+            'cpu' => '',
+            'ram' => '',
+            'screen' => '',
+            'storage' => '',
+            'gpu' => '',
+            'resolution' => '',
+            'technology' => '',
+            'brightness' => '',
+            'connectivity' => '',
+            'raw_parts' => [],
+        ];
+
+        if (empty($shortDescription)) {
+            return $result;
+        }
+
+        // Determine delimiter
+        $delimiter = ';';
+        if (substr_count($shortDescription, '|') > substr_count($shortDescription, ';')) {
+            $delimiter = '|';
+        }
+
+        $parts = array_map('trim', explode($delimiter, $shortDescription));
+        $result['raw_parts'] = $parts;
+
+        // First part is usually brand + model
+        if (!empty($parts[0])) {
+            $firstPart = $parts[0];
+            // Extract brand from first word
+            $knownBrands = ['ASUS', 'Gigabyte', 'GIGABYTE', 'MSI', 'Corsair', 'Samsung', 'Kingston',
+                'Intel', 'AMD', 'Logitech', 'Razer', 'Crucial', 'Acer', 'HP', 'Dell', 'Lenovo',
+                'Apple', 'Huawei', 'LG', 'BenQ', 'ViewSonic', 'AOC', 'Epson', 'Canon', 'Brother',
+                'Xerox', 'Sony', 'JBL', 'SteelSeries', 'Deepcool', 'Antec', 'Fractal', 'Phanteks',
+                'Seasonic', 'Silverstone', 'Netgear', 'TP-Link', 'Ubiquiti', 'MikroTik', 'Synology',
+                'QNAP', 'Western', 'SanDisk', 'Thermaltake', 'NZXT', 'ASRock', 'Biostar', 'Sapphire',
+                'XFX', 'PowerColor', 'PNY', 'Palit', 'Gainward', 'Inno3D', 'EVGA', 'Zotac',
+                'Cooler Master', 'be quiet!', 'HyperX', 'Toshiba', 'Hisense', 'TCL', 'Dynabook'];
+            $firstWord = explode(' ', $firstPart)[0];
+            foreach ($knownBrands as $kb) {
+                if (strcasecmp($firstWord, $kb) === 0) {
+                    $result['brand'] = $kb;
+                    $result['model'] = trim(substr($firstPart, strlen($kb)));
+                    break;
+                }
+            }
+            if (empty($result['brand'])) {
+                $result['model'] = $firstPart;
+            }
+        }
+
+        // Parse remaining parts for specs
+        foreach ($parts as $part) {
+            $partLower = strtolower($part);
+
+            // CPU detection
+            if (preg_match('/\b(i[3579]-\d{4,5}[A-Z]*|Ryzen\s*[3579]\s*\d{4}[A-Z]*|Celeron|Pentium|Core\s*Ultra|U[357]-\d{3}[A-Z]*|Snapdragon|M[1-4])\b/i', $part, $cpuMatch)) {
+                $result['cpu'] = trim($cpuMatch[0]);
+            }
+
+            // RAM detection
+            if (preg_match('/\b(\d+)\s*GB\s*(DDR[45]?|LPDDR[45]?)\b/i', $part, $ramMatch)) {
+                $result['ram'] = trim($ramMatch[0]);
+            } elseif (preg_match('/\b(DDR[45]?|LPDDR[45]?)\s*(\d+)\s*GB\b/i', $part, $ramMatch)) {
+                $result['ram'] = trim($ramMatch[0]);
+            }
+
+            // Screen size detection
+            if (preg_match('/\b(\d+\.?\d*)\s*["\'″]\b/', $part, $screenMatch)) {
+                $result['screen'] = $screenMatch[1] . '-inch';
+            } elseif (preg_match('/\b(\d+\.?\d*)\s*-?\s*inch\b/i', $part, $screenMatch)) {
+                $result['screen'] = $screenMatch[1] . '-inch';
+            }
+
+            // Storage detection
+            if (preg_match('/\b(\d+)\s*(GB|TB)\s*(SSD|NVMe|HDD|eMMC)\b/i', $part, $storageMatch)) {
+                $result['storage'] = trim($storageMatch[0]);
+            }
+
+            // GPU detection
+            if (preg_match('/\b(RTX|GTX|RX|Radeon|GeForce|UMA|Integrated|Intel\s*UHD|Intel\s*Iris|Radeon\s*\d{3}M?)\b/i', $part, $gpuMatch)) {
+                $result['gpu'] = trim($gpuMatch[0]);
+            }
+
+            // Resolution
+            if (preg_match('/\b(FHD|Full\s*HD|QHD|UHD|4K|WUXGA|WXGA|XGA|SVGA|1080p|1440p|2160p|\d{3,4}\s*x\s*\d{3,4})\b/i', $part, $resMatch)) {
+                $result['resolution'] = trim($resMatch[0]);
+            }
+
+            // Display technology
+            if (preg_match('/\b(IPS|VA|TN|OLED|AMOLED|LED|LCD|DLP)\b/i', $part, $techMatch)) {
+                $result['technology'] = strtoupper(trim($techMatch[0]));
+            }
+
+            // Brightness (for projectors)
+            if (preg_match('/\b(\d{3,5})\s*(Lm|Lumens|ANSI)\b/i', $part, $brightMatch)) {
+                $result['brightness'] = $brightMatch[1] . ' Lumens';
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Build fallback result when AI is unavailable
      */
     private function buildFallbackResult(string $name, string $brand, string $category, array $identity, string $shortDescription): array
     {
+        // Validate name follows naming convention
+        $name = $this->validateProductName($name, $brand, $category);
+
         return [
             'success' => true,
             'data' => [

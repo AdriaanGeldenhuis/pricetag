@@ -22,7 +22,7 @@ class ProductController extends Controller
     {
         $db = Database::getInstance();
         $page = max(1, (int) ($_GET['page'] ?? 1));
-        $perPage = 20;
+        $perPage = 100;
         $search = $_GET['search'] ?? '';
         $status = $_GET['status'] ?? '';
         $vendor = $_GET['vendor'] ?? '';
@@ -56,10 +56,11 @@ class ProductController extends Controller
         // Get products
         $offset = ($page - 1) * $perPage;
         $stmt = $db->prepare("
-            SELECT p.*, pi.path as image, v.name as vendor_name
+            SELECT p.*, pi.path as image, v.name as vendor_name, c.name as category_name
             FROM products p
             LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = 1
             LEFT JOIN vendors v ON v.id = p.vendor_id
+            LEFT JOIN categories c ON c.id = p.category_id
             WHERE $whereClause
             ORDER BY p.created_at DESC
             LIMIT ? OFFSET ?

@@ -1573,56 +1573,103 @@ document.addEventListener('DOMContentLoaded', function() {
             return mapped;
         });
 
-        // Create form data
-        const formData = new FormData();
-        formData.append('_token', '<?= csrf_token() ?>');
-        formData.append('data', JSON.stringify(importData));
-        formData.append('update_existing', document.getElementById('updateExisting').checked ? '1' : '0');
-        formData.append('create_new', document.getElementById('createNew').checked ? '1' : '0');
-        formData.append('skip_errors', document.getElementById('skipErrors').checked ? '1' : '0');
-        formData.append('ai_generate', document.getElementById('aiGenerateAll').checked ? '1' : '0');
+        const aiEnabled = document.getElementById('aiGenerateAll').checked;
+        const batchSize = aiEnabled ? 3 : 50; // Small batches for AI to avoid 504 timeout
+        const batches = [];
+        for (let i = 0; i < importData.length; i += batchSize) {
+            batches.push(importData.slice(i, i + batchSize));
+        }
 
-        // Simulate progress
-        let pct = 0;
-        const interval = setInterval(() => {
-            pct += Math.random() * 10;
-            if (pct > 90) pct = 90;
-            progressFill.style.width = pct + '%';
-            progressPercent.textContent = Math.round(pct) + '%';
-        }, 200);
+        const updateExisting = document.getElementById('updateExisting').checked ? '1' : '0';
+        const createNew = document.getElementById('createNew').checked ? '1' : '0';
+        const skipErrors = document.getElementById('skipErrors').checked ? '1' : '0';
+        const aiGenerate = aiEnabled ? '1' : '0';
 
-        // Submit
-        fetch('<?= url("/admin/products/import/process") ?>', {
-            method: 'POST',
-            body: formData
-        })
-        .then(r => r.json())
-        .then(result => {
-            clearInterval(interval);
+        let totalCreated = 0;
+        let totalUpdated = 0;
+        let totalFailed = 0;
+        let totalErrors = [];
+        let completedBatches = 0;
+
+        progressText.textContent = `Processing batch 1 of ${batches.length}...`;
+
+        async function processBatch(batchIndex) {
+            const batch = batches[batchIndex];
+            const formData = new FormData();
+            formData.append('_token', '<?= csrf_token() ?>');
+            formData.append('data', JSON.stringify(batch));
+            formData.append('update_existing', updateExisting);
+            formData.append('create_new', createNew);
+            formData.append('skip_errors', '1'); // Always skip errors in batch mode
+            formData.append('ai_generate', aiGenerate);
+
+            const response = await fetch('<?= url("/admin/products/import/process") ?>', {
+                method: 'POST',
+                body: formData
+            });
+
+            const text = await response.text();
+            let result;
+            try {
+                result = JSON.parse(text);
+            } catch (e) {
+                // Server returned HTML (504/502/etc) - treat as partial failure
+                return { success: false, error: 'Server error: ' + response.status, created: 0, updated: 0, failed: batch.length, errors: ['Server error: ' + response.status] };
+            }
+            return result;
+        }
+
+        async function processAllBatches() {
+            for (let i = 0; i < batches.length; i++) {
+                progressText.textContent = `Processing batch ${i + 1} of ${batches.length}` + (aiEnabled ? ' (AI generating...)' : '...');
+
+                try {
+                    const result = await processBatch(i);
+
+                    if (result.success) {
+                        totalCreated += result.created || 0;
+                        totalUpdated += result.updated || 0;
+                        totalFailed += result.failed || 0;
+                        if (result.errors) totalErrors = totalErrors.concat(result.errors);
+                    } else {
+                        totalFailed += batches[i].length;
+                        totalErrors.push(result.error || 'Batch ' + (i + 1) + ' failed');
+                    }
+                } catch (err) {
+                    totalFailed += batches[i].length;
+                    totalErrors.push('Batch ' + (i + 1) + ': ' + err.message);
+                }
+
+                completedBatches++;
+                const pct = Math.round((completedBatches / batches.length) * 100);
+                progressFill.style.width = pct + '%';
+                progressPercent.textContent = pct + '%';
+                progressDetails.innerHTML = `Created: ${totalCreated}, Updated: ${totalUpdated}` + (totalFailed > 0 ? `, Failed: ${totalFailed}` : '');
+            }
+
+            // Done
             progressFill.style.width = '100%';
             progressPercent.textContent = '100%';
+            progressText.textContent = 'Import completed!';
 
-            if (result.success) {
-                progressText.textContent = 'Import completed!';
-                progressDetails.innerHTML = `Created: ${result.created}, Updated: ${result.updated}, Failed: ${result.failed}`;
+            let summary = `Created: ${totalCreated}, Updated: ${totalUpdated}`;
+            if (totalFailed > 0) summary += `, Failed: ${totalFailed}`;
+            if (totalErrors.length > 0) {
+                summary += `<br><br>Errors (${totalErrors.length}):<br>` + totalErrors.slice(0, 20).join('<br>');
+            }
+            progressDetails.innerHTML = summary;
 
+            if (totalCreated > 0 || totalUpdated > 0) {
                 setTimeout(() => {
                     window.location.href = '<?= url("/admin/products") ?>';
-                }, 2000);
+                }, 3000);
             } else {
-                progressText.textContent = 'Import failed';
-                progressDetails.innerHTML = result.error || 'Unknown error';
                 importBtn.disabled = false;
                 previewBtn.disabled = false;
             }
-        })
-        .catch(err => {
-            clearInterval(interval);
-            progressText.textContent = 'Import failed';
-            progressDetails.innerHTML = err.message;
-            importBtn.disabled = false;
-            previewBtn.disabled = false;
-        });
+        }
+
+        processAllBatches();
     }
 
     // AI buttons

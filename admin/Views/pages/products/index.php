@@ -353,7 +353,7 @@ function renderPagination($pagination, $baseUrl) {
                             <?php endif; ?>
                         </div>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle;">
+                    <td style="padding: 10px 12px; vertical-align: middle; white-space: nowrap;">
                         <code style="font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 2px 6px; border-radius: 4px;"><?= e($product['sku']) ?></code>
                     </td>
                     <td style="padding: 10px 12px; vertical-align: middle;">
@@ -363,7 +363,7 @@ function renderPagination($pagination, $baseUrl) {
                         <span style="color: #d1d5db; font-size: 12px;">No category</span>
                         <?php endif; ?>
                     </td>
-                    <td style="padding: 10px 12px; vertical-align: middle; text-align: right;">
+                    <td style="padding: 10px 12px; vertical-align: middle; text-align: right; white-space: nowrap;">
                         <span style="font-weight: 600; color: #111827;"><?= formatPrice($product['price']) ?></span>
                         <?php if ($product['compare_price']): ?>
                         <br><span style="font-size: 11px; color: #9ca3af; text-decoration: line-through;"><?= formatPrice($product['compare_price']) ?></span>

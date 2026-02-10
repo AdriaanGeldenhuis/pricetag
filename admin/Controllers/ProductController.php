@@ -60,7 +60,8 @@ class ProductController extends Controller
             FROM products p
             LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = 1
             LEFT JOIN vendors v ON v.id = p.vendor_id
-            LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN product_categories pc ON pc.product_id = p.id AND pc.is_primary = 1
+            LEFT JOIN categories c ON c.id = pc.category_id
             WHERE $whereClause
             ORDER BY p.created_at DESC
             LIMIT ? OFFSET ?

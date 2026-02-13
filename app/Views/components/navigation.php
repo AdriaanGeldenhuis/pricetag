@@ -12,6 +12,9 @@
                     'is_mega' => true,
                     'children' => []
                 ],
+                ['title' => 'New Arrivals', 'url' => '/products?sort=newest', 'badge' => 'New'],
+                ['title' => 'Best Sellers', 'url' => '/products?sort=popular'],
+                ['title' => 'Deals', 'url' => '/products?on_sale=1', 'badge' => 'Sale'],
                 ['title' => 'Contact', 'url' => '/contact'],
             ];
 

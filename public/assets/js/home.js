@@ -111,6 +111,11 @@ function initCategoryCardsScroll() {
 
     scroll.style.cursor = 'grab';
 
+    // Prevent browser's native image drag from hijacking our scroll
+    scroll.addEventListener('dragstart', function(e) {
+        e.preventDefault();
+    });
+
     function stopMomentum() {
         if (momentumId) {
             cancelAnimationFrame(momentumId);
@@ -130,6 +135,7 @@ function initCategoryCardsScroll() {
 
     scroll.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
+        e.preventDefault();
         stopMomentum();
         isDown = true;
         hasDragged = false;
@@ -158,25 +164,27 @@ function initCategoryCardsScroll() {
         scroll.scrollLeft = startScrollLeft - dx;
     });
 
-    document.addEventListener('mouseup', function() {
+    document.addEventListener('mouseup', function(e) {
         if (!isDown) return;
         isDown = false;
         scroll.style.cursor = 'grab';
         scroll.style.removeProperty('user-select');
-        if (hasDragged && Math.abs(velocity) > 1) {
-            momentumLoop();
-        }
-    });
 
-    // Block link navigation if we were dragging
-    scroll.querySelectorAll('a').forEach(function(link) {
-        link.addEventListener('click', function(e) {
-            if (hasDragged) {
-                e.preventDefault();
-                e.stopPropagation();
-                hasDragged = false;
+        if (hasDragged) {
+            // Was a drag — apply momentum, don't navigate
+            if (Math.abs(velocity) > 1) {
+                momentumLoop();
             }
-        });
+        } else {
+            // Was a click — find the link under the cursor and navigate
+            var target = document.elementFromPoint(e.clientX, e.clientY);
+            if (target) {
+                var link = target.closest('a');
+                if (link && scroll.contains(link)) {
+                    window.location.href = link.href;
+                }
+            }
+        }
     });
 }
 

@@ -99,49 +99,50 @@ function initCategoryCardsScroll() {
         });
     }
 
-    // Mouse drag scrolling
-    var isDragging = false;
+    // Mouse drag scrolling (like touch on phone)
+    var isDown = false;
+    var hasDragged = false;
     var startX = 0;
-    var scrollLeft = 0;
+    var startScrollLeft = 0;
+
+    scroll.style.cursor = 'grab';
 
     scroll.addEventListener('mousedown', function(e) {
-        isDragging = true;
-        startX = e.pageX - scroll.offsetLeft;
-        scrollLeft = scroll.scrollLeft;
+        if (e.button !== 0) return;
+        isDown = true;
+        hasDragged = false;
+        startX = e.pageX;
+        startScrollLeft = scroll.scrollLeft;
         scroll.style.cursor = 'grabbing';
         scroll.style.userSelect = 'none';
     });
 
-    scroll.addEventListener('mousemove', function(e) {
-        if (!isDragging) return;
-        e.preventDefault();
-        var x = e.pageX - scroll.offsetLeft;
-        var walk = (x - startX) * 1.5;
-        scroll.scrollLeft = scrollLeft - walk;
+    document.addEventListener('mousemove', function(e) {
+        if (!isDown) return;
+        var dx = e.pageX - startX;
+        if (Math.abs(dx) > 5) {
+            hasDragged = true;
+            scroll.scrollLeft = startScrollLeft - dx;
+        }
     });
 
-    scroll.addEventListener('mouseup', function() {
-        isDragging = false;
+    document.addEventListener('mouseup', function() {
+        if (!isDown) return;
+        isDown = false;
         scroll.style.cursor = 'grab';
         scroll.style.removeProperty('user-select');
     });
 
-    scroll.addEventListener('mouseleave', function() {
-        if (isDragging) {
-            isDragging = false;
-            scroll.style.cursor = 'grab';
-            scroll.style.removeProperty('user-select');
-        }
+    // Block link navigation if we were dragging
+    scroll.querySelectorAll('a').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            if (hasDragged) {
+                e.preventDefault();
+                e.stopPropagation();
+                hasDragged = false;
+            }
+        });
     });
-
-    // Prevent click on links after dragging
-    scroll.addEventListener('click', function(e) {
-        if (Math.abs(scroll.scrollLeft - scrollLeft) > 5) {
-            e.preventDefault();
-        }
-    }, true);
-
-    scroll.style.cursor = 'grab';
 }
 
 // Product Carousels

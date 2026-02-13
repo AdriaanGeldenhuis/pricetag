@@ -323,6 +323,33 @@ class AccountController extends Controller
             }
 
             $items = $order->getItems();
+            $payment = $order->getPayment();
+
+            // Determine invoice type from query parameter
+            $invoiceType = $_GET['type'] ?? 'tax_invoice';
+            $allowedTypes = ['tax_invoice', 'proforma', 'credit_note', 'quote'];
+            if (!in_array($invoiceType, $allowedTypes, true)) {
+                $invoiceType = 'tax_invoice';
+            }
+
+            // Tax configuration
+            $taxRate = config('payment.tax.rate', 15);
+            $taxInclusive = config('payment.tax.inclusive', true);
+
+            // Company details
+            $company = [
+                'name' => config('app.name', 'Pricetag'),
+                'address' => config('company.address', '123 Commerce Street, Johannesburg'),
+                'email' => config('company.email', 'support@pricetag.co.za'),
+                'phone' => config('company.phone', '+27 11 123 4567'),
+                'vat_number' => config('company.vat_number', ''),
+                'reg_number' => config('company.reg_number', ''),
+                'website' => config('app.url', 'https://pricetag.co.za'),
+                'bank_name' => config('company.bank_name', ''),
+                'bank_account' => config('company.bank_account', ''),
+                'bank_branch' => config('company.bank_branch', ''),
+                'bank_type' => config('company.bank_type', ''),
+            ];
 
             header('Content-Type: text/html; charset=utf-8');
             include APP_PATH . '/Views/pages/account/invoice.php';

@@ -704,6 +704,7 @@
     overflow-y: auto;
     align-self: start;
     scrollbar-width: thin;
+    will-change: transform;
 }
 
 .sidebar-banner {

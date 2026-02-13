@@ -2665,6 +2665,7 @@ a.footer-contact-item:hover svg {
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
+  contain: layout style;
 }
 
 .sidebar-ring-link {
@@ -2736,6 +2737,7 @@ a.footer-contact-item:hover svg {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: sidebarRingRotate 8s linear infinite;
+  will-change: transform;
   opacity: 0.6;
   transition: opacity 0.4s ease, animation-duration 0.4s ease;
 }
@@ -2783,6 +2785,7 @@ a.footer-contact-item:hover svg {
   );
   filter: blur(10px);
   animation: sidebarRingRotate 8s linear infinite;
+  will-change: transform;
   opacity: 0;
   transition: opacity 0.4s ease;
   z-index: -1;

@@ -263,6 +263,25 @@ class SettingsController extends Controller
                 ];
                 break;
 
+            case 'invoice':
+                $settingsToUpdate = [
+                    'invoice_company_name' => $_POST['invoice_company_name'] ?? '',
+                    'invoice_address' => $_POST['invoice_address'] ?? '',
+                    'invoice_email' => $_POST['invoice_email'] ?? '',
+                    'invoice_phone' => $_POST['invoice_phone'] ?? '',
+                    'invoice_website' => $_POST['invoice_website'] ?? '',
+                    'invoice_vat_number' => $_POST['invoice_vat_number'] ?? '',
+                    'invoice_reg_number' => $_POST['invoice_reg_number'] ?? '',
+                    'invoice_bank_name' => $_POST['invoice_bank_name'] ?? '',
+                    'invoice_bank_account' => $_POST['invoice_bank_account'] ?? '',
+                    'invoice_bank_branch' => $_POST['invoice_bank_branch'] ?? '',
+                    'invoice_bank_type' => $_POST['invoice_bank_type'] ?? '',
+                    'invoice_payment_terms' => $_POST['invoice_payment_terms'] ?? 'due_on_receipt',
+                    'invoice_notes' => $_POST['invoice_notes'] ?? '',
+                    'invoice_footer_text' => $_POST['invoice_footer_text'] ?? '',
+                ];
+                break;
+
             case 'store':
                 $settingsToUpdate = [
                     'currency_code' => $_POST['currency_code'] ?? 'ZAR',

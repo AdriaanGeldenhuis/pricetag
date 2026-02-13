@@ -336,19 +336,31 @@ class AccountController extends Controller
             $taxRate = config('payment.tax.rate', 15);
             $taxInclusive = config('payment.tax.inclusive', true);
 
-            // Company details
+            // Company details from admin invoice settings (fallback to general settings, then config)
             $company = [
-                'name' => config('app.name', 'Pricetag'),
-                'address' => config('company.address', '123 Commerce Street, Johannesburg'),
-                'email' => config('company.email', 'support@pricetag.co.za'),
-                'phone' => config('company.phone', '+27 11 123 4567'),
-                'vat_number' => config('company.vat_number', ''),
-                'reg_number' => config('company.reg_number', ''),
-                'website' => config('app.url', 'https://pricetag.co.za'),
-                'bank_name' => config('company.bank_name', ''),
-                'bank_account' => config('company.bank_account', ''),
-                'bank_branch' => config('company.bank_branch', ''),
-                'bank_type' => config('company.bank_type', ''),
+                'name' => getSetting('invoice_company_name', 'invoice')
+                    ?: getSetting('site_name', 'general')
+                    ?: config('app.name', 'Pricetag'),
+                'address' => getSetting('invoice_address', 'invoice')
+                    ?: getSetting('site_address', 'general', ''),
+                'email' => getSetting('invoice_email', 'invoice')
+                    ?: getSetting('site_email', 'general', ''),
+                'phone' => getSetting('invoice_phone', 'invoice')
+                    ?: getSetting('site_phone', 'general', ''),
+                'vat_number' => getSetting('invoice_vat_number', 'invoice', ''),
+                'reg_number' => getSetting('invoice_reg_number', 'invoice', ''),
+                'website' => getSetting('invoice_website', 'invoice')
+                    ?: config('app.url', ''),
+                'bank_name' => getSetting('invoice_bank_name', 'invoice')
+                    ?: getSetting('eft_bank_name', 'payment', ''),
+                'bank_account' => getSetting('invoice_bank_account', 'invoice')
+                    ?: getSetting('eft_account_number', 'payment', ''),
+                'bank_branch' => getSetting('invoice_bank_branch', 'invoice')
+                    ?: getSetting('eft_branch_code', 'payment', ''),
+                'bank_type' => getSetting('invoice_bank_type', 'invoice', ''),
+                'payment_terms' => getSetting('invoice_payment_terms', 'invoice', 'due_on_receipt'),
+                'notes' => getSetting('invoice_notes', 'invoice', ''),
+                'footer_text' => getSetting('invoice_footer_text', 'invoice', ''),
             ];
 
             // Branding (logo from admin settings)

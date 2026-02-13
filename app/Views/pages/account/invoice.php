@@ -54,8 +54,27 @@ foreach ($items as $item) {
     ]);
 }
 
-// Due date (30 days from order for pending, or paid date)
-$dueDate = date('d F Y', strtotime($order->created_at . ' +30 days'));
+// Payment terms and due date
+$paymentTermsSetting = $company['payment_terms'] ?? 'due_on_receipt';
+$termsDays = [
+    'due_on_receipt' => 0,
+    'net_7' => 7,
+    'net_14' => 14,
+    'net_30' => 30,
+    'net_60' => 60,
+];
+$termsLabels = [
+    'due_on_receipt' => 'Due on Receipt',
+    'net_7' => 'Net 7',
+    'net_14' => 'Net 14',
+    'net_30' => 'Net 30',
+    'net_60' => 'Net 60',
+];
+$dueDays = $termsDays[$paymentTermsSetting] ?? 30;
+$dueDate = $dueDays > 0
+    ? date('d F Y', strtotime($order->created_at . ' +' . $dueDays . ' days'))
+    : date('d F Y', strtotime($order->created_at));
+$paymentTermsLabel = $termsLabels[$paymentTermsSetting] ?? 'Due on Receipt';
 $isPaid = in_array($order->payment_status, ['paid', 'completed'], true);
 
 // Logo
@@ -882,7 +901,7 @@ $logoHeight = $branding['logo_height'] ?? '50';
                     <?php if (!$isPaid && $invoiceType === 'tax_invoice'): ?>
                     <strong>Due:</strong> <?= date('d/m/Y', strtotime($order->created_at . ' +30 days')) ?><br>
                     <?php endif; ?>
-                    <strong>Terms:</strong> <?= $isPaid ? 'Paid' : 'Due on Receipt' ?><br>
+                    <strong>Terms:</strong> <?= $isPaid ? 'Paid' : e($paymentTermsLabel) ?><br>
                     <strong>Currency:</strong> ZAR<br>
                     <?php if (!empty($order->shipping_method)): ?>
                     <strong>Shipping:</strong> <?= ucfirst(e($order->shipping_method)) ?>
@@ -1091,11 +1110,16 @@ $logoHeight = $branding['logo_height'] ?? '50';
             <?php endif; ?>
         </div>
 
-        <!-- Customer Notes -->
-        <?php if (!empty($order->customer_notes)): ?>
+        <!-- Notes -->
+        <?php if (!empty($order->customer_notes) || !empty($company['notes'])): ?>
         <div class="invoice-notes" id="notes-section">
-            <h3>Customer Notes</h3>
-            <p><?= nl2br(e($order->customer_notes)) ?></p>
+            <h3>Notes</h3>
+            <?php if (!empty($order->customer_notes)): ?>
+            <p><strong>Customer:</strong> <?= nl2br(e($order->customer_notes)) ?></p>
+            <?php endif; ?>
+            <?php if (!empty($company['notes'])): ?>
+            <p><?= nl2br(e($company['notes'])) ?></p>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
@@ -1103,7 +1127,7 @@ $logoHeight = $branding['logo_height'] ?? '50';
         <div class="invoice-terms" id="terms-section">
             <h3>Terms &amp; Conditions</h3>
             <ol>
-                <li>Payment is due within 30 days of the invoice date unless otherwise stated.</li>
+                <li>Payment terms: <?= e($paymentTermsLabel) ?>. Late payments may incur additional charges.</li>
                 <li>Goods remain the property of <?= e($company['name'] ?? config('app.name', 'Pricetag')) ?> until paid in full.</li>
                 <li>Returns and refunds are subject to our returns policy. Items must be returned within 30 days of delivery in original condition.</li>
                 <li>All prices are quoted in South African Rand (ZAR) and include VAT at <?= $taxRate ?>% where applicable.</li>
@@ -1123,7 +1147,7 @@ $logoHeight = $branding['logo_height'] ?? '50';
             <?php if ($company['reg_number']): ?>
             <p>Reg: <?= e($company['reg_number']) ?></p>
             <?php endif; ?>
-            <p class="footer-legal">This document is computer generated and is valid without signature.</p>
+            <p class="footer-legal"><?= e(!empty($company['footer_text']) ? $company['footer_text'] : 'This document is computer generated and is valid without signature.') ?></p>
             <p class="footer-thankyou">Thank you for your business!</p>
         </div>
     </div>

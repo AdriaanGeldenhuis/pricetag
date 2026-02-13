@@ -102,6 +102,19 @@ $router->group(['prefix' => 'account', 'middleware' => ['App\Middleware\AuthMidd
     $router->post('/mfa/enable', 'App\Controllers\AccountController@enableMfa', 'account.mfa.enable');
     $router->post('/mfa/disable', 'App\Controllers\AccountController@disableMfa', 'account.mfa.disable');
     $router->post('/mfa/backup-codes', 'App\Controllers\AccountController@regenerateBackupCodes', 'account.mfa.backup-codes');
+
+    // Quotes
+    $router->get('/quotes', 'App\Controllers\QuoteController@index', 'account.quotes');
+    $router->get('/quotes/create', 'App\Controllers\QuoteController@create', 'account.quotes.create');
+    $router->post('/quotes', 'App\Controllers\QuoteController@store', 'account.quotes.store');
+    $router->get('/quotes/search-products', 'App\Controllers\QuoteController@searchProducts', 'account.quotes.search');
+    $router->get('/quotes/{id}', 'App\Controllers\QuoteController@show', 'account.quotes.show');
+    $router->get('/quotes/{id}/print', 'App\Controllers\QuoteController@printView', 'account.quotes.print');
+    $router->post('/quotes/{id}/items', 'App\Controllers\QuoteController@addItem', 'account.quotes.items.add');
+    $router->post('/quotes/{id}/items/update', 'App\Controllers\QuoteController@updateItem', 'account.quotes.items.update');
+    $router->post('/quotes/{id}/items/remove', 'App\Controllers\QuoteController@removeItem', 'account.quotes.items.remove');
+    $router->post('/quotes/{id}/submit', 'App\Controllers\QuoteController@submit', 'account.quotes.submit');
+    $router->delete('/quotes/{id}', 'App\Controllers\QuoteController@destroy', 'account.quotes.destroy');
 });
 
 // ============================================================================
@@ -189,6 +202,12 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->get('/orders/{id}', 'Admin\Controllers\OrderController@show', 'admin.orders.show');
     $router->post('/orders/{id}/status', 'Admin\Controllers\OrderController@updateStatus', 'admin.orders.status');
     $router->post('/orders/{id}/note', 'Admin\Controllers\OrderController@addNote', 'admin.orders.note');
+
+    // Quotes
+    $router->get('/quotes', 'Admin\Controllers\QuoteController@index', 'admin.quotes.index');
+    $router->get('/quotes/{id}', 'Admin\Controllers\QuoteController@show', 'admin.quotes.show');
+    $router->post('/quotes/{id}/status', 'Admin\Controllers\QuoteController@updateStatus', 'admin.quotes.status');
+    $router->post('/quotes/{id}/note', 'Admin\Controllers\QuoteController@addNote', 'admin.quotes.note');
 
     // Coupons
     $router->get('/coupons', 'Admin\Controllers\CouponController@index', 'admin.coupons.index');

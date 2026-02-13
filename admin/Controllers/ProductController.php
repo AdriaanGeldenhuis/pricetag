@@ -26,6 +26,7 @@ class ProductController extends Controller
         $search = $_GET['search'] ?? '';
         $status = $_GET['status'] ?? '';
         $vendor = $_GET['vendor'] ?? '';
+        $category = $_GET['category'] ?? '';
 
         $where = ['1=1'];
         $params = [];
@@ -44,6 +45,11 @@ class ProductController extends Controller
         if ($vendor) {
             $where[] = "p.vendor_id = ?";
             $params[] = $vendor;
+        }
+
+        if ($category) {
+            $where[] = "EXISTS (SELECT 1 FROM product_categories pc2 WHERE pc2.product_id = p.id AND pc2.category_id = ?)";
+            $params[] = $category;
         }
 
         $whereClause = implode(' AND ', $where);
@@ -71,8 +77,9 @@ class ProductController extends Controller
         $stmt->execute($params);
         $products = $stmt->fetchAll();
 
-        // Get vendors for filter
+        // Get vendors and categories for filters
         $vendors = $this->getVendors();
+        $categories = Category::getTree();
 
         $this->layout('admin');
         $this->view('pages/products/index', [
@@ -80,9 +87,11 @@ class ProductController extends Controller
             'active_page' => 'products',
             'products' => $products,
             'vendors' => $vendors,
+            'categories' => $categories,
             'search' => $search,
             'status' => $status,
             'vendor_filter' => $vendor,
+            'category_filter' => $category,
             'pagination' => [
                 'total' => $total,
                 'per_page' => $perPage,

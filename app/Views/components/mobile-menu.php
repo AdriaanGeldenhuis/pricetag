@@ -16,12 +16,13 @@
         <!-- Search (Mobile) -->
         <div class="mobile-menu-search">
             <form action="<?= url('/search') ?>" method="GET">
+                <label for="mobile-search-input" class="sr-only">Search products</label>
                 <input
                     type="search"
                     name="q"
+                    id="mobile-search-input"
                     class="form-input"
                     placeholder="Search products..."
-                    aria-label="Search products"
                     autocomplete="off"
                 >
             </form>

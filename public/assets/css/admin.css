@@ -1431,6 +1431,11 @@
     color: var(--admin-primary-hover);
 }
 
+.admin-wrapper .badge-secondary {
+    background: var(--admin-info-light, rgba(59, 130, 246, 0.15));
+    color: var(--admin-info, #3b82f6);
+}
+
 .admin-wrapper .badge-accent {
     background: var(--admin-accent-light);
     color: var(--admin-accent);

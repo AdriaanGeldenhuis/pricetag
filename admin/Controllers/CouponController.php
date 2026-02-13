@@ -244,13 +244,6 @@ class CouponController extends Controller
         $this->json(['success' => true, 'is_active' => (bool)$coupon['is_active']]);
     }
 
-    protected function json(array $data): void
-    {
-        header('Content-Type: application/json');
-        echo json_encode($data);
-        exit;
-    }
-
     protected function view(string $view, array $data = []): void
     {
         $this->data = array_merge($this->data, $data);

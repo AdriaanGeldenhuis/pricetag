@@ -98,6 +98,50 @@ function initCategoryCardsScroll() {
             scroll.scrollBy({ left: scrollAmount, behavior: 'smooth' });
         });
     }
+
+    // Mouse drag scrolling
+    var isDragging = false;
+    var startX = 0;
+    var scrollLeft = 0;
+
+    scroll.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startX = e.pageX - scroll.offsetLeft;
+        scrollLeft = scroll.scrollLeft;
+        scroll.style.cursor = 'grabbing';
+        scroll.style.userSelect = 'none';
+    });
+
+    scroll.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        var x = e.pageX - scroll.offsetLeft;
+        var walk = (x - startX) * 1.5;
+        scroll.scrollLeft = scrollLeft - walk;
+    });
+
+    scroll.addEventListener('mouseup', function() {
+        isDragging = false;
+        scroll.style.cursor = 'grab';
+        scroll.style.removeProperty('user-select');
+    });
+
+    scroll.addEventListener('mouseleave', function() {
+        if (isDragging) {
+            isDragging = false;
+            scroll.style.cursor = 'grab';
+            scroll.style.removeProperty('user-select');
+        }
+    });
+
+    // Prevent click on links after dragging
+    scroll.addEventListener('click', function(e) {
+        if (Math.abs(scroll.scrollLeft - scrollLeft) > 5) {
+            e.preventDefault();
+        }
+    }, true);
+
+    scroll.style.cursor = 'grab';
 }
 
 // Product Carousels

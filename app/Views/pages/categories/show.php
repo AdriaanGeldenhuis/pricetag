@@ -303,7 +303,7 @@
                     endif;
                     ?>
 
-                    <a href="<?= url('/products?on_sale=1') ?>" class="sidebar-ring-link">
+                    <a href="<?= url('/categories') ?>" class="sidebar-ring-link">
                         <div class="sidebar-ring-wrap">
                             <div class="sidebar-ring-border sidebar-ring-border-hot"></div>
                             <div class="sidebar-ring-img sidebar-ring-img-hot">
@@ -313,7 +313,7 @@
                         <span class="sidebar-ring-label">Hot Deals</span>
                     </a>
 
-                    <a href="<?= url('/products?sort=newest') ?>" class="sidebar-ring-link">
+                    <a href="<?= url('/categories') ?>" class="sidebar-ring-link">
                         <div class="sidebar-ring-wrap">
                             <div class="sidebar-ring-border"></div>
                             <div class="sidebar-ring-img">

@@ -12,9 +12,9 @@
                     'is_mega' => true,
                     'children' => []
                 ],
-                ['title' => 'New Arrivals', 'url' => '/products?sort=newest', 'badge' => 'New'],
-                ['title' => 'Best Sellers', 'url' => '/products?sort=popular'],
-                ['title' => 'Deals', 'url' => '/products?on_sale=1', 'badge' => 'Sale'],
+                ['title' => 'New Arrivals', 'url' => '/categories', 'badge' => 'New'],
+                ['title' => 'Best Sellers', 'url' => '/categories', 'badge' => ''],
+                ['title' => 'Deals', 'url' => '/categories', 'badge' => 'Sale'],
                 ['title' => 'Contact', 'url' => '/contact'],
             ];
 
@@ -112,27 +112,27 @@
 
                         <!-- Bottom Promo Strip -->
                         <div class="mega-menu-promos">
-                            <a href="<?= url('/products?featured=1') ?>" class="mega-promo-pill mega-promo-featured">
+                            <a href="<?= url('/categories') ?>" class="mega-promo-pill mega-promo-featured">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                                 </svg>
                                 <span>New Collection</span>
                             </a>
-                            <a href="<?= url('/products?on_sale=1') ?>" class="mega-promo-pill mega-promo-sale">
+                            <a href="<?= url('/categories') ?>" class="mega-promo-pill mega-promo-sale">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
                                     <polyline points="17 6 23 6 23 12"></polyline>
                                 </svg>
                                 <span>Hot Deals</span>
                             </a>
-                            <a href="<?= url('/products?sort=newest') ?>" class="mega-promo-pill mega-promo-new">
+                            <a href="<?= url('/categories') ?>" class="mega-promo-pill mega-promo-new">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <circle cx="12" cy="12" r="10"></circle>
                                     <polyline points="12 6 12 12 16 14"></polyline>
                                 </svg>
                                 <span>New Arrivals</span>
                             </a>
-                            <a href="<?= url('/products?sort=popular') ?>" class="mega-promo-pill mega-promo-popular">
+                            <a href="<?= url('/categories') ?>" class="mega-promo-pill mega-promo-popular">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                                 </svg>

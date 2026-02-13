@@ -344,7 +344,7 @@
                     </div>
                     <span class="pt-sidebar-ring-label">Questions?</span>
                 </a>
-                <a href="<?= url('/products?on_sale=1') ?>" class="pt-sidebar-ring-item">
+                <a href="<?= url('/categories') ?>" class="pt-sidebar-ring-item">
                     <div class="pt-sidebar-ring">
                         <div class="pt-sidebar-ring-border pt-sidebar-ring-border-hot"></div>
                         <div class="pt-sidebar-ring-image pt-sidebar-ring-image-hot">

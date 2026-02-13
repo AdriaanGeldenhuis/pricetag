@@ -32,7 +32,7 @@
                 </div>
             </div>
             <?php endif; ?>
-            <a href="<?= url('/products?on_sale=1') ?>" class="section-link">
+            <a href="<?= url('/categories') ?>" class="section-link">
                 View All
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="5" y1="12" x2="19" y2="12"></line>

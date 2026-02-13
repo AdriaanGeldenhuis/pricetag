@@ -67,7 +67,7 @@
                             <?= e($order['first_name'] ?? $order['billing_first_name']) ?>
                             <?= e($order['last_name'] ?? $order['billing_last_name']) ?>
                         </span>
-                        <span class="text-xs text-muted block"><?= e($order['email'] ?? $order['billing_email']) ?></span>
+                        <span class="text-xs text-muted block"><?= e($order['email'] ?? $order['customer_email']) ?></span>
                     </td>
                     <td class="text-muted"><?= $order['item_count'] ?? '-' ?></td>
                     <td class="font-medium"><?= formatPrice($order['total']) ?></td>

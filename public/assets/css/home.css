@@ -197,7 +197,6 @@
     display: flex;
     gap: var(--space-6);
     overflow-x: auto;
-    scroll-snap-type: x mandatory;
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding: var(--space-4) var(--space-2);
@@ -217,7 +216,6 @@
 /* Card items */
 .category-card-item {
     flex: 0 0 auto;
-    scroll-snap-align: start;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -891,21 +889,6 @@
 }
 
 /* Badge */
-.newsletter-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    border-radius: var(--radius-full);
-    background: rgba(34, 197, 94, 0.1);
-    border: 1px solid rgba(34, 197, 94, 0.25);
-    color: #4ade80;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    margin-bottom: var(--space-5);
-}
-
 /* Title */
 .newsletter-title {
     font-size: 2rem;

@@ -24,6 +24,7 @@
             <!-- Search -->
             <div class="header-search">
                 <form action="<?= url('/search') ?>" method="GET" class="search-form" role="search">
+                    <label for="header-search-input" class="sr-only">Search products</label>
                     <input
                         type="search"
                         name="q"
@@ -31,7 +32,6 @@
                         placeholder="Search products..."
                         autocomplete="off"
                         id="header-search-input"
-                        aria-label="Search products"
                     >
                     <button type="submit" class="search-btn" aria-label="Search">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

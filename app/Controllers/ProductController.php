@@ -26,7 +26,7 @@ class ProductController extends Controller
         ];
 
         $query = $_GET['q'] ?? '';
-        $result = Product::search($query, $filters, $page, 12);
+        $result = Product::search($query, $filters, $page, 25);
 
         // Get categories for filter
         $categories = Category::topLevel();

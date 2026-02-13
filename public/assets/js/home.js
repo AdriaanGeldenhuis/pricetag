@@ -98,6 +98,94 @@ function initCategoryCardsScroll() {
             scroll.scrollBy({ left: scrollAmount, behavior: 'smooth' });
         });
     }
+
+    // Mouse drag scrolling with momentum (like touch on phone)
+    var isDown = false;
+    var hasDragged = false;
+    var startX = 0;
+    var startScrollLeft = 0;
+    var lastX = 0;
+    var lastTime = 0;
+    var velocity = 0;
+    var momentumId = null;
+
+    scroll.style.cursor = 'grab';
+
+    // Prevent browser's native image drag from hijacking our scroll
+    scroll.addEventListener('dragstart', function(e) {
+        e.preventDefault();
+    });
+
+    function stopMomentum() {
+        if (momentumId) {
+            cancelAnimationFrame(momentumId);
+            momentumId = null;
+        }
+    }
+
+    function momentumLoop() {
+        if (Math.abs(velocity) < 0.5) {
+            momentumId = null;
+            return;
+        }
+        scroll.scrollLeft -= velocity;
+        velocity *= 0.95;
+        momentumId = requestAnimationFrame(momentumLoop);
+    }
+
+    scroll.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        stopMomentum();
+        isDown = true;
+        hasDragged = false;
+        startX = e.pageX;
+        lastX = e.pageX;
+        lastTime = Date.now();
+        velocity = 0;
+        startScrollLeft = scroll.scrollLeft;
+        scroll.style.cursor = 'grabbing';
+        scroll.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDown) return;
+        var dx = e.pageX - startX;
+        if (Math.abs(dx) > 5) {
+            hasDragged = true;
+        }
+        var now = Date.now();
+        var dt = now - lastTime;
+        if (dt > 0) {
+            velocity = (e.pageX - lastX) / dt * 16;
+        }
+        lastX = e.pageX;
+        lastTime = now;
+        scroll.scrollLeft = startScrollLeft - dx;
+    });
+
+    document.addEventListener('mouseup', function(e) {
+        if (!isDown) return;
+        isDown = false;
+        scroll.style.cursor = 'grab';
+        scroll.style.removeProperty('user-select');
+
+        if (hasDragged) {
+            // Was a drag — apply momentum, don't navigate
+            if (Math.abs(velocity) > 1) {
+                momentumLoop();
+            }
+        } else {
+            // Was a click — find the link under the cursor and navigate
+            var target = document.elementFromPoint(e.clientX, e.clientY);
+            if (target) {
+                var link = target.closest('a');
+                if (link && scroll.contains(link)) {
+                    window.location.href = link.href;
+                }
+            }
+        }
+    });
 }
 
 // Product Carousels

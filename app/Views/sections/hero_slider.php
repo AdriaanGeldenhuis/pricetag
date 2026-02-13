@@ -55,7 +55,7 @@
     <div class="container text-center" style="color: white;">
         <h1 class="hero-title"><?= e(config('app.name')) ?></h1>
         <p class="hero-subtitle">Premium products at unbeatable prices</p>
-        <a href="<?= url('/products') ?>" class="btn btn-lg btn-accent">Shop Now</a>
+        <a href="<?= url('/categories') ?>" class="btn btn-lg btn-accent">Shop Now</a>
     </div>
 </section>
 <?php endif; ?>

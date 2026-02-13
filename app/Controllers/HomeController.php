@@ -44,8 +44,8 @@ class HomeController extends Controller
         // Get featured categories
         $featuredCategories = Category::featured(6);
 
-        // Get ALL categories for the quick category bar
-        $categories = Category::all();
+        // Get top-level categories for the quick category bar
+        $categories = Category::topLevel();
 
         // Get trending products
         $trendingProducts = Product::trending(8);

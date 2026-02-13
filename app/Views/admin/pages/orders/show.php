@@ -112,13 +112,13 @@
                     <?php foreach ($timeline as $i => $event): ?>
                     <div style="position: relative; padding-bottom: 1.5rem; <?= $i === count($timeline) - 1 ? '' : 'border-left: 2px solid var(--admin-border); margin-left: -1.5rem; padding-left: 1.5rem;' ?>">
                         <div style="position: absolute; left: -1.75rem; top: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--admin-primary);"></div>
-                        <div class="font-semibold"><?= ucfirst($event['new_status']) ?></div>
+                        <div class="font-semibold"><?= ucfirst($event['status']) ?></div>
                         <div class="text-muted" style="font-size: 0.75rem;">
                             <?= date('d M Y H:i', strtotime($event['created_at'])) ?>
                         </div>
-                        <?php if ($event['note']): ?>
+                        <?php if ($event['comment']): ?>
                         <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--admin-bg); border-radius: var(--admin-radius); font-size: 0.875rem;">
-                            <?= e($event['note']) ?>
+                            <?= e($event['comment']) ?>
                         </div>
                         <?php endif; ?>
                     </div>
@@ -296,12 +296,12 @@
                 <div style="font-size: 0.875rem;">
                     <div style="margin-bottom: 0.5rem;">
                         <span class="text-muted">Email:</span>
-                        <a href="mailto:<?= e($order['billing_email']) ?>"><?= e($order['billing_email']) ?></a>
+                        <a href="mailto:<?= e($order['customer_email']) ?>"><?= e($order['customer_email']) ?></a>
                     </div>
-                    <?php if ($order['billing_phone']): ?>
+                    <?php if ($order['customer_phone'] ?? null): ?>
                     <div>
                         <span class="text-muted">Phone:</span>
-                        <a href="tel:<?= e($order['billing_phone']) ?>"><?= e($order['billing_phone']) ?></a>
+                        <a href="tel:<?= e($order['customer_phone']) ?>"><?= e($order['customer_phone']) ?></a>
                     </div>
                     <?php endif; ?>
                 </div>

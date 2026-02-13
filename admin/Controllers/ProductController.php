@@ -26,6 +26,8 @@ class ProductController extends Controller
         $search = $_GET['search'] ?? '';
         $status = $_GET['status'] ?? '';
         $vendor = $_GET['vendor'] ?? '';
+        $category = $_GET['category'] ?? '';
+        $brand = $_GET['brand'] ?? '';
 
         $where = ['1=1'];
         $params = [];
@@ -44,6 +46,16 @@ class ProductController extends Controller
         if ($vendor) {
             $where[] = "p.vendor_id = ?";
             $params[] = $vendor;
+        }
+
+        if ($category) {
+            $where[] = "EXISTS (SELECT 1 FROM product_categories pc2 WHERE pc2.product_id = p.id AND pc2.category_id = ?)";
+            $params[] = $category;
+        }
+
+        if ($brand) {
+            $where[] = "EXISTS (SELECT 1 FROM product_attributes pa2 JOIN attribute_values av2 ON pa2.attribute_value_id = av2.id JOIN attributes a2 ON av2.attribute_id = a2.id WHERE pa2.product_id = p.id AND LOWER(a2.name) = 'brand' AND av2.id = ?)";
+            $params[] = $brand;
         }
 
         $whereClause = implode(' AND ', $where);
@@ -71,8 +83,10 @@ class ProductController extends Controller
         $stmt->execute($params);
         $products = $stmt->fetchAll();
 
-        // Get vendors for filter
+        // Get vendors, categories and brands for filters
         $vendors = $this->getVendors();
+        $categories = Category::getTree();
+        $brands = $this->getBrands();
 
         $this->layout('admin');
         $this->view('pages/products/index', [
@@ -80,9 +94,13 @@ class ProductController extends Controller
             'active_page' => 'products',
             'products' => $products,
             'vendors' => $vendors,
+            'categories' => $categories,
+            'brands' => $brands,
             'search' => $search,
             'status' => $status,
             'vendor_filter' => $vendor,
+            'category_filter' => $category,
+            'brand_filter' => $brand,
             'pagination' => [
                 'total' => $total,
                 'per_page' => $perPage,
@@ -735,6 +753,26 @@ class ProductController extends Controller
         try {
             $db = Database::getInstance();
             $stmt = $db->query("SELECT id, name, status FROM vendors WHERE status = 'active' ORDER BY name ASC");
+            return $stmt->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get all brand attribute values for filter
+     */
+    private function getBrands(): array
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->query("
+                SELECT av.id, av.value as name
+                FROM attribute_values av
+                JOIN attributes a ON av.attribute_id = a.id
+                WHERE LOWER(a.name) = 'brand'
+                ORDER BY av.value ASC
+            ");
             return $stmt->fetchAll() ?: [];
         } catch (\Throwable $e) {
             return [];

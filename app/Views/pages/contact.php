@@ -92,12 +92,14 @@
                 <div class="contact-form-group">
                     <label class="contact-label" for="name">Your Name *</label>
                     <input type="text" id="name" name="name" class="contact-input"
-                           value="<?= e(old('name')) ?>" required placeholder="John Doe">
+                           value="<?= e(old('name')) ?>" required placeholder="John Doe"
+                           autocomplete="name">
                 </div>
                 <div class="contact-form-group">
                     <label class="contact-label" for="email">Email Address *</label>
                     <input type="email" id="email" name="email" class="contact-input"
-                           value="<?= e(old('email')) ?>" required placeholder="john@example.com">
+                           value="<?= e(old('email')) ?>" required placeholder="john@example.com"
+                           autocomplete="email">
                 </div>
             </div>
 
@@ -105,7 +107,8 @@
                 <div class="contact-form-group">
                     <label class="contact-label" for="phone">Phone Number</label>
                     <input type="tel" id="phone" name="phone" class="contact-input"
-                           value="<?= e(old('phone')) ?>" placeholder="082 123 4567">
+                           value="<?= e(old('phone')) ?>" placeholder="082 123 4567"
+                           autocomplete="tel">
                 </div>
                 <div class="contact-form-group">
                     <label class="contact-label" for="subject">Subject</label>

@@ -49,8 +49,39 @@
                 </select>
             </div>
             <?php endif; ?>
+            <?php if (!empty($categories)): ?>
+            <div>
+                <select name="category" class="form-select">
+                    <option value="">All Categories</option>
+                    <?php foreach ($categories as $cat): ?>
+                    <option value="<?= $cat['id'] ?>" <?= ($category_filter ?? '') == $cat['id'] ? 'selected' : '' ?>>
+                        <?= e($cat['name']) ?>
+                    </option>
+                    <?php if (!empty($cat['children'])): ?>
+                        <?php foreach ($cat['children'] as $child): ?>
+                        <option value="<?= $child['id'] ?>" <?= ($category_filter ?? '') == $child['id'] ? 'selected' : '' ?>>
+                            &nbsp;&nbsp;└ <?= e($child['name']) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            <?php if (!empty($brands)): ?>
+            <div>
+                <select name="brand" class="form-select">
+                    <option value="">All Brands</option>
+                    <?php foreach ($brands as $b): ?>
+                    <option value="<?= $b['id'] ?>" <?= ($brand_filter ?? '') == $b['id'] ? 'selected' : '' ?>>
+                        <?= e($b['name']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <button type="submit" class="btn btn-primary">Filter</button>
-            <?php if ($search || $status || ($vendor_filter ?? '')): ?>
+            <?php if ($search || $status || ($vendor_filter ?? '') || ($category_filter ?? '') || ($brand_filter ?? '')): ?>
             <a href="<?= url('/admin/products') ?>" class="btn btn-outline">Clear</a>
             <?php endif; ?>
         </form>

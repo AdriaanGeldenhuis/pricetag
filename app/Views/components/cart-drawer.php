@@ -27,7 +27,7 @@
                 </svg>
                 <p class="mt-4 font-medium">Your cart is empty</p>
                 <p class="text-sm mt-2">Add some items to get started!</p>
-                <a href="<?= url('/products') ?>" class="btn btn-primary mt-6">Browse Products</a>
+                <a href="<?= url('/categories') ?>" class="btn btn-primary mt-6">Browse Categories</a>
             </div>
 
             <!-- Cart items container -->

@@ -27,7 +27,8 @@
                         <input type="email" name="email" id="newsletter-email"
                                placeholder="Enter your email address" required
                                pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
-                               class="newsletter-input" aria-label="Email address">
+                               class="newsletter-input" aria-label="Email address"
+                               autocomplete="email">
                     </div>
                     <button type="submit" class="newsletter-btn">
                         <span class="newsletter-btn-text">Subscribe</span>

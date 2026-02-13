@@ -53,6 +53,9 @@
     <link rel="stylesheet" href="<?= asset('css/components.css') ?>">
 
     <!-- Dynamic Brand Styles -->
+    <?php if (!empty($branding['font_family']) && $branding['font_family'] !== 'Inter'): ?>
+    <link href="https://fonts.googleapis.com/css2?family=<?= e(str_replace(' ', '+', $branding['font_family'])) ?>:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <?php endif; ?>
     <style>
         :root {
             --color-primary: <?= e($branding['primary_color']) ?>;
@@ -69,9 +72,6 @@
             --font-sans: '<?= e($branding['font_family']) ?>', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             <?php endif; ?>
         }
-        <?php if (!empty($branding['font_family']) && $branding['font_family'] !== 'Inter'): ?>
-        @import url('https://fonts.googleapis.com/css2?family=<?= e(str_replace(' ', '+', $branding['font_family'])) ?>:wght@400;500;600;700&display=swap');
-        <?php endif; ?>
     </style>
 
     <?php if (isset($styles)): echo $styles; endif; ?>

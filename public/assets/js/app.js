@@ -1342,6 +1342,59 @@
   };
 
   // ==========================================================================
+  // ADD TO QUOTE
+  // ==========================================================================
+
+  const AddToQuote = {
+    init() {
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-quote-add]');
+        if (!btn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        const productId = btn.dataset.quoteAdd;
+
+        // Close product card menu if open
+        const dropdown = btn.closest('.product-card-dropdown');
+        if (dropdown) dropdown.classList.remove('is-open');
+
+        try {
+          // Use product page quantity if on product detail page
+          const qtyInput = document.getElementById('pt-quantity');
+          const quantity = qtyInput ? (parseInt(qtyInput.value) || 1) : 1;
+
+          const fd = new FormData();
+          fd.append('product_id', productId);
+          fd.append('quantity', quantity);
+          fd.append('_token', window.Pricetag.csrfToken);
+
+          const response = await fetch(window.Pricetag.baseUrl + '/account/quotes/quick-add', {
+            method: 'POST',
+            body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          });
+
+          if (response.status === 401) {
+            Toast.warning('Please log in to add products to a quote');
+            return;
+          }
+
+          const data = await response.json();
+
+          if (data.success) {
+            Toast.success(data.message || 'Added to quote!');
+          } else {
+            Toast.error(data.error || 'Could not add to quote');
+          }
+        } catch (err) {
+          Toast.error('Something went wrong. Please try again.');
+        }
+      });
+    },
+  };
+
+  // ==========================================================================
   // QUICK VIEW MODAL
   // ==========================================================================
 
@@ -1719,6 +1772,7 @@
     CompareList.init();
     AddToCart.init();
     Wishlist.init();
+    AddToQuote.init();
     QuickView.init();
     ProductPage.init();
     FormValidation.init();

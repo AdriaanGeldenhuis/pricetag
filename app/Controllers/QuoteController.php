@@ -513,6 +513,104 @@ class QuoteController extends Controller
     }
 
     /**
+     * Quick add a product to a quote from product pages (AJAX)
+     * Finds or creates a draft quote, then adds the product.
+     */
+    public function quickAdd(): void
+    {
+        if (!$this->currentUser) {
+            $this->json(['success' => false, 'error' => 'Please log in to add products to a quote', 'login' => true], 401);
+            return;
+        }
+
+        if (!$this->validateCsrf()) {
+            return;
+        }
+
+        $productId = (int) ($_POST['product_id'] ?? 0);
+        $quantity = max(1, (int) ($_POST['quantity'] ?? 1));
+
+        if (!$productId) {
+            $this->json(['success' => false, 'error' => 'Invalid product'], 400);
+            return;
+        }
+
+        try {
+            $db = Database::getInstance();
+
+            // Look up the product
+            $stmt = $db->prepare("SELECT id, sku, name, price FROM products WHERE id = ? AND status = 'active'");
+            $stmt->execute([$productId]);
+            $product = $stmt->fetch();
+
+            if (!$product) {
+                $this->json(['success' => false, 'error' => 'Product not found'], 404);
+                return;
+            }
+
+            // Find the user's most recent draft quote, or create one
+            $stmt = $db->prepare("SELECT id FROM quotes WHERE user_id = ? AND status = 'draft' ORDER BY updated_at DESC LIMIT 1");
+            $stmt->execute([$this->currentUser->id]);
+            $draftQuote = $stmt->fetch();
+
+            if ($draftQuote) {
+                $quote = Quote::find($draftQuote['id']);
+            } else {
+                $db->beginTransaction();
+                $quote = Quote::create([
+                    'user_id' => $this->currentUser->id,
+                    'quote_number' => generateQuoteNumber(),
+                    'status' => 'draft',
+                    'title' => 'My Quote',
+                    'contact_name' => ($this->currentUser->first_name . ' ' . $this->currentUser->last_name),
+                    'contact_email' => $this->currentUser->email,
+                    'contact_phone' => $this->currentUser->phone ?? null,
+                    'valid_until' => date('Y-m-d', strtotime('+30 days')),
+                    'subtotal' => 0,
+                    'tax_amount' => 0,
+                    'total' => 0,
+                ]);
+                $db->commit();
+            }
+
+            // Check if product already exists in quote - bump qty
+            $stmt = $db->prepare("SELECT id, quantity FROM quote_items WHERE quote_id = ? AND product_id = ? AND variant_id IS NULL");
+            $stmt->execute([$quote->id, $productId]);
+            $existing = $stmt->fetch();
+
+            if ($existing) {
+                $newQty = $existing['quantity'] + $quantity;
+                $stmt = $db->prepare("UPDATE quote_items SET quantity = ?, total = price * ? WHERE id = ?");
+                $stmt->execute([$newQty, $newQty, $existing['id']]);
+            } else {
+                $quote->addItem([
+                    'product_id' => $product['id'],
+                    'sku' => $product['sku'],
+                    'name' => $product['name'],
+                    'quantity' => $quantity,
+                    'price' => $product['price'],
+                ]);
+            }
+
+            $quote->recalculateTotals();
+
+            $this->json([
+                'success' => true,
+                'message' => $product['name'] . ' added to quote',
+                'quote_id' => $quote->id,
+                'item_count' => $quote->getItemCount(),
+            ]);
+
+        } catch (PDOException $e) {
+            if (isset($db) && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            logMessage('error', 'Failed to quick-add to quote: ' . $e->getMessage());
+            $this->json(['success' => false, 'error' => 'Failed to add product to quote'], 500);
+        }
+    }
+
+    /**
      * Search products for the quote builder (AJAX)
      */
     public function searchProducts(): void

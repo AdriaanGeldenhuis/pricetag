@@ -108,6 +108,7 @@ $router->group(['prefix' => 'account', 'middleware' => ['App\Middleware\AuthMidd
     $router->get('/quotes/create', 'App\Controllers\QuoteController@create', 'account.quotes.create');
     $router->post('/quotes', 'App\Controllers\QuoteController@store', 'account.quotes.store');
     $router->get('/quotes/search-products', 'App\Controllers\QuoteController@searchProducts', 'account.quotes.search');
+    $router->post('/quotes/quick-add', 'App\Controllers\QuoteController@quickAdd', 'account.quotes.quickadd');
     $router->get('/quotes/{id}', 'App\Controllers\QuoteController@show', 'account.quotes.show');
     $router->get('/quotes/{id}/print', 'App\Controllers\QuoteController@printView', 'account.quotes.print');
     $router->post('/quotes/{id}/items', 'App\Controllers\QuoteController@addItem', 'account.quotes.items.add');

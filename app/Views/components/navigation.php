@@ -12,9 +12,6 @@
                     'is_mega' => true,
                     'children' => []
                 ],
-                ['title' => 'New Arrivals', 'url' => '/categories', 'badge' => 'New'],
-                ['title' => 'Best Sellers', 'url' => '/categories', 'badge' => ''],
-                ['title' => 'Deals', 'url' => '/categories', 'badge' => 'Sale'],
                 ['title' => 'Contact', 'url' => '/contact'],
             ];
 

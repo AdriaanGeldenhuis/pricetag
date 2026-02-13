@@ -51,7 +51,7 @@ class CategoryController extends Controller
         ];
 
         // Get products
-        $result = $category->getProducts($filters, $page, 12);
+        $result = $category->getProducts($filters, $page, 25);
 
         // Get available filters
         $availableFilters = $category->getAvailableFilters();

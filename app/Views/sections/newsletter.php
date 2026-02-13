@@ -7,13 +7,6 @@
     </div>
     <div class="container">
         <div class="newsletter-content">
-            <div class="newsletter-badge">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                    <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-                <span>Free to join</span>
-            </div>
             <h2 class="newsletter-title"><?= e($sectionTitle ?? 'Stay in the') ?> <span class="newsletter-title-accent"><?= e($sectionAccent ?? 'Loop') ?></span></h2>
             <p class="newsletter-text"><?= e($sectionSubtitle ?? 'Get exclusive deals, new arrivals, and insider-only discounts delivered straight to your inbox.') ?></p>
             <form id="newsletter-form" class="newsletter-form" action="<?= url('/newsletter/subscribe') ?>" method="POST">
@@ -27,7 +20,8 @@
                         <input type="email" name="email" id="newsletter-email"
                                placeholder="Enter your email address" required
                                pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
-                               class="newsletter-input" aria-label="Email address">
+                               class="newsletter-input" aria-label="Email address"
+                               autocomplete="email">
                     </div>
                     <button type="submit" class="newsletter-btn">
                         <span class="newsletter-btn-text">Subscribe</span>

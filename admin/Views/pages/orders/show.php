@@ -98,15 +98,15 @@
                     <?php if ($order['billing_company']): ?>
                     <p><?= e($order['billing_company']) ?></p>
                     <?php endif; ?>
-                    <p><?= e($order['billing_address']) ?></p>
-                    <?php if ($order['billing_address2']): ?>
-                    <p><?= e($order['billing_address2']) ?></p>
+                    <p><?= e($order['billing_address_1']) ?></p>
+                    <?php if ($order['billing_address_2'] ?? null): ?>
+                    <p><?= e($order['billing_address_2']) ?></p>
                     <?php endif; ?>
                     <p><?= e($order['billing_city']) ?>, <?= e($order['billing_province']) ?> <?= e($order['billing_postal_code']) ?></p>
                     <p><?= e($order['billing_country']) ?></p>
-                    <p class="mt-2"><?= e($order['billing_email']) ?></p>
-                    <?php if ($order['billing_phone']): ?>
-                    <p><?= e($order['billing_phone']) ?></p>
+                    <p class="mt-2"><?= e($order['customer_email']) ?></p>
+                    <?php if ($order['customer_phone'] ?? null): ?>
+                    <p><?= e($order['customer_phone']) ?></p>
                     <?php endif; ?>
                 </div>
             </div>
@@ -121,14 +121,14 @@
                     <?php if ($order['shipping_company']): ?>
                     <p><?= e($order['shipping_company']) ?></p>
                     <?php endif; ?>
-                    <p><?= e($order['shipping_address']) ?></p>
-                    <?php if ($order['shipping_address2']): ?>
-                    <p><?= e($order['shipping_address2']) ?></p>
+                    <p><?= e($order['shipping_address_1']) ?></p>
+                    <?php if ($order['shipping_address_2'] ?? null): ?>
+                    <p><?= e($order['shipping_address_2']) ?></p>
                     <?php endif; ?>
                     <p><?= e($order['shipping_city']) ?>, <?= e($order['shipping_province']) ?> <?= e($order['shipping_postal_code']) ?></p>
                     <p><?= e($order['shipping_country']) ?></p>
-                    <?php if ($order['shipping_phone']): ?>
-                    <p class="mt-2"><?= e($order['shipping_phone']) ?></p>
+                    <?php if ($order['customer_phone'] ?? null): ?>
+                    <p class="mt-2"><?= e($order['customer_phone']) ?></p>
                     <?php endif; ?>
                 </div>
             </div>
@@ -155,7 +155,7 @@
                         <?php foreach ($payments as $payment): ?>
                         <tr>
                             <td><?= date('d M Y H:i', strtotime($payment['created_at'])) ?></td>
-                            <td><?= ucfirst($payment['payment_method']) ?></td>
+                            <td><?= ucfirst($payment['method'] ?? $payment['gateway'] ?? '-') ?></td>
                             <td class="text-sm"><?= e($payment['transaction_id'] ?? '-') ?></td>
                             <td class="font-medium"><?= formatPrice($payment['amount']) ?></td>
                             <td>
@@ -188,10 +188,10 @@
                         </div>
                         <div>
                             <p class="font-medium">
-                                <?= ucfirst($history['old_status']) ?> &rarr; <?= ucfirst($history['new_status']) ?>
+                                <?= ucfirst($history['status']) ?>
                             </p>
-                            <?php if ($history['notes']): ?>
-                            <p class="text-sm text-muted"><?= e($history['notes']) ?></p>
+                            <?php if ($history['comment']): ?>
+                            <p class="text-sm text-muted"><?= e($history['comment']) ?></p>
                             <?php endif; ?>
                             <p class="text-xs text-muted">
                                 <?= date('d M Y H:i', strtotime($history['created_at'])) ?>
@@ -303,7 +303,7 @@
                 <?php else: ?>
                 <p class="text-muted">Guest checkout</p>
                 <p class="font-medium mt-2"><?= e($order['billing_first_name']) ?> <?= e($order['billing_last_name']) ?></p>
-                <p class="text-sm text-muted"><?= e($order['billing_email']) ?></p>
+                <p class="text-sm text-muted"><?= e($order['customer_email']) ?></p>
                 <?php endif; ?>
             </div>
         </div>

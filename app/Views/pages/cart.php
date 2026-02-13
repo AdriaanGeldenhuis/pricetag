@@ -66,7 +66,7 @@ $recentlyViewed = Product::recentlyViewed(4);
         </div>
         <h2 class="cart-empty-title">Your cart is empty</h2>
         <p class="cart-empty-text">Looks like you haven't added any items to your cart yet.</p>
-        <a href="<?= url('/products') ?>" class="btn btn-primary btn-lg">Start Shopping</a>
+        <a href="<?= url('/categories') ?>" class="btn btn-primary btn-lg">Start Shopping</a>
 
         <!-- Recently Viewed -->
         <?php if (!empty($recentlyViewed)): ?>
@@ -204,7 +204,7 @@ $recentlyViewed = Product::recentlyViewed(4);
 
             <!-- Continue Shopping -->
             <div class="cart-continue">
-                <a href="<?= url('/products') ?>" class="cart-continue-link">
+                <a href="<?= url('/categories') ?>" class="cart-continue-link">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="19" y1="12" x2="5" y2="12"></line>
                         <polyline points="12 19 5 12 12 5"></polyline>

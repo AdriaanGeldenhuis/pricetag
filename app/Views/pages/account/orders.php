@@ -27,7 +27,7 @@
                             </div>
                             <h3>No orders yet</h3>
                             <p class="text-muted">You haven't placed any orders yet. Start shopping!</p>
-                            <a href="<?= url('/products') ?>" class="btn btn-primary">Browse Products</a>
+                            <a href="<?= url('/categories') ?>" class="btn btn-primary">Browse Categories</a>
                         </div>
                     </div>
                     <?php else: ?>

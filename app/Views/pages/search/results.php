@@ -361,7 +361,7 @@ $totalResults = $pagination['total'] ?? 0;
                 </div>
                 <?php endif; ?>
 
-                <a href="<?= url('/products') ?>" class="btn btn-primary">View All Products</a>
+                <a href="<?= url('/categories') ?>" class="btn btn-primary">View All Categories</a>
             </div>
             <?php else: ?>
             <!-- Product Grid -->

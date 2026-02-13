@@ -22,6 +22,7 @@
                     class="form-input"
                     placeholder="Search products..."
                     aria-label="Search products"
+                    autocomplete="off"
                 >
             </form>
         </div>

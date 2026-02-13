@@ -111,7 +111,7 @@ class OrderController extends Controller
         $stmt = $db->prepare("
             SELECT oh.*, u.first_name, u.last_name
             FROM order_status_history oh
-            LEFT JOIN users u ON u.id = oh.changed_by
+            LEFT JOIN users u ON u.id = oh.created_by
             WHERE oh.order_id = ?
             ORDER BY oh.created_at DESC
         ");
@@ -163,10 +163,10 @@ class OrderController extends Controller
 
         // Log status change
         $stmt = $db->prepare("
-            INSERT INTO order_status_history (order_id, old_status, new_status, notes, changed_by, created_at)
-            VALUES (?, ?, ?, ?, ?, NOW())
+            INSERT INTO order_status_history (order_id, status, comment, created_by, created_at)
+            VALUES (?, ?, ?, ?, NOW())
         ");
-        $stmt->execute([(int) $id, $oldStatus, $newStatus, $notes, auth()->id ?? null]);
+        $stmt->execute([(int) $id, $newStatus, $notes, auth()->id ?? null]);
 
         flash('success', 'Order status updated');
         $this->redirect('/admin/orders/' . $id);

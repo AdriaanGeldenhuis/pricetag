@@ -200,14 +200,13 @@ class OrderController extends Controller
 
         // Add to status history
         $db->query("
-            INSERT INTO order_status_history (order_id, old_status, new_status, user_id, note, created_at)
-            VALUES (?, ?, ?, ?, ?, NOW())
+            INSERT INTO order_status_history (order_id, status, comment, created_by, created_at)
+            VALUES (?, ?, ?, ?, NOW())
         ", [
             $id,
-            $oldStatus,
             $newStatus,
-            $_SESSION['user_id'],
             $_POST['note'] ?? null,
+            $_SESSION['user_id'],
         ]);
 
         // Send notification email to customer

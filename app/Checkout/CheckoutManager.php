@@ -248,7 +248,7 @@ class CheckoutManager
 
             // Add status history
             $stmt = $this->db->prepare("
-                INSERT INTO order_status_history (order_id, status, notes, created_at)
+                INSERT INTO order_status_history (order_id, status, comment, created_at)
                 VALUES (?, 'pending', 'Order created', NOW())
             ");
             $stmt->execute([$orderId]);
@@ -319,7 +319,7 @@ class CheckoutManager
 
             // Add status history
             $stmt = $this->db->prepare("
-                INSERT INTO order_status_history (order_id, status, notes, created_at)
+                INSERT INTO order_status_history (order_id, status, comment, created_at)
                 VALUES (?, 'paid', 'Payment received', NOW())
             ");
             $stmt->execute([$orderId]);

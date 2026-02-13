@@ -188,10 +188,10 @@
                         </div>
                         <div>
                             <p class="font-medium">
-                                <?= ucfirst($history['old_status']) ?> &rarr; <?= ucfirst($history['new_status']) ?>
+                                <?= ucfirst($history['status']) ?>
                             </p>
-                            <?php if ($history['notes']): ?>
-                            <p class="text-sm text-muted"><?= e($history['notes']) ?></p>
+                            <?php if ($history['comment']): ?>
+                            <p class="text-sm text-muted"><?= e($history['comment']) ?></p>
                             <?php endif; ?>
                             <p class="text-xs text-muted">
                                 <?= date('d M Y H:i', strtotime($history['created_at'])) ?>

@@ -64,11 +64,10 @@ $hasSocial = !empty($socialFacebook) || !empty($socialInstagram) || !empty($soci
                 <div class="footer-column">
                     <h4 class="footer-column-title">Shop</h4>
                     <nav class="footer-links">
-                        <a href="<?= url('/products') ?>" class="footer-link">All Products</a>
+                        <a href="<?= url('/categories') ?>" class="footer-link">All Categories</a>
                         <a href="<?= url('/products?sort=newest') ?>" class="footer-link">New Arrivals</a>
                         <a href="<?= url('/products?on_sale=1') ?>" class="footer-link">Sale</a>
                         <a href="<?= url('/products?sort=popular') ?>" class="footer-link">Best Sellers</a>
-                        <a href="<?= url('/categories') ?>" class="footer-link">Categories</a>
                     </nav>
                 </div>
 

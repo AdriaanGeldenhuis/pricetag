@@ -118,7 +118,7 @@
                             </div>
                             <h3>No orders yet</h3>
                             <p class="text-muted">Start shopping to see your orders here.</p>
-                            <a href="<?= url('/products') ?>" class="btn btn-primary">Browse Products</a>
+                            <a href="<?= url('/categories') ?>" class="btn btn-primary">Browse Categories</a>
                         </div>
                         <?php else: ?>
                         <div class="orders-table-wrapper">

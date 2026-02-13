@@ -230,7 +230,7 @@
                                 Download Invoice
                             </a>
                             <?php endif; ?>
-                            <a href="<?= url('/products') ?>" class="btn btn-ghost btn-block">
+                            <a href="<?= url('/categories') ?>" class="btn btn-ghost btn-block">
                                 Continue Shopping
                             </a>
                         </div>

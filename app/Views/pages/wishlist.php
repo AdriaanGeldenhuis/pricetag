@@ -101,7 +101,7 @@ $isEmpty = empty($items);
         </div>
         <h2 class="wishlist-empty-title">Your wishlist is empty</h2>
         <p class="wishlist-empty-text">Save items you love by clicking the heart icon on any product.</p>
-        <a href="<?= url('/products') ?>" class="btn btn-primary btn-lg">Browse Products</a>
+        <a href="<?= url('/categories') ?>" class="btn btn-primary btn-lg">Browse Categories</a>
     </div>
     <?php else: ?>
     <!-- Wishlist Items Grid -->
@@ -189,7 +189,7 @@ $isEmpty = empty($items);
 
     <!-- Continue Shopping -->
     <div class="wishlist-continue">
-        <a href="<?= url('/products') ?>" class="wishlist-continue-link">
+        <a href="<?= url('/categories') ?>" class="wishlist-continue-link">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="19" y1="12" x2="5" y2="12"></line>
                 <polyline points="12 19 5 12 12 5"></polyline>

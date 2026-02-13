@@ -99,19 +99,44 @@ function initCategoryCardsScroll() {
         });
     }
 
-    // Mouse drag scrolling (like touch on phone)
+    // Mouse drag scrolling with momentum (like touch on phone)
     var isDown = false;
     var hasDragged = false;
     var startX = 0;
     var startScrollLeft = 0;
+    var lastX = 0;
+    var lastTime = 0;
+    var velocity = 0;
+    var momentumId = null;
 
     scroll.style.cursor = 'grab';
 
+    function stopMomentum() {
+        if (momentumId) {
+            cancelAnimationFrame(momentumId);
+            momentumId = null;
+        }
+    }
+
+    function momentumLoop() {
+        if (Math.abs(velocity) < 0.5) {
+            momentumId = null;
+            return;
+        }
+        scroll.scrollLeft -= velocity;
+        velocity *= 0.95;
+        momentumId = requestAnimationFrame(momentumLoop);
+    }
+
     scroll.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
+        stopMomentum();
         isDown = true;
         hasDragged = false;
         startX = e.pageX;
+        lastX = e.pageX;
+        lastTime = Date.now();
+        velocity = 0;
         startScrollLeft = scroll.scrollLeft;
         scroll.style.cursor = 'grabbing';
         scroll.style.userSelect = 'none';
@@ -122,8 +147,15 @@ function initCategoryCardsScroll() {
         var dx = e.pageX - startX;
         if (Math.abs(dx) > 5) {
             hasDragged = true;
-            scroll.scrollLeft = startScrollLeft - dx;
         }
+        var now = Date.now();
+        var dt = now - lastTime;
+        if (dt > 0) {
+            velocity = (e.pageX - lastX) / dt * 16;
+        }
+        lastX = e.pageX;
+        lastTime = now;
+        scroll.scrollLeft = startScrollLeft - dx;
     });
 
     document.addEventListener('mouseup', function() {
@@ -131,6 +163,9 @@ function initCategoryCardsScroll() {
         isDown = false;
         scroll.style.cursor = 'grab';
         scroll.style.removeProperty('user-select');
+        if (hasDragged && Math.abs(velocity) > 1) {
+            momentumLoop();
+        }
     });
 
     // Block link navigation if we were dragging

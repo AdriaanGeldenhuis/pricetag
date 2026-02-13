@@ -197,7 +197,6 @@
     display: flex;
     gap: var(--space-6);
     overflow-x: auto;
-    scroll-snap-type: x mandatory;
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding: var(--space-4) var(--space-2);
@@ -217,7 +216,6 @@
 /* Card items */
 .category-card-item {
     flex: 0 0 auto;
-    scroll-snap-align: start;
     display: flex;
     flex-direction: column;
     align-items: center;

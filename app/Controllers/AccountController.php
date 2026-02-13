@@ -351,6 +351,9 @@ class AccountController extends Controller
                 'bank_type' => config('company.bank_type', ''),
             ];
 
+            // Branding (logo from admin settings)
+            $branding = getBranding();
+
             header('Content-Type: text/html; charset=utf-8');
             include APP_PATH . '/Views/pages/account/invoice.php';
             exit;

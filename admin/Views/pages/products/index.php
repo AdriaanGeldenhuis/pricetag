@@ -68,8 +68,20 @@
                 </select>
             </div>
             <?php endif; ?>
+            <?php if (!empty($brands)): ?>
+            <div>
+                <select name="brand" class="form-select">
+                    <option value="">All Brands</option>
+                    <?php foreach ($brands as $b): ?>
+                    <option value="<?= $b['id'] ?>" <?= ($brand_filter ?? '') == $b['id'] ? 'selected' : '' ?>>
+                        <?= e($b['name']) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <button type="submit" class="btn btn-primary">Filter</button>
-            <?php if ($search || $status || ($vendor_filter ?? '') || ($category_filter ?? '')): ?>
+            <?php if ($search || $status || ($vendor_filter ?? '') || ($category_filter ?? '') || ($brand_filter ?? '')): ?>
             <a href="<?= url('/admin/products') ?>" class="btn btn-outline">Clear</a>
             <?php endif; ?>
         </form>

@@ -57,6 +57,98 @@
     </div>
 </div>
 
+<?php
+// Reusable pagination renderer for product listing
+function renderPagination($pagination, $baseUrl) {
+    if ($pagination['last_page'] <= 1) return;
+
+    $current = $pagination['current_page'];
+    $last = $pagination['last_page'];
+    $total = $pagination['total'];
+    $perPage = $pagination['per_page'];
+
+    $start = max(1, $current - 3);
+    $end = min($last, $current + 3);
+
+    // Build query string preserving current filters
+    $queryParams = $_GET;
+    unset($queryParams['page']);
+    $queryString = http_build_query($queryParams);
+    $separator = $queryString ? '&' : '';
+    ?>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; flex-wrap: wrap; gap: 10px;">
+        <div style="font-size: 13px; color: #6b7280;">
+            Showing <strong style="color: #111827;"><?= number_format((($current - 1) * $perPage) + 1) ?></strong>
+            to <strong style="color: #111827;"><?= number_format(min($current * $perPage, $total)) ?></strong>
+            of <strong style="color: #111827;"><?= number_format($total) ?></strong> products
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px;">
+            <?php if ($current > 1): ?>
+            <a href="<?= $baseUrl ?>?page=1<?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;"
+               title="First page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <polyline points="11 17 6 12 11 7"></polyline>
+                    <polyline points="18 17 13 12 18 7"></polyline>
+                </svg>
+            </a>
+            <a href="<?= $baseUrl ?>?page=<?= $current - 1 ?><?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;"
+               title="Previous page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+            </a>
+            <?php endif; ?>
+
+            <?php if ($start > 1): ?>
+            <a href="<?= $baseUrl ?>?page=1<?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;">1</a>
+            <?php if ($start > 2): ?>
+            <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; font-size: 13px; color: #9ca3af;">...</span>
+            <?php endif; ?>
+            <?php endif; ?>
+
+            <?php for ($i = $start; $i <= $end; $i++): ?>
+            <?php if ($i === $current): ?>
+            <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #4f46e5; border-radius: 6px; font-size: 13px; font-weight: 600; color: #fff; background: #4f46e5;"><?= $i ?></span>
+            <?php else: ?>
+            <a href="<?= $baseUrl ?>?page=<?= $i ?><?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;"><?= $i ?></a>
+            <?php endif; ?>
+            <?php endfor; ?>
+
+            <?php if ($end < $last): ?>
+            <?php if ($end < $last - 1): ?>
+            <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; font-size: 13px; color: #9ca3af;">...</span>
+            <?php endif; ?>
+            <a href="<?= $baseUrl ?>?page=<?= $last ?><?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;"><?= $last ?></a>
+            <?php endif; ?>
+
+            <?php if ($current < $last): ?>
+            <a href="<?= $baseUrl ?>?page=<?= $current + 1 ?><?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;"
+               title="Next page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </a>
+            <a href="<?= $baseUrl ?>?page=<?= $last ?><?= $separator . $queryString ?>"
+               style="display: inline-flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; padding: 0 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; color: #374151; text-decoration: none; background: #fff;"
+               title="Last page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                    <polyline points="13 17 18 12 13 7"></polyline>
+                    <polyline points="6 17 11 12 6 7"></polyline>
+                </svg>
+            </a>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
+}
+?>
+
 <!-- Bulk Actions Bar (hidden by default) -->
 <div id="bulk-actions-bar" class="card mb-4" style="display: none;">
     <div class="card-body py-3">
@@ -205,6 +297,9 @@
 
 <!-- Products Table -->
 <div class="card">
+    <!-- Top Pagination -->
+    <?php renderPagination($pagination, url('/admin/products')); ?>
+
     <div class="overflow-x-auto">
         <table class="admin-table">
             <thead>
@@ -215,16 +310,17 @@
                     <th style="width: 60px;"></th>
                     <th>Product</th>
                     <th>SKU</th>
-                    <th>Price</th>
-                    <th>Stock</th>
-                    <th>Status</th>
-                    <th style="width: 100px;">Actions</th>
+                    <th>Category</th>
+                    <th style="text-align: right;">Price</th>
+                    <th style="text-align: center;">Stock</th>
+                    <th style="text-align: center;">Status</th>
+                    <th style="width: 80px;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($products)): ?>
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-12">
+                    <td colspan="9" class="text-center text-muted py-12">
                         No products found
                         <br>
                         <a href="<?= url('/admin/products/create') ?>" class="btn btn-primary mt-4">Add your first product</a>
@@ -245,25 +341,32 @@
                         <?php endif; ?>
                     </td>
                     <td>
-                        <a href="<?= url('/admin/products/' . $product['id'] . '/edit') ?>" class="font-medium text-primary">
+                        <a href="<?= url('/admin/products/' . $product['id'] . '/edit') ?>" class="font-medium text-primary" style="font-size: 13px;">
                             <?= e($product['name']) ?>
                         </a>
-                        <?php if ($product['is_featured']): ?>
+                        <?php if (!empty($product['is_featured'])): ?>
                         <span class="badge badge-accent ml-2">Featured</span>
                         <?php endif; ?>
                     </td>
-                    <td class="text-muted text-sm"><?= e($product['sku']) ?></td>
-                    <td>
+                    <td class="text-muted text-sm" style="white-space: nowrap;"><?= e($product['sku']) ?></td>
+                    <td style="white-space: nowrap;">
+                        <?php if (!empty($product['category_name'])): ?>
+                        <span class="badge badge-info"><?= e($product['category_name']) ?></span>
+                        <?php else: ?>
+                        <span class="text-muted text-sm">-</span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="white-space: nowrap; text-align: right;">
                         <span class="font-medium"><?= formatPrice($product['price']) ?></span>
                         <?php if ($product['compare_price']): ?>
                         <span class="text-xs text-muted line-through block"><?= formatPrice($product['compare_price']) ?></span>
                         <?php endif; ?>
                     </td>
-                    <td>
-                        <?php if ($product['manage_stock']): ?>
+                    <td style="white-space: nowrap; text-align: center;">
+                        <?php if (!empty($product['manage_stock'])): ?>
                             <?php if ($product['stock_quantity'] <= 0): ?>
                             <span class="badge badge-danger">Out of Stock</span>
-                            <?php elseif ($product['stock_quantity'] <= $product['low_stock_threshold']): ?>
+                            <?php elseif ($product['stock_quantity'] <= ($product['low_stock_threshold'] ?? 10)): ?>
                             <span class="badge badge-warning"><?= $product['stock_quantity'] ?> left</span>
                             <?php else: ?>
                             <span class="text-success"><?= $product['stock_quantity'] ?></span>
@@ -272,7 +375,7 @@
                         <span class="text-muted">-</span>
                         <?php endif; ?>
                     </td>
-                    <td>
+                    <td style="white-space: nowrap; text-align: center;">
                         <?php
                         $statusColors = [
                             'active' => 'success',
@@ -309,14 +412,10 @@
             </tbody>
         </table>
     </div>
-</div>
 
-<!-- Pagination -->
-<?php if ($pagination['last_page'] > 1): ?>
-<div class="mt-6">
-    <?= \App\Core\View::pagination($pagination, url('/admin/products')) ?>
+    <!-- Bottom Pagination -->
+    <?php renderPagination($pagination, url('/admin/products')); ?>
 </div>
-<?php endif; ?>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {

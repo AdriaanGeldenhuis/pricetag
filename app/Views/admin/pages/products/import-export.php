@@ -1574,7 +1574,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const aiEnabled = document.getElementById('aiGenerateAll').checked;
-        const batchSize = aiEnabled ? 3 : 50; // Small batches for AI to avoid 504 timeout
+        const batchSize = aiEnabled ? 1 : 50; // 1 product at a time for AI (each call ~5-15s), 50 without AI
         const batches = [];
         for (let i = 0; i < importData.length; i += batchSize) {
             batches.push(importData.slice(i, i + batchSize));

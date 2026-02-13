@@ -21,7 +21,7 @@ class ProductController extends Controller
 
         // Get filter parameters
         $page = max(1, (int) ($_GET['page'] ?? 1));
-        $perPage = 20;
+        $perPage = 100;
         $search = $_GET['search'] ?? '';
         $category = $_GET['category'] ?? '';
         $status = $_GET['status'] ?? '';

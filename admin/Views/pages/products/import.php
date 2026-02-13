@@ -1277,7 +1277,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return mapped;
         });
 
-        const batchSize = options.aiGenerate ? 3 : 10; // Small batches for AI to avoid 504 timeout
+        const batchSize = options.aiGenerate ? 1 : 10; // 1 product at a time for AI (each call ~5-15s)
         const batches = [];
         for (let i = 0; i < mappedData.length; i += batchSize) {
             batches.push(mappedData.slice(i, i + batchSize));

@@ -30,7 +30,7 @@ class OrderController extends Controller
         $params = [];
 
         if ($search) {
-            $where[] = "(o.order_number LIKE ? OR o.billing_email LIKE ? OR o.billing_first_name LIKE ? OR o.billing_last_name LIKE ?)";
+            $where[] = "(o.order_number LIKE ? OR o.customer_email LIKE ? OR o.billing_first_name LIKE ? OR o.billing_last_name LIKE ?)";
             $params = array_merge($params, ["%{$search}%", "%{$search}%", "%{$search}%", "%{$search}%"]);
         }
 
@@ -299,7 +299,7 @@ class OrderController extends Controller
     private function sendStatusEmail(array $order, string $status): void
     {
         // In production, use proper email service
-        $email = $order['billing_email'];
+        $email = $order['customer_email'];
         $orderNumber = $order['order_number'];
 
         $subjects = [

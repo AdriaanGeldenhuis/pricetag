@@ -129,7 +129,7 @@
                             </span>
                             <div>
                                 <div class="font-semibold"><?= e($order['customer_name'] ?? 'Guest') ?></div>
-                                <div class="text-muted" style="font-size: 0.75rem;"><?= e($order['billing_email']) ?></div>
+                                <div class="text-muted" style="font-size: 0.75rem;"><?= e($order['customer_email']) ?></div>
                             </div>
                         </div>
                     </td>

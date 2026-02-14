@@ -323,6 +323,48 @@ class AccountController extends Controller
             }
 
             $items = $order->getItems();
+            $payment = $order->getPayment();
+
+            // Determine invoice type from query parameter
+            $invoiceType = $_GET['type'] ?? 'tax_invoice';
+            $allowedTypes = ['tax_invoice', 'proforma', 'credit_note', 'quote'];
+            if (!in_array($invoiceType, $allowedTypes, true)) {
+                $invoiceType = 'tax_invoice';
+            }
+
+            // Tax configuration
+            $taxRate = config('payment.tax.rate', 15);
+            $taxInclusive = config('payment.tax.inclusive', true);
+
+            // Company details from admin invoice settings (fallback to general settings, then config)
+            $company = [
+                'name' => getSetting('invoice_company_name', 'invoice')
+                    ?: getSetting('site_name', 'general')
+                    ?: config('app.name', 'Pricetag'),
+                'address' => getSetting('invoice_address', 'invoice')
+                    ?: getSetting('site_address', 'general', ''),
+                'email' => getSetting('invoice_email', 'invoice')
+                    ?: getSetting('site_email', 'general', ''),
+                'phone' => getSetting('invoice_phone', 'invoice')
+                    ?: getSetting('site_phone', 'general', ''),
+                'vat_number' => getSetting('invoice_vat_number', 'invoice', ''),
+                'reg_number' => getSetting('invoice_reg_number', 'invoice', ''),
+                'website' => getSetting('invoice_website', 'invoice')
+                    ?: config('app.url', ''),
+                'bank_name' => getSetting('invoice_bank_name', 'invoice')
+                    ?: getSetting('eft_bank_name', 'payment', ''),
+                'bank_account' => getSetting('invoice_bank_account', 'invoice')
+                    ?: getSetting('eft_account_number', 'payment', ''),
+                'bank_branch' => getSetting('invoice_bank_branch', 'invoice')
+                    ?: getSetting('eft_branch_code', 'payment', ''),
+                'bank_type' => getSetting('invoice_bank_type', 'invoice', ''),
+                'payment_terms' => getSetting('invoice_payment_terms', 'invoice', 'due_on_receipt'),
+                'notes' => getSetting('invoice_notes', 'invoice', ''),
+                'footer_text' => getSetting('invoice_footer_text', 'invoice', ''),
+            ];
+
+            // Branding (logo from admin settings)
+            $branding = getBranding();
 
             header('Content-Type: text/html; charset=utf-8');
             include APP_PATH . '/Views/pages/account/invoice.php';

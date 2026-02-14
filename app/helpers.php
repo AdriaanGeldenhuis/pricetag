@@ -386,6 +386,14 @@ function generateOrderNumber(): string
 }
 
 /**
+ * Generate unique quote number
+ */
+function generateQuoteNumber(): string
+{
+    return 'QT-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -6));
+}
+
+/**
  * Generate invoice number
  */
 function generateInvoiceNumber(): string

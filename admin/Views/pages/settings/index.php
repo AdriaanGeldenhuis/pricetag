@@ -3,6 +3,7 @@
 $section = $_GET['section'] ?? 'general';
 $sections = [
     'general' => 'General',
+    'invoice' => 'Invoice & Company',
     'store' => 'Store',
     'payment' => 'Payment',
     'social' => 'Social Media',
@@ -67,6 +68,153 @@ $sections = [
                         <label for="site_address" class="form-label">Business Address</label>
                         <textarea id="site_address" name="site_address" rows="3"
                                   class="form-input"><?= e($settings['site_address'] ?? '') ?></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <?php elseif ($section === 'invoice'): ?>
+            <!-- Invoice & Company Settings -->
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h2 class="font-semibold">Company Details</h2>
+                    <p class="text-sm text-muted mt-1">These details appear on your customer invoices, quotes, and credit notes.</p>
+                </div>
+                <div class="card-body space-y-4">
+                    <div class="form-group">
+                        <label for="invoice_company_name" class="form-label">Company / Trading Name</label>
+                        <input type="text" id="invoice_company_name" name="invoice_company_name"
+                               value="<?= e($settings['invoice_company_name'] ?? $settings['site_name'] ?? 'Pricetag') ?>" class="form-input"
+                               placeholder="Your company name as it appears on invoices">
+                        <p class="form-help">Leave blank to use your site name</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="invoice_address" class="form-label">Business Address</label>
+                        <textarea id="invoice_address" name="invoice_address" rows="3"
+                                  class="form-input" placeholder="123 Main Street&#10;Johannesburg, Gauteng&#10;2000"><?= e($settings['invoice_address'] ?? $settings['site_address'] ?? '') ?></textarea>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="invoice_email" class="form-label">Invoice Email</label>
+                            <input type="email" id="invoice_email" name="invoice_email"
+                                   value="<?= e($settings['invoice_email'] ?? $settings['site_email'] ?? '') ?>" class="form-input"
+                                   placeholder="accounts@yourcompany.co.za">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="invoice_phone" class="form-label">Invoice Phone</label>
+                            <input type="text" id="invoice_phone" name="invoice_phone"
+                                   value="<?= e($settings['invoice_phone'] ?? $settings['site_phone'] ?? '') ?>" class="form-input"
+                                   placeholder="+27 11 123 4567">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="invoice_website" class="form-label">Website URL</label>
+                        <input type="url" id="invoice_website" name="invoice_website"
+                               value="<?= e($settings['invoice_website'] ?? '') ?>" class="form-input"
+                               placeholder="https://yourcompany.co.za">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h2 class="font-semibold">Tax & Registration</h2>
+                    <p class="text-sm text-muted mt-1">Legal details displayed on invoices for compliance.</p>
+                </div>
+                <div class="card-body space-y-4">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="invoice_vat_number" class="form-label">VAT Number</label>
+                            <input type="text" id="invoice_vat_number" name="invoice_vat_number"
+                                   value="<?= e($settings['invoice_vat_number'] ?? '') ?>" class="form-input"
+                                   placeholder="e.g. 4123456789">
+                            <p class="form-help">Your SARS VAT registration number</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="invoice_reg_number" class="form-label">Company Registration Number</label>
+                            <input type="text" id="invoice_reg_number" name="invoice_reg_number"
+                                   value="<?= e($settings['invoice_reg_number'] ?? '') ?>" class="form-input"
+                                   placeholder="e.g. 2024/123456/07">
+                            <p class="form-help">CIPC registration number</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h2 class="font-semibold">Banking Details (shown on invoices)</h2>
+                    <p class="text-sm text-muted mt-1">For customers paying via EFT / bank transfer.</p>
+                </div>
+                <div class="card-body space-y-4">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="invoice_bank_name" class="form-label">Bank Name</label>
+                            <input type="text" id="invoice_bank_name" name="invoice_bank_name"
+                                   value="<?= e($settings['invoice_bank_name'] ?? $settings['eft_bank_name'] ?? '') ?>" class="form-input"
+                                   placeholder="e.g. FNB, Standard Bank, Nedbank">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="invoice_bank_account" class="form-label">Account Number</label>
+                            <input type="text" id="invoice_bank_account" name="invoice_bank_account"
+                                   value="<?= e($settings['invoice_bank_account'] ?? $settings['eft_account_number'] ?? '') ?>" class="form-input"
+                                   placeholder="e.g. 62000000000">
+                        </div>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="invoice_bank_branch" class="form-label">Branch Code</label>
+                            <input type="text" id="invoice_bank_branch" name="invoice_bank_branch"
+                                   value="<?= e($settings['invoice_bank_branch'] ?? $settings['eft_branch_code'] ?? '') ?>" class="form-input"
+                                   placeholder="e.g. 250655">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="invoice_bank_type" class="form-label">Account Type</label>
+                            <select id="invoice_bank_type" name="invoice_bank_type" class="form-select">
+                                <option value="" <?= empty($settings['invoice_bank_type'] ?? '') ? 'selected' : '' ?>>Select account type</option>
+                                <option value="Cheque/Current" <?= ($settings['invoice_bank_type'] ?? '') === 'Cheque/Current' ? 'selected' : '' ?>>Cheque / Current</option>
+                                <option value="Savings" <?= ($settings['invoice_bank_type'] ?? '') === 'Savings' ? 'selected' : '' ?>>Savings</option>
+                                <option value="Transmission" <?= ($settings['invoice_bank_type'] ?? '') === 'Transmission' ? 'selected' : '' ?>>Transmission</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="font-semibold">Invoice Options</h2>
+                </div>
+                <div class="card-body space-y-4">
+                    <div class="form-group">
+                        <label for="invoice_payment_terms" class="form-label">Default Payment Terms</label>
+                        <select id="invoice_payment_terms" name="invoice_payment_terms" class="form-select">
+                            <option value="due_on_receipt" <?= ($settings['invoice_payment_terms'] ?? 'due_on_receipt') === 'due_on_receipt' ? 'selected' : '' ?>>Due on Receipt</option>
+                            <option value="net_7" <?= ($settings['invoice_payment_terms'] ?? '') === 'net_7' ? 'selected' : '' ?>>Net 7 (7 days)</option>
+                            <option value="net_14" <?= ($settings['invoice_payment_terms'] ?? '') === 'net_14' ? 'selected' : '' ?>>Net 14 (14 days)</option>
+                            <option value="net_30" <?= ($settings['invoice_payment_terms'] ?? '') === 'net_30' ? 'selected' : '' ?>>Net 30 (30 days)</option>
+                            <option value="net_60" <?= ($settings['invoice_payment_terms'] ?? '') === 'net_60' ? 'selected' : '' ?>>Net 60 (60 days)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="invoice_notes" class="form-label">Default Invoice Notes</label>
+                        <textarea id="invoice_notes" name="invoice_notes" rows="3"
+                                  class="form-input" placeholder="Thank you for your business!"><?= e($settings['invoice_notes'] ?? '') ?></textarea>
+                        <p class="form-help">Shown at the bottom of every invoice</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="invoice_footer_text" class="form-label">Custom Footer Text</label>
+                        <textarea id="invoice_footer_text" name="invoice_footer_text" rows="2"
+                                  class="form-input" placeholder="This document is computer generated and is valid without signature."><?= e($settings['invoice_footer_text'] ?? '') ?></textarea>
                     </div>
                 </div>
             </div>

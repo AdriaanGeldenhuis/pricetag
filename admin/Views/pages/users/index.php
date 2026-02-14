@@ -1,17 +1,19 @@
 <div class="admin-page">
-    <div class="page-header">
-        <div class="page-header-content">
-            <h1 class="page-title">Admin Users</h1>
-            <p class="page-subtitle">Manage administrator accounts and permissions</p>
+    <div class="admin-page-header">
+        <div class="admin-page-header-content">
+            <h1 class="admin-page-title">Admin Users</h1>
+            <p class="admin-page-subtitle">Manage administrator accounts and permissions</p>
         </div>
         <?php if (user()['role'] === 'super_admin'): ?>
-        <a href="<?= url('/admin/users/create') ?>" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Add Admin User
-        </a>
+        <div class="admin-page-actions">
+            <a href="<?= url('/admin/users/create') ?>" class="btn btn-primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Add Admin User
+            </a>
+        </div>
         <?php endif; ?>
     </div>
 
@@ -75,8 +77,8 @@
 
     <!-- Users Table -->
     <div class="card">
-        <div class="table-responsive">
-            <table class="data-table">
+        <div class="admin-table-wrapper">
+            <table class="admin-table">
                 <thead>
                     <tr>
                         <th>User</th>
@@ -169,67 +171,3 @@
     </div>
 </div>
 
-<style>
-.user-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.user-avatar {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 50%;
-    background: var(--color-primary-100);
-    color: var(--color-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-    font-weight: 600;
-    overflow: hidden;
-}
-
-.user-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.user-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.user-name {
-    font-weight: 500;
-}
-
-.user-email {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-}
-
-.status-badge {
-    display: inline-flex;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    font-weight: 500;
-}
-
-.status-active {
-    background: var(--color-success-100);
-    color: var(--color-success-700);
-}
-
-.status-pending {
-    background: var(--color-warning-100);
-    color: var(--color-warning-700);
-}
-
-.status-suspended {
-    background: var(--color-danger-100);
-    color: var(--color-danger-700);
-}
-</style>

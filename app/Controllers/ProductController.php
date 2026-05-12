@@ -92,6 +92,35 @@ class ProductController extends Controller
         $reviews = $product->getReviews();
         $relatedProducts = $product->getRelatedProducts(4);
 
+        // Fallback: if no manually-curated related products exist, fill the
+        // "Related" slot with other products from the primary category so
+        // customers always have something to browse next.
+        if (empty($relatedProducts) && $primaryCategory) {
+            $category = Category::find($primaryCategory['id']);
+            if ($category) {
+                $page = $category->getProducts([], 1, 8);
+                $relatedProducts = array_values(array_filter(
+                    $page['data'] ?? [],
+                    fn($p) => (int)($p->id ?? 0) !== (int)$product->id
+                ));
+                $relatedProducts = array_slice($relatedProducts, 0, 4);
+            }
+        }
+
+        // Initial wishlist state so the heart button renders filled if the
+        // logged-in user has already saved this product.
+        $inWishlist = false;
+        if (auth()) {
+            $currentUser = user();
+            if ($currentUser && !empty($currentUser['id'])) {
+                $stmt = Database::getInstance()->prepare(
+                    "SELECT 1 FROM wishlists WHERE user_id = ? AND product_id = ? LIMIT 1"
+                );
+                $stmt->execute([(int) $currentUser['id'], (int) $product->id]);
+                $inWishlist = (bool) $stmt->fetchColumn();
+            }
+        }
+
         // Build breadcrumbs
         $breadcrumbs = [
             ['name' => 'Home', 'url' => url('/')],
@@ -133,6 +162,7 @@ class ProductController extends Controller
             'reviews' => $reviews,
             'relatedProducts' => $relatedProducts,
             'breadcrumbs' => $breadcrumbs,
+            'inWishlist' => $inWishlist,
         ]);
     }
 }

@@ -1307,4 +1307,345 @@ class ProductService
             }
         }
     }
+
+    // =========================================================================
+    // AI-driven enrichment
+    // =========================================================================
+
+    /**
+     * Apply an AI-generated payload to a product, atomically and safely.
+     *
+     * This is the single shared path used by both the single-product admin
+     * "Make Production Ready" button and the bulk CSV/JSON importer. Both
+     * previously duplicated this logic with slightly different safety
+     * rules; the import flow was missing transactions, HTML sanitization,
+     * numeric clamping, and the force-flag behaviour. Centralising here
+     * makes future fixes apply everywhere.
+     *
+     * Behaviour:
+     *   - Wraps every DB write in a single transaction. Image generation
+     *     (if requested) runs AFTER commit because it talks to remote
+     *     services and shouldn't roll back a clean update.
+     *   - Sanitizes AI HTML via sanitizeUntrustedHtml() and strips tags
+     *     from plain-text fields. Caps lengths to the DB column sizes.
+     *   - Clamps weight/dimensions to plausible physical ranges; rejects
+     *     hallucinated values instead of writing them.
+     *   - Default mode (`force=false`): only fills empty fields (or the
+     *     name field when the current value still equals the SKU stub).
+     *     `force=true` overwrites manually-edited content.
+     *   - Brand attribute and category assignment only fire when the
+     *     product currently has none, regardless of force.
+     *
+     * @param int   $productId
+     * @param array $aiData    Output dict from OpenAIService::generateCompleteProduct
+     * @param array $opts      [
+     *     'force'         => bool   default false  - overwrite non-empty text fields
+     *     'generate_images' => bool default false  - call ProductImageService after commit
+     * ]
+     *
+     * @return array {
+     *     success:           bool,
+     *     applied_fields:    string[]  fields actually written to the products row
+     *     skipped_fields:    string[]  fields the AI suggested but we kept the existing value
+     *     specs_saved:       int       number of specifications inserted (0 if product already had specs)
+     *     attributes_saved:  int       number of attribute links inserted (0 if it already had attributes)
+     *     category_assigned: ?int      category_id if AI category was matched, else null
+     *     brand_assigned:    ?string   brand name if applied, else null
+     *     images_generated:  int       count of new images downloaded (0 unless generate_images opt was on)
+     *     error:             ?string   present only when success=false
+     * }
+     */
+    public function applyAiDataToProduct(int $productId, array $aiData, array $opts = []): array
+    {
+        $force = (bool) ($opts['force'] ?? false);
+        $generateImages = (bool) ($opts['generate_images'] ?? false);
+
+        $product = Product::find($productId);
+        if (!$product) {
+            return [
+                'success' => false,
+                'error' => "Product {$productId} not found",
+                'applied_fields' => [], 'skipped_fields' => [],
+                'specs_saved' => 0, 'attributes_saved' => 0,
+                'category_assigned' => null, 'brand_assigned' => null,
+                'images_generated' => 0,
+            ];
+        }
+
+        // Snapshot current state needed for decisions later (categories +
+        // existing brand attribute). One query each, only once.
+        $existingCategoryCount = 0;
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM product_categories WHERE product_id = ?");
+            $stmt->execute([$productId]);
+            $existingCategoryCount = (int) $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            // Table missing -> treat as 0 categories
+        }
+
+        $existingBrand = '';
+        try {
+            $stmt = $this->db->prepare("
+                SELECT av.value
+                FROM product_attributes pa
+                JOIN attribute_values av ON pa.attribute_value_id = av.id
+                JOIN attributes a ON av.attribute_id = a.id
+                WHERE pa.product_id = ? AND LOWER(a.name) = 'brand'
+                LIMIT 1
+            ");
+            $stmt->execute([$productId]);
+            $existingBrand = (string) ($stmt->fetchColumn() ?: '');
+        } catch (\Throwable $e) {
+            // Attribute tables may not exist on fresh installs
+        }
+
+        // -----------------------------------------------------------------
+        // Build the updates dict for the products row with all safety rules.
+        // -----------------------------------------------------------------
+        $updates = [];
+
+        if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
+            $currentLooksUnedited = empty($product->name) || $product->name === $product->sku;
+            if ($force || $currentLooksUnedited) {
+                $updates['name'] = substr(strip_tags((string) $aiData['name']), 0, 255);
+            }
+        }
+        if (!empty($aiData['description']) && ($force || empty($product->description))) {
+            $updates['description'] = sanitizeUntrustedHtml((string) $aiData['description']);
+        }
+        if (!empty($aiData['short_description']) && ($force || empty($product->short_description))) {
+            $updates['short_description'] = substr(strip_tags((string) $aiData['short_description']), 0, 500);
+        }
+        if (!empty($aiData['meta_title']) && ($force || empty($product->meta_title))) {
+            $updates['meta_title'] = substr(strip_tags((string) $aiData['meta_title']), 0, 255);
+        }
+        if (!empty($aiData['meta_description']) && ($force || empty($product->meta_description))) {
+            $updates['meta_description'] = substr(strip_tags((string) $aiData['meta_description']), 0, 500);
+        }
+        if (!empty($aiData['meta_keywords']) && ($force || empty($product->meta_keywords))) {
+            $updates['meta_keywords'] = substr(strip_tags((string) $aiData['meta_keywords']), 0, 255);
+        }
+
+        // Physical dimensions: only fill if currently empty, and clamp to a
+        // plausible range so a hallucinated 999999 doesn't corrupt shipping
+        // calculations downstream.
+        if (!empty($aiData['weight']) && empty($product->weight)) {
+            $clamped = $this->clampAiNumeric($aiData['weight'], 0.001, 500.0);
+            if ($clamped !== null) {
+                $updates['weight'] = $clamped;
+            }
+        }
+        foreach (['length', 'width', 'height'] as $dim) {
+            if (!empty($aiData[$dim]) && empty($product->{$dim})) {
+                $clamped = $this->clampAiNumeric($aiData[$dim], 0.1, 500.0);
+                if ($clamped !== null) {
+                    $updates[$dim] = $clamped;
+                }
+            }
+        }
+
+        if (!empty($aiData['is_new']) && empty($product->is_new)) {
+            $updates['is_new'] = 1;
+        }
+
+        // -----------------------------------------------------------------
+        // Single transaction wraps every DB write.
+        // -----------------------------------------------------------------
+        $specsSaved = 0;
+        $attributesSaved = 0;
+        $categoryAssigned = null;
+        $brandAssigned = null;
+
+        try {
+            Database::beginTransaction();
+
+            if (!empty($updates)) {
+                $setClauses = [];
+                $params = [];
+                foreach ($updates as $col => $val) {
+                    $setClauses[] = "`{$col}` = ?";
+                    $params[] = $val;
+                }
+                $params[] = $productId;
+                $stmt = $this->db->prepare(
+                    "UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?"
+                );
+                $stmt->execute($params);
+            }
+
+            if (!empty($aiData['specifications']) && is_array($aiData['specifications'])) {
+                $before = $this->countSpecs($productId);
+                $this->saveSpecifications($productId, $aiData['specifications']);
+                $specsSaved = max(0, $this->countSpecs($productId) - $before);
+            }
+
+            if (!empty($aiData['attributes']) && is_array($aiData['attributes'])) {
+                $before = $this->countProductAttributes($productId);
+                $this->saveProductAttributes($productId, $aiData['attributes']);
+                $attributesSaved = max(0, $this->countProductAttributes($productId) - $before);
+            }
+
+            if ($existingCategoryCount === 0 && !empty($aiData['suggested_category'])) {
+                $matchedCatId = $this->matchCategory((string) $aiData['suggested_category']);
+                if ($matchedCatId) {
+                    $this->assignCategory($productId, $matchedCatId, true);
+                    $categoryAssigned = $matchedCatId;
+                }
+            }
+
+            if (empty($existingBrand) && !empty($aiData['brand'])) {
+                $this->assignBrandAttribute($productId, (string) $aiData['brand']);
+                $brandAssigned = trim((string) $aiData['brand']);
+            }
+
+            Database::commit();
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            logMessage('error', 'applyAiDataToProduct rolled back', [
+                'product_id' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+            return [
+                'success' => false,
+                'error' => 'AI update failed: ' . $e->getMessage(),
+                'applied_fields' => [], 'skipped_fields' => [],
+                'specs_saved' => 0, 'attributes_saved' => 0,
+                'category_assigned' => null, 'brand_assigned' => null,
+                'images_generated' => 0,
+            ];
+        }
+
+        // Fields the AI suggested but we deliberately didn't write, so the
+        // UI can offer a "force overwrite" button per field.
+        $skippedFields = [];
+        foreach (['name', 'description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'] as $f) {
+            if (!empty($aiData[$f]) && !array_key_exists($f, $updates)) {
+                $skippedFields[] = $f;
+            }
+        }
+
+        // Image generation runs OUTSIDE the transaction because it talks
+        // to remote services. Errors are logged but don't fail the call.
+        $imagesGenerated = 0;
+        if ($generateImages) {
+            ob_start();
+            try {
+                $imageService = new ProductImageService();
+                $imageResult = $imageService->generateProductImages($productId, [
+                    'name' => $updates['name'] ?? $product->name,
+                    'brand' => $aiData['brand'] ?? $existingBrand,
+                    'sku' => $product->sku,
+                    'category' => !empty($aiData['suggested_category'])
+                        ? (string) $aiData['suggested_category']
+                        : '',
+                    'short_description' => $aiData['short_description']
+                        ?? $product->short_description
+                        ?? '',
+                    'specifications' => $aiData['specifications'] ?? [],
+                ]);
+                $imagesGenerated = (int) ($imageResult['generated'] ?? 0);
+            } catch (\Throwable $e) {
+                logMessage('error', 'AI image generation failed', [
+                    'product_id' => $productId, 'error' => $e->getMessage(),
+                ]);
+            }
+            ob_end_clean();
+        }
+
+        return [
+            'success' => true,
+            'applied_fields' => array_keys($updates),
+            'skipped_fields' => $skippedFields,
+            'specs_saved' => $specsSaved,
+            'attributes_saved' => $attributesSaved,
+            'category_assigned' => $categoryAssigned,
+            'brand_assigned' => $brandAssigned,
+            'images_generated' => $imagesGenerated,
+        ];
+    }
+
+    /**
+     * Clamp a numeric value into a plausible physical range. Returns null
+     * if the value isn't numeric, isn't finite, or sits outside the range.
+     */
+    private function clampAiNumeric($value, float $min, float $max): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $f = (float) $value;
+        if (!is_finite($f) || $f < $min || $f > $max) {
+            return null;
+        }
+        return $f;
+    }
+
+    /**
+     * Set a product's "Brand" attribute, creating the attribute definition
+     * and attribute_value rows as needed. Existing brand assignments for
+     * this product are deleted first so we don't accumulate duplicates.
+     */
+    private function assignBrandAttribute(int $productId, string $brandValue): void
+    {
+        $brandValue = trim($brandValue);
+        if ($brandValue === '') {
+            return;
+        }
+
+        $stmt = $this->db->prepare("SELECT id FROM attributes WHERE LOWER(name) = 'brand' LIMIT 1");
+        $stmt->execute();
+        $brandAttrId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($brandAttrId === 0) {
+            $stmt = $this->db->prepare(
+                "INSERT INTO attributes (name, slug, type, is_filterable, is_visible) VALUES ('Brand', 'brand', 'select', 1, 1)"
+            );
+            $stmt->execute();
+            $brandAttrId = (int) $this->db->lastInsertId();
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT id FROM attribute_values WHERE attribute_id = ? AND LOWER(value) = LOWER(?) LIMIT 1"
+        );
+        $stmt->execute([$brandAttrId, $brandValue]);
+        $valueId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($valueId === 0) {
+            $stmt = $this->db->prepare(
+                "INSERT INTO attribute_values (attribute_id, value, slug) VALUES (?, ?, ?)"
+            );
+            $stmt->execute([$brandAttrId, $brandValue, slugify($brandValue)]);
+            $valueId = (int) $this->db->lastInsertId();
+        }
+
+        $stmt = $this->db->prepare(
+            "DELETE FROM product_attributes WHERE product_id = ? AND attribute_id = ?"
+        );
+        $stmt->execute([$productId, $brandAttrId]);
+
+        $stmt = $this->db->prepare(
+            "INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)"
+        );
+        $stmt->execute([$productId, $brandAttrId, $valueId]);
+    }
+
+    private function countSpecs(int $productId): int
+    {
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM product_specifications WHERE product_id = ?");
+            $stmt->execute([$productId]);
+            return (int) $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    private function countProductAttributes(int $productId): int
+    {
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM product_attributes WHERE product_id = ?");
+            $stmt->execute([$productId]);
+            return (int) $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
 }

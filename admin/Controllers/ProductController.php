@@ -1218,170 +1218,52 @@ class ProductController extends Controller
         $aiData = $result['data'];
 
         // ?force=1 (POST or GET) means the admin explicitly asked us to
-        // overwrite their hand-typed content. Without it we only fill
-        // fields that are currently empty (or, for name, equal to the
-        // SKU stub). This stops a second AI click from silently nuking
-        // a manually-tuned name or description.
+        // overwrite their hand-typed content. Without it the service only
+        // fills empty fields. This stops a stray double-click from
+        // silently nuking a manually-tuned name or description.
         $force = !empty($_REQUEST['force']);
 
-        // Build update array - only update fields that need improvement
-        $updates = [];
+        // The actual write fan-out lives in ProductService::applyAiDataToProduct
+        // so the importer hits the same code path. See that method for the
+        // safety rules (transaction, sanitization, clamping, force flag).
+        $applyResult = ProductService::getInstance()->applyAiDataToProduct(
+            $product->id,
+            $aiData,
+            ['force' => $force, 'generate_images' => true]
+        );
 
-        // Name: empty or unedited-SKU-stub triggers an update by default;
-        // a hand-typed name only gets replaced under ?force=1.
-        // strip_tags() on text-only fields: the AI is never supposed to
-        // emit HTML in them, but a prompt-injection that smuggles in
-        // <script>...</script> would otherwise land in the DB as-is.
-        if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
-            $currentLooksUnedited = empty($product->name) || $product->name === $product->sku;
-            if ($force || $currentLooksUnedited) {
-                $updates['name'] = substr(strip_tags((string) $aiData['name']), 0, 255);
-            }
-        }
-
-        // Long description: allow a small set of formatting tags, strip
-        // attributes (defends against onerror=, style=, javascript: URIs).
-        if (!empty($aiData['description']) && ($force || empty($product->description))) {
-            $updates['description'] = sanitizeUntrustedHtml((string) $aiData['description']);
-        }
-        // Short description: bullet list, plain text. No HTML expected.
-        if (!empty($aiData['short_description']) && ($force || empty($product->short_description))) {
-            $updates['short_description'] = substr(strip_tags((string) $aiData['short_description']), 0, 500);
-        }
-
-        // SEO fields: plain text only. Same overwrite rules as descriptions.
-        if (!empty($aiData['meta_title']) && ($force || empty($product->meta_title))) {
-            $updates['meta_title'] = substr(strip_tags((string) $aiData['meta_title']), 0, 255);
-        }
-        if (!empty($aiData['meta_description']) && ($force || empty($product->meta_description))) {
-            $updates['meta_description'] = substr(strip_tags((string) $aiData['meta_description']), 0, 500);
-        }
-        if (!empty($aiData['meta_keywords']) && ($force || empty($product->meta_keywords))) {
-            $updates['meta_keywords'] = substr(strip_tags((string) $aiData['meta_keywords']), 0, 255);
-        }
-
-        // Weight and dimensions - only fill if currently empty, and clamp to
-        // plausible ranges so a hallucinated 999999 doesn't poison shipping
-        // calculations. kg and cm.
-        if (!empty($aiData['weight']) && empty($product->weight)) {
-            $clamped = $this->clampAiNumeric($aiData['weight'], 0.001, 500.0);
-            if ($clamped !== null) {
-                $updates['weight'] = $clamped;
-            }
-        }
-        foreach (['length', 'width', 'height'] as $dim) {
-            if (!empty($aiData[$dim]) && empty($product->{$dim})) {
-                $clamped = $this->clampAiNumeric($aiData[$dim], 0.1, 500.0);
-                if ($clamped !== null) {
-                    $updates[$dim] = $clamped;
-                }
-            }
-        }
-
-        // Mark as new if AI identifies current-generation product
-        if (!empty($aiData['is_new']) && empty($product->is_new)) {
-            $updates['is_new'] = 1;
-        }
-
-        // Wrap all product writes in a transaction so a partial failure
-        // (e.g. attribute insert fails after product UPDATE) doesn't leave
-        // the row in a half-AI'd state. Image generation runs OUTSIDE the
-        // transaction because it talks to remote services and we don't
-        // want to roll back a clean product update just because Bing
-        // rate-limited us.
-        try {
-            Database::beginTransaction();
-
-            if (!empty($updates)) {
-                $setClauses = [];
-                $params = [];
-                foreach ($updates as $col => $val) {
-                    $setClauses[] = "`{$col}` = ?";
-                    $params[] = $val;
-                }
-                $params[] = $product->id;
-                $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
-                $stmt->execute($params);
-            }
-
-            // Handle specifications
-            if (!empty($aiData['specifications'])) {
-                $productService = ProductService::getInstance();
-                $productService->saveSpecifications($product->id, $aiData['specifications']);
-            }
-
-            // Handle filterable attributes (Series, Memory Size, etc.)
-            if (!empty($aiData['attributes'])) {
-                $productService = $productService ?? ProductService::getInstance();
-                $productService->saveProductAttributes($product->id, $aiData['attributes']);
-            }
-
-            // Handle category auto-assignment if product has no categories
-            if (empty($categories) && !empty($aiData['suggested_category'])) {
-                $productService = $productService ?? ProductService::getInstance();
-                $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
-                if ($matchedCatId) {
-                    $productService->assignCategory($product->id, $matchedCatId, true);
-                }
-            }
-
-            // Handle brand attribute if detected and not already set
-            if (!empty($aiData['brand']) && empty($brand)) {
-                $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
-            }
-
-            Database::commit();
-        } catch (\Throwable $e) {
-            Database::rollBack();
-            error_log("makeProductionReady transaction failed for product {$product->id}: " . $e->getMessage());
+        if (!$applyResult['success']) {
             $this->json([
                 'success' => false,
-                'message' => 'AI update failed and was rolled back: ' . $e->getMessage(),
+                'message' => $applyResult['error'] ?? 'AI update failed',
             ]);
             return;
         }
 
-        // Generate AI product images (if fewer than 4 exist)
-        // Use output buffering to catch any stray PHP warnings from GD/file ops
-        $imageResult = ['generated' => 0];
-        ob_start();
-        try {
-            $imageService = new ProductImageService();
-            $imageResult = $imageService->generateProductImages($product->id, [
-                'name' => $updates['name'] ?? $product->name,
-                'brand' => $aiData['brand'] ?? $brand,
-                'sku' => $product->sku,
-                'category' => $categoryName ?: ($aiData['suggested_category'] ?? ''),
-                'short_description' => $aiData['short_description'] ?? $product->short_description ?? '',
-                'specifications' => $aiData['specifications'] ?? [],
-            ]);
-        } catch (\Throwable $e) {
-            error_log("AI image generation failed: " . $e->getMessage());
-        }
-        ob_end_clean();
+        $applied = $applyResult['applied_fields'];
+        $skipped = $applyResult['skipped_fields'];
+        $imagesGenerated = $applyResult['images_generated'];
 
-        // Surface the fields the AI suggested but we *didn't* write because
-        // the admin had already filled them in. Lets the UI offer a "re-run
-        // with force=1" button instead of silently swallowing the suggestion.
-        $skippedFields = [];
-        $candidateFields = ['name', 'description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'];
-        foreach ($candidateFields as $f) {
-            if (!empty($aiData[$f]) && !array_key_exists($f, $updates)) {
-                $skippedFields[] = $f;
-            }
+        $message = 'Product enhanced with AI. ' . count($applied) . ' fields updated.';
+        if (!empty($skipped) && !$force) {
+            $message .= ' ' . count($skipped) . ' field(s) kept (use force to overwrite).';
+        }
+        if ($imagesGenerated > 0) {
+            $message .= ' ' . $imagesGenerated . ' images generated.';
         }
 
-        // Return all AI data for client-side preview
         $this->json([
             'success' => true,
             'data' => $aiData,
-            'updates_applied' => array_keys($updates),
-            'skipped_fields' => $skippedFields,
+            'updates_applied' => $applied,
+            'skipped_fields' => $skipped,
             'force_used' => $force,
-            'images_generated' => $imageResult['generated'] ?? 0,
-            'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.'
-                . (!empty($skippedFields) && !$force ? ' ' . count($skippedFields) . ' field(s) kept (use force to overwrite).' : '')
-                . ($imageResult['generated'] > 0 ? ' ' . $imageResult['generated'] . ' images generated.' : ''),
+            'specs_saved' => $applyResult['specs_saved'],
+            'attributes_saved' => $applyResult['attributes_saved'],
+            'category_assigned' => $applyResult['category_assigned'],
+            'brand_assigned' => $applyResult['brand_assigned'],
+            'images_generated' => $imagesGenerated,
+            'message' => $message,
         ]);
     }
 

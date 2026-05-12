@@ -125,6 +125,71 @@ function e(?string $value): string
 }
 
 /**
+ * Validate that an outbound HTTP URL is safe for the server to fetch.
+ *
+ * SSRF defence: rejects non-http(s) schemes and hosts that resolve to
+ * loopback, private (RFC1918), link-local, or reserved address ranges.
+ * Without this, an attacker-controlled image URL (e.g. one returned by
+ * a poisoned search-engine scrape) could redirect the server at cloud
+ * metadata endpoints, internal admin panels, or any other VPC resource.
+ *
+ * Returns null when the URL passes; otherwise a short reason string.
+ * Callers typically log the reason and refuse to fetch.
+ */
+function isUnsafePublicUrl(string $url): ?string
+{
+    $parts = parse_url($url);
+    if (!$parts || empty($parts['scheme'])) {
+        return 'malformed URL';
+    }
+    $scheme = strtolower($parts['scheme']);
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        return "disallowed scheme: {$scheme}";
+    }
+    if (empty($parts['host'])) {
+        return 'malformed URL';
+    }
+
+    $host = $parts['host'];
+    $ips = [];
+
+    // Literal IP in the URL? Validate it directly.
+    if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+        $ips = [$host];
+    } else {
+        $v4 = @gethostbynamel($host);
+        if ($v4) {
+            $ips = array_merge($ips, $v4);
+        }
+        $v6 = @dns_get_record($host, DNS_AAAA);
+        if ($v6) {
+            foreach ($v6 as $record) {
+                if (!empty($record['ipv6'])) {
+                    $ips[] = $record['ipv6'];
+                }
+            }
+        }
+    }
+
+    if (empty($ips)) {
+        // DNS failure - treat as unsafe rather than letting curl resolve
+        // it later under different rules.
+        return "host did not resolve: {$host}";
+    }
+
+    $publicFlags = FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+    foreach ($ips as $ip) {
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            continue;
+        }
+        if (filter_var($ip, FILTER_VALIDATE_IP, ['flags' => $publicFlags]) === false) {
+            return "host resolves to a private/reserved address: {$ip}";
+        }
+    }
+    return null;
+}
+
+/**
  * Sanitize untrusted HTML (e.g. AI-generated descriptions) before storage.
  *
  * - Keeps a small allowlist of formatting tags (h3, p, ul, ol, li, strong,

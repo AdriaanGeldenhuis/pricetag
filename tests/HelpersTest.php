@@ -78,4 +78,60 @@ final class HelpersTest extends TestCase
     {
         $this->assertSame('', sanitizeUntrustedHtml(null));
     }
+
+    // -- isUnsafePublicUrl -------------------------------------------------
+
+    public function testUnsafeUrlRejectsFileScheme(): void
+    {
+        $reason = isUnsafePublicUrl('file:///etc/passwd');
+        $this->assertNotNull($reason);
+        $this->assertStringContains('disallowed scheme', $reason);
+    }
+
+    public function testUnsafeUrlRejectsGopherScheme(): void
+    {
+        $reason = isUnsafePublicUrl('gopher://example.com/');
+        $this->assertNotNull($reason);
+    }
+
+    public function testUnsafeUrlRejectsLoopbackIp(): void
+    {
+        $reason = isUnsafePublicUrl('http://127.0.0.1/admin');
+        $this->assertNotNull($reason);
+        $this->assertStringContains('private/reserved', $reason);
+    }
+
+    public function testUnsafeUrlRejectsAwsMetadataAddress(): void
+    {
+        // 169.254.169.254 - the link-local cloud-metadata endpoint.
+        $reason = isUnsafePublicUrl('http://169.254.169.254/latest/meta-data/');
+        $this->assertNotNull($reason);
+    }
+
+    public function testUnsafeUrlRejectsRfc1918Range(): void
+    {
+        $reason = isUnsafePublicUrl('http://10.0.0.5/');
+        $this->assertNotNull($reason);
+        $reason = isUnsafePublicUrl('http://192.168.1.1/');
+        $this->assertNotNull($reason);
+    }
+
+    public function testUnsafeUrlRejectsIpv6Loopback(): void
+    {
+        $reason = isUnsafePublicUrl('http://[::1]/');
+        $this->assertNotNull($reason);
+    }
+
+    public function testUnsafeUrlRejectsMalformed(): void
+    {
+        $this->assertNotNull(isUnsafePublicUrl('not a url'));
+        $this->assertNotNull(isUnsafePublicUrl('http://'));
+    }
+
+    public function testUnsafeUrlAcceptsPublicHttps(): void
+    {
+        // example.com is reserved by IANA for documentation but resolves
+        // to a public address (93.184.216.34). Good test target.
+        $this->assertNull(isUnsafePublicUrl('https://example.com/image.jpg'));
+    }
 }

@@ -718,6 +718,44 @@
                 </div>
             </div>
 
+            <div class="import-results" id="importResults" style="display: none; margin-top: 24px;">
+                <div class="results-summary" style="display: flex; gap: 16px; margin-bottom: 16px;">
+                    <div style="flex:1; padding: 12px 16px; border-radius: 8px; background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.4);">
+                        <div style="font-size: 12px; opacity: .8;">Created</div>
+                        <div id="resultsCreated" style="font-size: 24px; font-weight: 700;">0</div>
+                    </div>
+                    <div style="flex:1; padding: 12px 16px; border-radius: 8px; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.4);">
+                        <div style="font-size: 12px; opacity: .8;">Updated</div>
+                        <div id="resultsUpdated" style="font-size: 24px; font-weight: 700;">0</div>
+                    </div>
+                    <div style="flex:1; padding: 12px 16px; border-radius: 8px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4);">
+                        <div style="font-size: 12px; opacity: .8;">Errors</div>
+                        <div id="resultsErrorCount" style="font-size: 24px; font-weight: 700;">0</div>
+                    </div>
+                </div>
+                <div id="resultsErrorsPanel" style="display: none;">
+                    <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 style="margin:0;">Error details</h4>
+                        <button type="button" id="exportErrorsBtn" class="btn btn-sm btn-secondary">Export errors as CSV</button>
+                    </div>
+                    <div style="max-height: 320px; overflow-y: auto; border: 1px solid var(--admin-border, #2a2a3a); border-radius: 8px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead style="position: sticky; top: 0; background: var(--admin-bg-elevated, #1a1a2a);">
+                                <tr>
+                                    <th style="padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--admin-border, #2a2a3a); width: 60px;">Row</th>
+                                    <th style="padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--admin-border, #2a2a3a);">Message</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsErrorsTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div style="margin-top: 16px; display: flex; gap: 8px;">
+                    <a href="<?= url('/admin/products') ?>" class="btn btn-primary">View product list</a>
+                    <button type="button" class="btn btn-secondary" onclick="location.reload()">Run another import</button>
+                </div>
+            </div>
+
             <div class="flex justify-end gap-2 mt-6">
                 <button type="button" class="btn btn-primary" id="startImportBtn" disabled>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1348,18 +1386,62 @@ document.addEventListener('DOMContentLoaded', function() {
         progressBar.style.width = '100%';
         progressBar.style.background = 'linear-gradient(90deg, #10b981, #059669)';
 
-        // Show results
-        let message = `Import completed!\n\nCreated: ${created}\nUpdated: ${updated}`;
+        // Render the full results panel instead of a truncated alert().
+        // Errors are shown in a scrollable table so the admin can fix
+        // them without copy-pasting from a browser dialog. Export-to-CSV
+        // is right there for sharing with a supplier or another admin.
+        document.getElementById('resultsCreated').textContent = created;
+        document.getElementById('resultsUpdated').textContent = updated;
+        document.getElementById('resultsErrorCount').textContent = errors.length;
+
+        const errorsPanel = document.getElementById('resultsErrorsPanel');
+        const tbody = document.getElementById('resultsErrorsTbody');
+        tbody.innerHTML = '';
+
         if (errors.length > 0) {
-            message += `\n\nErrors (${errors.length}):\n${errors.slice(0, 5).join('\n')}`;
-            if (errors.length > 5) message += `\n...and ${errors.length - 5} more`;
+            errorsPanel.style.display = 'block';
+            errors.forEach(err => {
+                const m = err.match(/^Row (\d+): (.+)$/);
+                const tr = document.createElement('tr');
+                const tdRow = document.createElement('td');
+                tdRow.style.cssText = 'padding: 6px 12px; border-bottom: 1px solid var(--admin-border, #2a2a3a); font-family: monospace;';
+                const tdMsg = document.createElement('td');
+                tdMsg.style.cssText = 'padding: 6px 12px; border-bottom: 1px solid var(--admin-border, #2a2a3a);';
+                if (m) {
+                    tdRow.textContent = m[1];
+                    tdMsg.textContent = m[2];
+                } else {
+                    tdRow.textContent = '-';
+                    tdMsg.textContent = err;
+                }
+                tr.appendChild(tdRow);
+                tr.appendChild(tdMsg);
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('exportErrorsBtn').onclick = () => {
+                const rows = [['Row', 'Message']];
+                errors.forEach(err => {
+                    const m = err.match(/^Row (\d+): (.+)$/);
+                    rows.push(m ? [m[1], m[2]] : ['', err]);
+                });
+                const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'import-errors-' + new Date().toISOString().slice(0, 10) + '.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+        } else {
+            errorsPanel.style.display = 'none';
         }
 
-        alert(message);
-
-        setTimeout(() => {
-            window.location.href = '<?= url('/admin/products') ?>';
-        }, 1000);
+        document.getElementById('importResults').style.display = 'block';
+        document.getElementById('importResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 });
 </script>

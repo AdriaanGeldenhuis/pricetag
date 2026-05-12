@@ -766,6 +766,15 @@ function initAutoSave() {
 }
 
 function scheduleAutoSave() {
+    // Don't autosave while an AI operation is mid-flight. The AI button
+    // calls setField() on many fields, each dispatching `input` events,
+    // which would otherwise debounce-trigger an autosave that writes the
+    // unreviewed AI data to the DB before the admin has a chance to look
+    // at it. The AI handler sets/unsets _aiOperationInProgress around its
+    // fetch and the post-fetch setField() calls.
+    if (window._aiOperationInProgress) {
+        return;
+    }
     formChanged = true;
     updateAutoSaveIndicator('unsaved');
     clearTimeout(autoSaveTimer);
@@ -1197,17 +1206,24 @@ function regenerateFromSku() {
 }
 
 // AI: Make Production Ready
-function makeProductionReady() {
+function makeProductionReady(force) {
     const btn = document.getElementById('ai-complete-btn');
     if (!btn || !productId) return;
 
-    if (!confirm('This will use AI to fill all missing product fields (name, descriptions, SEO, specifications, category, weight). Continue?')) return;
+    if (!force && !confirm('Use AI to fill any empty product fields (name, descriptions, SEO, specs, category, weight)?\n\nHand-typed values are kept unless you re-run with "Force overwrite".')) return;
 
     btn.disabled = true;
     const originalHtml = btn.innerHTML;
     btn.innerHTML = '<svg class="animate-spin" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" stroke-dasharray="30 70"/></svg> Generating...';
 
-    fetch(baseUrl + '/' + productId + '/ai-complete', {
+    // Suppress autosave while we splat AI values onto fields. Without
+    // this the input/change events the helper fires would debounce-
+    // trigger an autosave that writes the unreviewed AI content to the
+    // DB before the admin has a chance to look at it.
+    window._aiOperationInProgress = true;
+
+    const url = baseUrl + '/' + productId + '/ai-complete' + (force ? '?force=1' : '');
+    fetch(url, {
         method: 'POST',
         headers: jsonHeaders
     })
@@ -1219,34 +1235,30 @@ function makeProductionReady() {
         if (data.success && data.data) {
             const d = data.data;
 
-            // Helper to set field value and fire events for auto-save
             function setField(id, value) {
                 const field = document.getElementById(id);
-                if (field && value) {
+                if (field && value !== undefined && value !== null && value !== '') {
                     field.value = value;
-                    field.dispatchEvent(new Event('input', { bubbles: true }));
-                    field.dispatchEvent(new Event('change', { bubbles: true }));
+                    // Don't dispatch input/change events: autosave is suppressed
+                    // by _aiOperationInProgress but other listeners on input
+                    // (char counters, etc.) still want to know. We rebuild
+                    // those manually below.
                 }
             }
 
-            // Apply ALL AI-generated fields
-            setField('name', d.name);
-            setField('short_description', d.short_description);
-            setField('description', d.description);
-            setField('meta_title', d.meta_title);
-            setField('meta_description', d.meta_description);
-            setField('meta_keywords', d.meta_keywords);
-            setField('weight', d.weight);
+            // Only set fields the backend actually applied. data.updates_applied
+            // lists exactly which keys went into the products row, so we mirror
+            // that on the client and leave skipped fields alone.
+            const applied = data.updates_applied || [];
+            applied.forEach(key => setField(key, d[key]));
+            // Weight is in applied if it was filled.
+            if (applied.includes('weight')) setField('weight', d.weight);
 
-            // Apply specifications to the Attributes tab
             if (d.specifications && Array.isArray(d.specifications) && d.specifications.length > 0) {
                 const container = document.getElementById('specifications-container');
                 if (container) {
-                    // Remove the "no specs" placeholder
                     const noSpecsMsg = document.getElementById('no-specs-msg');
                     if (noSpecsMsg) noSpecsMsg.remove();
-
-                    // Clear existing empty specs, keep ones with values
                     const existingRows = container.querySelectorAll('.spec-row');
                     existingRows.forEach(row => {
                         const nameInput = row.querySelector('input[name="spec_name[]"]');
@@ -1255,20 +1267,15 @@ function makeProductionReady() {
                             row.remove();
                         }
                     });
-
-                    // Collect existing spec names to avoid duplicates
                     const existingNames = new Set();
                     container.querySelectorAll('input[name="spec_name[]"]').forEach(input => {
                         if (input.value.trim()) existingNames.add(input.value.trim().toLowerCase());
                     });
-
-                    // Add new specs from AI
                     d.specifications.forEach(spec => {
                         const specName = spec.name || spec.spec_name || '';
                         const specValue = spec.value || spec.spec_value || '';
                         if (!specName || !specValue) return;
                         if (existingNames.has(specName.toLowerCase())) return;
-
                         const row = document.createElement('div');
                         row.className = 'spec-row';
                         row.innerHTML = `
@@ -1285,35 +1292,84 @@ function makeProductionReady() {
                 }
             }
 
-            // Update UI
             updateSeoPreview();
             calculateQualityScore();
             document.querySelectorAll('.seo-field').forEach(f => updateCharCount(f));
 
-            const updatedFields = data.updates_applied || [];
-            let msg = 'Product enhanced! ' + (data.message || updatedFields.length + ' fields updated.');
-            if (d.specifications && d.specifications.length > 0) {
-                msg += '\n' + d.specifications.length + ' specifications added.';
-            }
-            if (data.images_generated > 0) {
-                msg += '\n' + data.images_generated + ' images downloaded.';
-            }
-            msg += '\n\nReview the changes and click Save to keep them.';
-            alert(msg);
+            showAiResult(data);
 
-            // If images were generated, reload the media section
-            if (data.images_generated > 0) {
-                window.location.reload();
-            }
+            // Allow autosave again. Mark the form as having unsaved changes
+            // so the admin sees "unsaved" in the status indicator -- but
+            // don't trigger an immediate autosave; let them click Save.
+            window._aiOperationInProgress = false;
+            formChanged = true;
+            updateAutoSaveIndicator('unsaved');
         } else {
-            alert('Error: ' + (data.message || 'AI generation failed'));
+            alert('AI error: ' + (data.message || 'AI generation failed'));
         }
     })
     .catch(err => {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
-        alert('Error: ' + err.message);
+        window._aiOperationInProgress = false;
+        alert('AI error: ' + err.message);
     });
+}
+
+/**
+ * Render an actionable summary modal of what the AI changed. Shows:
+ *   - The method (AI / pattern match / fallback)
+ *   - Which fields got new values
+ *   - Which fields were SKIPPED (already filled) + a Force button
+ *   - Image count + a refresh link (no auto-reload that loses form state)
+ */
+function showAiResult(data) {
+    const applied = data.updates_applied || [];
+    const skipped = data.skipped_fields || [];
+    const images = data.images_generated || 0;
+    const method = data.method || 'ai';
+    const methodNote = data.fallback_reason ? ' (' + data.fallback_reason + ')' : '';
+
+    const lines = [];
+    if (method !== 'ai') {
+        lines.push('Warning: AI was unavailable, using ' + method + methodNote + '. Check OPENAI_API_KEY and retry for a deeper result.');
+        lines.push('');
+    }
+    lines.push('Applied: ' + (applied.length ? applied.join(', ') : 'no text fields'));
+    if (data.specs_saved) {
+        lines.push('Specifications added: ' + data.specs_saved);
+    }
+    if (data.attributes_saved) {
+        lines.push('Attributes added: ' + data.attributes_saved);
+    }
+    if (data.brand_assigned) {
+        lines.push('Brand: ' + data.brand_assigned);
+    }
+    if (data.category_assigned) {
+        lines.push('Category linked');
+    }
+    if (skipped.length > 0 && !data.force_used) {
+        lines.push('');
+        lines.push('Kept your existing values for: ' + skipped.join(', '));
+        lines.push('Click "Force overwrite" below if you want AI to replace them.');
+    }
+    if (images > 0) {
+        lines.push('');
+        lines.push(images + ' image(s) saved.');
+        lines.push('Save the form, then reload to see them in the Media tab.');
+    }
+    lines.push('');
+    lines.push('Click Save to keep these changes.');
+
+    const msg = lines.join('\n');
+
+    if (skipped.length > 0 && !data.force_used) {
+        if (confirm(msg + '\n\n[OK] = Force overwrite the kept fields with AI values\n[Cancel] = Done')) {
+            makeProductionReady(true);
+        }
+    } else {
+        alert(msg);
+    }
 }
 
 // AI: Generate Product Images
@@ -1337,8 +1393,14 @@ function generateAiImages() {
         btn.innerHTML = originalHtml;
 
         if (data.success && data.generated > 0) {
-            alert('Downloaded ' + data.generated + ' product image(s)!\n\nReloading to show them...');
-            window.location.reload();
+            // Don't auto-reload: if the admin has unsaved changes (e.g.
+            // they were tweaking the description in another tab), a
+            // reload silently destroys their work. Let them save first.
+            if (formChanged) {
+                alert('Downloaded ' + data.generated + ' product image(s).\n\nSave your form first, then reload to see them in the Media tab.');
+            } else if (confirm('Downloaded ' + data.generated + ' product image(s). Reload the page now to see them?')) {
+                window.location.reload();
+            }
         } else {
             // Image search failed - guide user to upload manually
             alert((data.message || 'Could not find product images online.') + '\n\nTip: You can upload images manually using the drag-and-drop area below.');

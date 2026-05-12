@@ -1218,170 +1218,69 @@ class ProductController extends Controller
         $aiData = $result['data'];
 
         // ?force=1 (POST or GET) means the admin explicitly asked us to
-        // overwrite their hand-typed content. Without it we only fill
-        // fields that are currently empty (or, for name, equal to the
-        // SKU stub). This stops a second AI click from silently nuking
-        // a manually-tuned name or description.
+        // overwrite their hand-typed content. Without it the service only
+        // fills empty fields. This stops a stray double-click from
+        // silently nuking a manually-tuned name or description.
         $force = !empty($_REQUEST['force']);
 
-        // Build update array - only update fields that need improvement
-        $updates = [];
+        // The actual write fan-out lives in ProductService::applyAiDataToProduct
+        // so the importer hits the same code path. See that method for the
+        // safety rules (transaction, sanitization, clamping, force flag).
+        $applyResult = ProductService::getInstance()->applyAiDataToProduct(
+            $product->id,
+            $aiData,
+            ['force' => $force, 'generate_images' => true]
+        );
 
-        // Name: empty or unedited-SKU-stub triggers an update by default;
-        // a hand-typed name only gets replaced under ?force=1.
-        // strip_tags() on text-only fields: the AI is never supposed to
-        // emit HTML in them, but a prompt-injection that smuggles in
-        // <script>...</script> would otherwise land in the DB as-is.
-        if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
-            $currentLooksUnedited = empty($product->name) || $product->name === $product->sku;
-            if ($force || $currentLooksUnedited) {
-                $updates['name'] = substr(strip_tags((string) $aiData['name']), 0, 255);
-            }
-        }
-
-        // Long description: allow a small set of formatting tags, strip
-        // attributes (defends against onerror=, style=, javascript: URIs).
-        if (!empty($aiData['description']) && ($force || empty($product->description))) {
-            $updates['description'] = sanitizeUntrustedHtml((string) $aiData['description']);
-        }
-        // Short description: bullet list, plain text. No HTML expected.
-        if (!empty($aiData['short_description']) && ($force || empty($product->short_description))) {
-            $updates['short_description'] = substr(strip_tags((string) $aiData['short_description']), 0, 500);
-        }
-
-        // SEO fields: plain text only. Same overwrite rules as descriptions.
-        if (!empty($aiData['meta_title']) && ($force || empty($product->meta_title))) {
-            $updates['meta_title'] = substr(strip_tags((string) $aiData['meta_title']), 0, 255);
-        }
-        if (!empty($aiData['meta_description']) && ($force || empty($product->meta_description))) {
-            $updates['meta_description'] = substr(strip_tags((string) $aiData['meta_description']), 0, 500);
-        }
-        if (!empty($aiData['meta_keywords']) && ($force || empty($product->meta_keywords))) {
-            $updates['meta_keywords'] = substr(strip_tags((string) $aiData['meta_keywords']), 0, 255);
-        }
-
-        // Weight and dimensions - only fill if currently empty, and clamp to
-        // plausible ranges so a hallucinated 999999 doesn't poison shipping
-        // calculations. kg and cm.
-        if (!empty($aiData['weight']) && empty($product->weight)) {
-            $clamped = $this->clampAiNumeric($aiData['weight'], 0.001, 500.0);
-            if ($clamped !== null) {
-                $updates['weight'] = $clamped;
-            }
-        }
-        foreach (['length', 'width', 'height'] as $dim) {
-            if (!empty($aiData[$dim]) && empty($product->{$dim})) {
-                $clamped = $this->clampAiNumeric($aiData[$dim], 0.1, 500.0);
-                if ($clamped !== null) {
-                    $updates[$dim] = $clamped;
-                }
-            }
-        }
-
-        // Mark as new if AI identifies current-generation product
-        if (!empty($aiData['is_new']) && empty($product->is_new)) {
-            $updates['is_new'] = 1;
-        }
-
-        // Wrap all product writes in a transaction so a partial failure
-        // (e.g. attribute insert fails after product UPDATE) doesn't leave
-        // the row in a half-AI'd state. Image generation runs OUTSIDE the
-        // transaction because it talks to remote services and we don't
-        // want to roll back a clean product update just because Bing
-        // rate-limited us.
-        try {
-            Database::beginTransaction();
-
-            if (!empty($updates)) {
-                $setClauses = [];
-                $params = [];
-                foreach ($updates as $col => $val) {
-                    $setClauses[] = "`{$col}` = ?";
-                    $params[] = $val;
-                }
-                $params[] = $product->id;
-                $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
-                $stmt->execute($params);
-            }
-
-            // Handle specifications
-            if (!empty($aiData['specifications'])) {
-                $productService = ProductService::getInstance();
-                $productService->saveSpecifications($product->id, $aiData['specifications']);
-            }
-
-            // Handle filterable attributes (Series, Memory Size, etc.)
-            if (!empty($aiData['attributes'])) {
-                $productService = $productService ?? ProductService::getInstance();
-                $productService->saveProductAttributes($product->id, $aiData['attributes']);
-            }
-
-            // Handle category auto-assignment if product has no categories
-            if (empty($categories) && !empty($aiData['suggested_category'])) {
-                $productService = $productService ?? ProductService::getInstance();
-                $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
-                if ($matchedCatId) {
-                    $productService->assignCategory($product->id, $matchedCatId, true);
-                }
-            }
-
-            // Handle brand attribute if detected and not already set
-            if (!empty($aiData['brand']) && empty($brand)) {
-                $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
-            }
-
-            Database::commit();
-        } catch (\Throwable $e) {
-            Database::rollBack();
-            error_log("makeProductionReady transaction failed for product {$product->id}: " . $e->getMessage());
+        if (!$applyResult['success']) {
             $this->json([
                 'success' => false,
-                'message' => 'AI update failed and was rolled back: ' . $e->getMessage(),
+                'message' => $applyResult['error'] ?? 'AI update failed',
             ]);
             return;
         }
 
-        // Generate AI product images (if fewer than 4 exist)
-        // Use output buffering to catch any stray PHP warnings from GD/file ops
-        $imageResult = ['generated' => 0];
-        ob_start();
-        try {
-            $imageService = new ProductImageService();
-            $imageResult = $imageService->generateProductImages($product->id, [
-                'name' => $updates['name'] ?? $product->name,
-                'brand' => $aiData['brand'] ?? $brand,
-                'sku' => $product->sku,
-                'category' => $categoryName ?: ($aiData['suggested_category'] ?? ''),
-                'short_description' => $aiData['short_description'] ?? $product->short_description ?? '',
-                'specifications' => $aiData['specifications'] ?? [],
-            ]);
-        } catch (\Throwable $e) {
-            error_log("AI image generation failed: " . $e->getMessage());
-        }
-        ob_end_clean();
+        $applied = $applyResult['applied_fields'];
+        $skipped = $applyResult['skipped_fields'];
+        $imagesGenerated = $applyResult['images_generated'];
 
-        // Surface the fields the AI suggested but we *didn't* write because
-        // the admin had already filled them in. Lets the UI offer a "re-run
-        // with force=1" button instead of silently swallowing the suggestion.
-        $skippedFields = [];
-        $candidateFields = ['name', 'description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'];
-        foreach ($candidateFields as $f) {
-            if (!empty($aiData[$f]) && !array_key_exists($f, $updates)) {
-                $skippedFields[] = $f;
-            }
+        // Did OpenAI actually answer, or did we silently fall back to a
+        // pattern-match? The frontend surfaces this so admins know when
+        // the model was unavailable.
+        $method = $result['method'] ?? 'ai';
+        $fallbackReason = $result['fallback_reason'] ?? null;
+        $methodLabel = match ($method) {
+            'ai'       => 'AI',
+            'pattern'  => 'SKU pattern match (AI unavailable)',
+            'fallback' => 'fallback (AI unavailable)',
+            default    => $method,
+        };
+
+        $message = 'Product enhanced via ' . $methodLabel . '. ' . count($applied) . ' fields updated.';
+        if (!empty($skipped) && !$force) {
+            $message .= ' ' . count($skipped) . ' field(s) kept (use force to overwrite).';
+        }
+        if ($imagesGenerated > 0) {
+            $message .= ' ' . $imagesGenerated . ' images generated.';
+        }
+        if ($method !== 'ai') {
+            $message .= ' Tip: check OPENAI_API_KEY and try again for a deeper result.';
         }
 
-        // Return all AI data for client-side preview
         $this->json([
             'success' => true,
+            'method' => $method,
+            'fallback_reason' => $fallbackReason,
             'data' => $aiData,
-            'updates_applied' => array_keys($updates),
-            'skipped_fields' => $skippedFields,
+            'updates_applied' => $applied,
+            'skipped_fields' => $skipped,
             'force_used' => $force,
-            'images_generated' => $imageResult['generated'] ?? 0,
-            'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.'
-                . (!empty($skippedFields) && !$force ? ' ' . count($skippedFields) . ' field(s) kept (use force to overwrite).' : '')
-                . ($imageResult['generated'] > 0 ? ' ' . $imageResult['generated'] . ' images generated.' : ''),
+            'specs_saved' => $applyResult['specs_saved'],
+            'attributes_saved' => $applyResult['attributes_saved'],
+            'category_assigned' => $applyResult['category_assigned'],
+            'brand_assigned' => $applyResult['brand_assigned'],
+            'images_generated' => $imagesGenerated,
+            'message' => $message,
         ]);
     }
 
@@ -2194,18 +2093,16 @@ class ProductController extends Controller
                 // Parse price - handle South African format with space as thousands separator
                 // e.g., "1 392.78" or "R1 392.78" or "1,392.78"
                 $priceStr = $row['price'] ?? '0';
-                $priceStr = preg_replace('/^R\s*/i', '', $priceStr); // Remove R prefix
-                $priceStr = str_replace([' ', ','], ['', ''], $priceStr); // Remove spaces and commas
+                $priceStr = preg_replace('/^R\s*/i', '', $priceStr);
+                $priceStr = str_replace([' ', ','], ['', ''], $priceStr);
                 $price = (float) $priceStr;
 
-                // Also parse cost_price the same way
                 $costPriceStr = $row['cost_price'] ?? '';
                 if (!empty($costPriceStr)) {
                     $costPriceStr = preg_replace('/^R\s*/i', '', $costPriceStr);
                     $costPriceStr = str_replace([' ', ','], ['', ''], $costPriceStr);
                 }
 
-                // Get short_description - this often has the REAL product name in it
                 $shortDesc = trim($row['short_description'] ?? $row['short_descriptions'] ?? '');
 
                 if (empty($sku)) {
@@ -2215,34 +2112,41 @@ class ProductController extends Controller
                     continue;
                 }
 
-                // Check if product exists
                 $stmt = $db->prepare("SELECT id FROM products WHERE sku = ?");
                 $stmt->execute([$sku]);
                 $existingId = $stmt->fetchColumn();
 
                 if ($existingId && !$updateExisting) {
-                    continue; // Skip existing
+                    continue;
                 }
-
                 if (!$existingId && !$createNew) {
-                    continue; // Skip new
+                    continue;
                 }
 
-                // Get vendor ID
                 $vendorId = null;
                 if (!empty($row['vendor'])) {
                     $vendorId = $vendorLookup[strtolower(trim($row['vendor']))] ?? null;
+                    if ($vendorId === null) {
+                        error_log("Import row " . ($idx + 1) . ": vendor '" . trim($row['vendor']) . "' not found, leaving null");
+                    }
                 }
 
-                // Prepare product data (slug is set later after AI name processing)
+                // CSV-only product data. AI-derived fields (description,
+                // meta_*, dimensions, specs, etc.) are NOT merged here --
+                // they go through ProductService::applyAiDataToProduct
+                // below, which sanitizes, clamps, and writes them inside
+                // a transaction. This keeps CSV-side concerns (vendor,
+                // price, stock) and AI-side concerns separated.
                 $productData = [
                     'sku' => $sku,
-                    'name' => $name,
-                    'slug' => '', // Will be set after AI processing
+                    'name' => $name ?: $sku,
+                    'slug' => '',
                     'description' => $row['description'] ?? '',
                     'short_description' => $shortDesc,
                     'price' => $price,
-                    'compare_price' => !empty($row['compare_price']) ? (float) str_replace([' ', ',', 'R'], '', $row['compare_price']) : null,
+                    'compare_price' => !empty($row['compare_price'])
+                        ? (float) str_replace([' ', ',', 'R'], '', $row['compare_price'])
+                        : null,
                     'cost_price' => !empty($costPriceStr) ? (float) $costPriceStr : null,
                     'stock_quantity' => (int) ($row['stock'] ?? 0),
                     'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
@@ -2250,24 +2154,19 @@ class ProductController extends Controller
                     'status' => $row['status'] ?? 'active',
                 ];
 
-                // Store brand for attribute handling
                 $brandValue = $row['brand'] ?? null;
                 $aiCompleteData = null;
+                $productService = ProductService::getInstance();
 
-                // AI Generate if enabled - fill ALL missing fields to make products production-ready
                 if ($aiGenerate) {
                     $openai = $openai ?? new OpenAIService();
-                    $productService = $productService ?? ProductService::getInstance();
 
-                    // Rate limiting: pause between AI calls during bulk import
                     static $aiCallCount = 0;
                     if ($aiCallCount > 0 && $aiCallCount % 10 === 0) {
-                        usleep(2000000); // 2-second pause every 10 products
+                        usleep(2000000);
                     }
                     $aiCallCount++;
 
-                    // Use the comprehensive generateCompleteProduct method
-                    // bulk_import=true skips slow web scraping to avoid 504 timeouts
                     $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
                         'brand' => $brandValue,
                         'category' => $row['category'] ?? '',
@@ -2278,88 +2177,35 @@ class ProductController extends Controller
                     ]);
 
                     if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
-                        $aiData = $aiResult['data'];
-                        error_log("AI Import (complete) for SKU {$sku}: name=" . ($aiData['name'] ?? 'N/A'));
+                        $aiCompleteData = $aiResult['data'];
+                        error_log("AI Import for SKU {$sku}: name=" . ($aiCompleteData['name'] ?? 'N/A'));
 
-                        // Always use AI-generated name - it's derived from SKU pattern matching
-                        // and short description parsing, so it's more accurate than generic CSV names
-                        if (!empty($aiData['name']) && strcasecmp($aiData['name'], $sku) !== 0) {
-                            $productData['name'] = $aiData['name'];
+                        // Seed the AI-name and short-description onto the
+                        // initial INSERT/UPDATE so the row is never empty
+                        // for a moment. applyAiDataToProduct() will
+                        // re-sanitize and apply remaining AI fields.
+                        if (!empty($aiCompleteData['name']) && strcasecmp($aiCompleteData['name'], $sku) !== 0) {
+                            $productData['name'] = substr(strip_tags((string) $aiCompleteData['name']), 0, 255);
                         }
-
-                        // Apply ALL AI-generated descriptions (fill any empty fields)
-                        if (!empty($aiData['description']) && (empty($productData['description']) || strlen($productData['description']) < 50)) {
-                            $productData['description'] = $aiData['description'];
+                        if (!empty($aiCompleteData['short_description'])) {
+                            $productData['short_description'] = substr(
+                                strip_tags((string) $aiCompleteData['short_description']),
+                                0,
+                                500
+                            );
                         }
-                        // Always use AI short_description (bullet points) over raw supplier text
-                        if (!empty($aiData['short_description'])) {
-                            $productData['short_description'] = $aiData['short_description'];
-                        }
-
-                        // Apply ALL SEO fields
-                        if (!empty($aiData['meta_title'])) {
-                            $productData['meta_title'] = substr($aiData['meta_title'], 0, 255);
-                        }
-                        if (!empty($aiData['meta_description'])) {
-                            $productData['meta_description'] = $aiData['meta_description'];
-                        }
-                        if (!empty($aiData['meta_keywords'])) {
-                            $productData['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
-                        }
-
-                        // Apply weight and dimensions
-                        if (!empty($aiData['weight']) && empty($productData['weight'])) {
-                            $productData['weight'] = (float) $aiData['weight'];
-                        }
-                        if (!empty($aiData['length']) && empty($productData['length'])) {
-                            $productData['length'] = (float) $aiData['length'];
-                        }
-                        if (!empty($aiData['width']) && empty($productData['width'])) {
-                            $productData['width'] = (float) $aiData['width'];
-                        }
-                        if (!empty($aiData['height']) && empty($productData['height'])) {
-                            $productData['height'] = (float) $aiData['height'];
-                        }
-
-                        // Auto-detect brand from AI
-                        if (!empty($aiData['brand']) && empty($brandValue)) {
-                            $brandValue = $aiData['brand'];
-                        }
-
-                        // Mark as new product if AI identifies it as current-generation
-                        if (!empty($aiData['is_new'])) {
-                            $productData['is_new'] = 1;
-                        }
-
-                        // Store AI data for post-insert operations (specs, category, images)
-                        $aiCompleteData = $aiData;
                     }
                 }
 
-                // If name is still empty after AI, use SKU as fallback
-                if (empty($productData['name'])) {
-                    $productData['name'] = $sku;
-                }
-
-                // Generate unique slug AFTER name is finalized (whether from AI or original)
-                $finalName = $productData['name'] ?: $sku;
-                $slug = slugify($finalName);
-                $baseSlug = $slug;
-                $counter = 1;
-                while (true) {
-                    $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? AND id != ?");
-                    $stmt->execute([$slug, $existingId ?: 0]);
-                    if (!$stmt->fetch()) break;
-                    $slug = $baseSlug . '-' . (++$counter);
-                    if ($counter > 100) {
-                        $slug = $baseSlug . '-' . uniqid();
-                        break;
-                    }
-                }
-                $productData['slug'] = $slug;
+                // Generate a unique slug from the finalised name. Reuses
+                // ProductService::generateUniqueSlug so the collision check
+                // sits in one place.
+                $productData['slug'] = $productService->generateUniqueSlug(
+                    $productData['name'],
+                    $existingId ? (int) $existingId : null
+                );
 
                 if ($existingId) {
-                    // Update
                     $setClauses = [];
                     $params = [];
                     foreach ($productData as $col => $val) {
@@ -2371,90 +2217,78 @@ class ProductController extends Controller
                     $params[] = $existingId;
                     $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . " WHERE id = ?");
                     $stmt->execute($params);
+                    $productId = (int) $existingId;
                     $updated++;
                 } else {
-                    // Insert
                     $columns = array_keys($productData);
                     $placeholders = array_fill(0, count($columns), '?');
-                    $stmt = $db->prepare("INSERT INTO products (" . implode(', ', array_map(fn($c) => "`$c`", $columns)) . ") VALUES (" . implode(', ', $placeholders) . ")");
+                    $stmt = $db->prepare(
+                        "INSERT INTO products (" . implode(', ', array_map(fn($c) => "`$c`", $columns)) . ")
+                         VALUES (" . implode(', ', $placeholders) . ")"
+                    );
                     $stmt->execute(array_values($productData));
-                    $productId = $db->lastInsertId();
+                    $productId = (int) $db->lastInsertId();
                     $created++;
-
-                    // Handle category - from CSV or AI suggestion
-                    $catAssigned = false;
-                    if (!empty($row['category'])) {
-                        $catId = $categoryLookup[strtolower(trim($row['category']))] ?? null;
-                        if ($catId) {
-                            $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)");
-                            $stmt->execute([$productId, $catId]);
-                            $catAssigned = true;
-                        }
-                    }
-
-                    // AI category auto-assignment if no category was assigned from CSV
-                    if (!$catAssigned && $aiGenerate && !empty($aiCompleteData['suggested_category'])) {
-                        $productService = $productService ?? ProductService::getInstance();
-                        $matchedCatId = $productService->matchCategory($aiCompleteData['suggested_category']);
-                        if ($matchedCatId) {
-                            $productService->assignCategory($productId, $matchedCatId, true);
-                        }
-                    }
-
-                    // Handle brand as attribute
-                    if (!empty($brandValue)) {
-                        $this->handleBrandAttribute($db, $productId, trim($brandValue));
-                    }
-
-                    // Save AI-generated specifications
-                    if ($aiGenerate && !empty($aiCompleteData['specifications'])) {
-                        $productService = $productService ?? ProductService::getInstance();
-                        $productService->saveSpecifications($productId, $aiCompleteData['specifications']);
-                    }
-
-                    // Save AI-generated filterable attributes (Series, Memory Size, etc.)
-                    if ($aiGenerate && !empty($aiCompleteData['attributes'])) {
-                        $productService = $productService ?? ProductService::getInstance();
-                        $productService->saveProductAttributes($productId, $aiCompleteData['attributes']);
-                    }
-
-                    // Handle image: download from mapped URL first, then AI search for remaining
-                    $this->importHandleImages($productId, $productData, $brandValue, $aiCompleteData, $row['image'] ?? '', $aiGenerate);
                 }
 
-                // For existing products: update brand and apply AI specs/category/images if missing
-                if ($existingId) {
-                    if (!empty($brandValue)) {
-                        $this->handleBrandAttribute($db, $existingId, trim($brandValue));
+                // CSV-side category mapping: exact (case-insensitive) match
+                // against an existing category. Skip silently if not found
+                // (the AI category fallback inside applyAiDataToProduct will
+                // try a fuzzy match next).
+                if (!empty($row['category'])) {
+                    $catId = $categoryLookup[strtolower(trim($row['category']))] ?? null;
+                    if ($catId) {
+                        $stmt = $db->prepare("SELECT COUNT(*) FROM product_categories WHERE product_id = ?");
+                        $stmt->execute([$productId]);
+                        if ((int) $stmt->fetchColumn() === 0) {
+                            $stmt = $db->prepare(
+                                "INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)"
+                            );
+                            $stmt->execute([$productId, $catId]);
+                        }
+                    } else {
+                        error_log("Import row " . ($idx + 1) . ": category '" . trim($row['category']) . "' not found in DB, will let AI try fuzzy match");
                     }
+                }
 
-                    if ($aiGenerate && !empty($aiCompleteData)) {
-                        $productService = $productService ?? ProductService::getInstance();
+                // CSV image: download FIRST so it gets the primary slot
+                // before AI image search fills out the remaining 3.
+                if (!empty($row['image']) && filter_var($row['image'], FILTER_VALIDATE_URL)) {
+                    try {
+                        $imageService = $imageService ?? new ProductImageService();
+                        ob_start();
+                        $imageService->downloadAndSaveImagePublic(
+                            $productId,
+                            $row['image'],
+                            $productData['name'],
+                            true
+                        );
+                        ob_end_clean();
+                    } catch (\Throwable $e) {
+                        if (!empty(ob_get_status())) { ob_end_clean(); }
+                        error_log("Import row " . ($idx + 1) . ": CSV image download failed: " . $e->getMessage());
+                    }
+                }
 
-                        // Auto-assign category if product has none
-                        if (!empty($aiCompleteData['suggested_category'])) {
-                            $stmt = $db->prepare("SELECT COUNT(*) FROM product_categories WHERE product_id = ?");
-                            $stmt->execute([$existingId]);
-                            if ((int)$stmt->fetchColumn() === 0) {
-                                $matchedCatId = $productService->matchCategory($aiCompleteData['suggested_category']);
-                                if ($matchedCatId) {
-                                    $productService->assignCategory($existingId, $matchedCatId, true);
-                                }
-                            }
-                        }
+                // CSV brand attribute: if the row gave us a brand, set it.
+                // The shared service does the same when AI suggests one.
+                if (!empty($brandValue)) {
+                    $productService->setBrandAttribute($productId, trim((string) $brandValue));
+                }
 
-                        // Save specs if product has none
-                        if (!empty($aiCompleteData['specifications'])) {
-                            $productService->saveSpecifications($existingId, $aiCompleteData['specifications']);
-                        }
-
-                        // Save filterable attributes if product has none
-                        if (!empty($aiCompleteData['attributes'])) {
-                            $productService->saveProductAttributes($existingId, $aiCompleteData['attributes']);
-                        }
-
-                        // Handle images for existing products too
-                        $this->importHandleImages($existingId, $productData, $brandValue, $aiCompleteData, $row['image'] ?? '', $aiGenerate);
+                // Hand off all AI-derived enrichment to the shared method.
+                // force=true: in the import context the admin opted in to AI,
+                // so AI text overrides CSV text where present. CSV fields
+                // already on the row (price, stock, vendor) are untouched
+                // by the service because they're not in the AI payload.
+                if ($aiGenerate && !empty($aiCompleteData)) {
+                    $apply = $productService->applyAiDataToProduct(
+                        $productId,
+                        $aiCompleteData,
+                        ['force' => true, 'generate_images' => true]
+                    );
+                    if (!$apply['success']) {
+                        $errors[] = "Row " . ($idx + 1) . " (SKU {$sku}): " . ($apply['error'] ?? 'AI apply failed');
                     }
                 }
             } catch (\Throwable $e) {
@@ -2478,47 +2312,6 @@ class ProductController extends Controller
             ]);
         }
         exit;
-    }
-
-    /**
-     * Handle images for a product during import:
-     * 1. Download from mapped image URL if provided
-     * 2. Use AI web search for remaining images if AI is enabled
-     */
-    private function importHandleImages(int $productId, array $productData, ?string $brand, ?array $aiData, string $imageUrl, bool $aiGenerate): void
-    {
-        try {
-            $imageService = new ProductImageService();
-
-            // First: download from mapped image URL if provided
-            if (!empty($imageUrl) && filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-                ob_start();
-                $imageService->downloadAndSaveImagePublic($productId, $imageUrl, $productData['name'] ?? '', true);
-                ob_end_clean();
-            }
-
-            // Second: if AI is enabled, search for more images to fill up to 4
-            if ($aiGenerate) {
-                $categoryName = $aiData['suggested_category'] ?? '';
-
-                ob_start();
-                $result = $imageService->generateProductImages($productId, [
-                    'name' => $productData['name'] ?? '',
-                    'brand' => $brand ?? ($aiData['brand'] ?? ''),
-                    'sku' => $productData['sku'] ?? '',
-                    'category' => $categoryName,
-                    'short_description' => $productData['short_description'] ?? '',
-                    'specifications' => $aiData['specifications'] ?? [],
-                ]);
-                ob_end_clean();
-
-                if ($result['generated'] > 0) {
-                    error_log("AI Import: Generated {$result['generated']} images for product {$productId}");
-                }
-            }
-        } catch (\Throwable $e) {
-            error_log("AI Import: Image handling failed for product {$productId}: " . $e->getMessage());
-        }
     }
 
     /**
@@ -2615,45 +2408,6 @@ class ProductController extends Controller
     }
 
     /**
-     * Handle brand attribute - create if not exists and associate with product
-     */
-    private function handleBrandAttribute($db, int $productId, string $brandValue): void
-    {
-        // Find or create the "Brand" attribute
-        $stmt = $db->prepare("SELECT id FROM attributes WHERE LOWER(name) = 'brand' LIMIT 1");
-        $stmt->execute();
-        $attributeId = $stmt->fetchColumn();
-
-        if (!$attributeId) {
-            // Create Brand attribute
-            $stmt = $db->prepare("INSERT INTO attributes (name, slug, type, is_filterable, is_visible) VALUES ('Brand', 'brand', 'select', 1, 1)");
-            $stmt->execute();
-            $attributeId = $db->lastInsertId();
-        }
-
-        // Find or create the attribute value
-        $stmt = $db->prepare("SELECT id FROM attribute_values WHERE attribute_id = ? AND LOWER(value) = LOWER(?) LIMIT 1");
-        $stmt->execute([$attributeId, $brandValue]);
-        $valueId = $stmt->fetchColumn();
-
-        if (!$valueId) {
-            // Create the attribute value
-            $slug = slugify($brandValue);
-            $stmt = $db->prepare("INSERT INTO attribute_values (attribute_id, value, slug) VALUES (?, ?, ?)");
-            $stmt->execute([$attributeId, $brandValue, $slug]);
-            $valueId = $db->lastInsertId();
-        }
-
-        // Remove existing brand association for this product
-        $stmt = $db->prepare("DELETE FROM product_attributes WHERE product_id = ? AND attribute_id = ?");
-        $stmt->execute([$productId, $attributeId]);
-
-        // Associate attribute value with product
-        $stmt = $db->prepare("INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)");
-        $stmt->execute([$productId, $attributeId, $valueId]);
-    }
-
-    /**
      * Get column value with fallback names
      */
     private function getColumnValue(array $data, string ...$names): ?string
@@ -2676,27 +2430,6 @@ class ProductController extends Controller
         }
         $value = strtolower(trim((string) $value));
         return in_array($value, ['1', 'yes', 'true', 'y', 'on']);
-    }
-
-    /**
-     * Reject AI-supplied numerics that are clearly hallucinated.
-     *
-     * Returns the value as float when it parses cleanly AND falls inside the
-     * plausible range; returns null otherwise so the caller skips the field.
-     * Catches things like negative weights, "N/A" strings, scientific
-     * notation explosions, and the 999999 spam GPT occasionally emits when
-     * it has no real spec data for a SKU.
-     */
-    private function clampAiNumeric($value, float $min, float $max): ?float
-    {
-        if (!is_numeric($value)) {
-            return null;
-        }
-        $f = (float) $value;
-        if (!is_finite($f) || $f < $min || $f > $max) {
-            return null;
-        }
-        return $f;
     }
 
     /**

@@ -127,6 +127,8 @@ class ProductService
             );
         }
 
+        $oldSlug = $product->slug;
+
         try {
             Database::beginTransaction();
 
@@ -138,6 +140,12 @@ class ProductService
             // Fill and save
             $product->fill($data);
             $product->save();
+
+            // Record a 301 redirect from the old slug so existing inbound links
+            // (Google, social shares, customer bookmarks) don't 404 after a rename.
+            if ($oldSlug && $product->slug && $oldSlug !== $product->slug) {
+                $this->recordSlugRedirect($oldSlug, $product->slug);
+            }
 
             // Handle categories if provided
             if (isset($data['categories'])) {
@@ -881,6 +889,22 @@ class ProductService
         return (int)$stmt->fetchColumn() === 0;
     }
 
+    /**
+     * Record a 301 redirect from an old product slug to the new one.
+     *
+     * Idempotent via the redirects.from_url UNIQUE key: if the same product
+     * is renamed twice, the row is updated to point at the latest slug.
+     */
+    private function recordSlugRedirect(string $oldSlug, string $newSlug): void
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO redirects (from_url, to_url, status_code, is_active)
+             VALUES (?, ?, 301, 1)
+             ON DUPLICATE KEY UPDATE to_url = VALUES(to_url), is_active = 1"
+        );
+        $stmt->execute(["/products/{$oldSlug}", "/products/{$newSlug}"]);
+    }
+
     // =========================================================================
     // Validation
     // =========================================================================
@@ -962,17 +986,17 @@ class ProductService
             }
         }
 
-        // Status validation
+        // Status validation - must match products.status ENUM (schema.sql:240)
         if (isset($data['status'])) {
-            $validStatuses = ['draft', 'active', 'inactive', 'deleted'];
+            $validStatuses = ['draft', 'active', 'inactive', 'out_of_stock', 'deleted'];
             if (!in_array($data['status'], $validStatuses, true)) {
                 $errors['status'] = 'Invalid status. Valid values: ' . implode(', ', $validStatuses);
             }
         }
 
-        // Type validation
+        // Type validation - must match products.type ENUM (schema.sql:239)
         if (isset($data['type'])) {
-            $validTypes = ['simple', 'variable', 'grouped', 'virtual', 'downloadable'];
+            $validTypes = ['simple', 'variable', 'bundle', 'digital'];
             if (!in_array($data['type'], $validTypes, true)) {
                 $errors['type'] = 'Invalid type. Valid values: ' . implode(', ', $validTypes);
             }

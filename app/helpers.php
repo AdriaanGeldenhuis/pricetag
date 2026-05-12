@@ -125,6 +125,106 @@ function e(?string $value): string
 }
 
 /**
+ * Validate that an outbound HTTP URL is safe for the server to fetch.
+ *
+ * SSRF defence: rejects non-http(s) schemes and hosts that resolve to
+ * loopback, private (RFC1918), link-local, or reserved address ranges.
+ * Without this, an attacker-controlled image URL (e.g. one returned by
+ * a poisoned search-engine scrape) could redirect the server at cloud
+ * metadata endpoints, internal admin panels, or any other VPC resource.
+ *
+ * Returns null when the URL passes; otherwise a short reason string.
+ * Callers typically log the reason and refuse to fetch.
+ */
+function isUnsafePublicUrl(string $url): ?string
+{
+    $parts = parse_url($url);
+    if (!$parts || empty($parts['scheme'])) {
+        return 'malformed URL';
+    }
+    $scheme = strtolower($parts['scheme']);
+    if ($scheme !== 'http' && $scheme !== 'https') {
+        return "disallowed scheme: {$scheme}";
+    }
+    if (empty($parts['host'])) {
+        return 'malformed URL';
+    }
+
+    $host = $parts['host'];
+    $ips = [];
+
+    // Literal IP in the URL? Validate it directly.
+    if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+        $ips = [$host];
+    } else {
+        $v4 = @gethostbynamel($host);
+        if ($v4) {
+            $ips = array_merge($ips, $v4);
+        }
+        $v6 = @dns_get_record($host, DNS_AAAA);
+        if ($v6) {
+            foreach ($v6 as $record) {
+                if (!empty($record['ipv6'])) {
+                    $ips[] = $record['ipv6'];
+                }
+            }
+        }
+    }
+
+    if (empty($ips)) {
+        // DNS failure - treat as unsafe rather than letting curl resolve
+        // it later under different rules.
+        return "host did not resolve: {$host}";
+    }
+
+    $publicFlags = FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+    foreach ($ips as $ip) {
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            continue;
+        }
+        if (filter_var($ip, FILTER_VALIDATE_IP, ['flags' => $publicFlags]) === false) {
+            return "host resolves to a private/reserved address: {$ip}";
+        }
+    }
+    return null;
+}
+
+/**
+ * Sanitize untrusted HTML (e.g. AI-generated descriptions) before storage.
+ *
+ * - Keeps a small allowlist of formatting tags (h3, p, ul, ol, li, strong,
+ *   em, br) and strips everything else. strip_tags handles tag stripping
+ *   but leaves attributes intact on allowed tags, so we follow with a
+ *   regex that removes EVERY attribute from each surviving tag. The AI is
+ *   never asked to emit attributes, and dropping them defends against
+ *   onerror=, style="expression(...)", href="javascript:..." and similar.
+ * - Also strips any inline <script>/<style>/<iframe>/<object> blocks that
+ *   slip through with their contents.
+ */
+function sanitizeUntrustedHtml(?string $html): string
+{
+    if ($html === null || $html === '') {
+        return '';
+    }
+    // Drop script/style/iframe/object/embed blocks WITH their contents
+    // before strip_tags() runs (strip_tags only removes the tags, leaving
+    // <script>alert(1)</script> as the bare text "alert(1)").
+    $html = preg_replace(
+        '#<(script|style|iframe|object|embed|svg)\b[^>]*>.*?</\1>#is',
+        '',
+        $html
+    ) ?? $html;
+
+    $allowed = '<h3><h4><p><ul><ol><li><strong><em><b><i><br>';
+    $html = strip_tags($html, $allowed);
+
+    // Strip every attribute from every surviving tag.
+    $html = preg_replace('#<(\w+)\b[^>]*>#', '<$1>', $html) ?? $html;
+
+    return $html;
+}
+
+/**
  * Get CSRF token
  */
 function csrfToken(): string

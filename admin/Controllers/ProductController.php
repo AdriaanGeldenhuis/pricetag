@@ -148,75 +148,31 @@ class ProductController extends Controller
             return;
         }
 
-        $slug = slugify($_POST['name']);
+        $categories = $_POST['categories'] ?? [];
+        $data = $this->buildProductDataFromPost();
+        if (!empty($categories)) {
+            $data['categories'] = array_map('intval', $categories);
+            $data['primary_category_id'] = (int) $categories[0];
+        }
 
-        // Ensure unique slug with proper collision handling
+        try {
+            $product = ProductService::getInstance()->createProduct($data);
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            flash('error', $e->getMessage());
+            $this->redirect('/admin/products/create');
+            return;
+        }
+
+        // Attributes, variants and image uploads still come straight from $_POST/$_FILES;
+        // the admin form's shape doesn't match ProductService's existing helpers (those
+        // were built for AI-generated content). Keep them here for now.
         $db = Database::getInstance();
-        $baseSlug = $slug;
-        $counter = 1;
-
-        while (true) {
-            $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? LIMIT 1");
-            $stmt->execute([$slug]);
-            if (!$stmt->fetch()) {
-                break; // Slug is unique
-            }
-            $counter++;
-            $slug = $baseSlug . '-' . $counter;
-
-            // Safety limit to prevent infinite loop
-            if ($counter > 1000) {
-                $slug = $baseSlug . '-' . uniqid();
-                break;
-            }
-        }
-
-        $product = Product::create([
-            'sku' => $_POST['sku'],
-            'name' => $_POST['name'],
-            'slug' => $slug,
-            'description' => $_POST['description'] ?? null,
-            'short_description' => $_POST['short_description'] ?? null,
-            'type' => $_POST['type'] ?? 'simple',
-            'status' => $_POST['status'] ?? 'draft',
-            'price' => (float) $_POST['price'],
-            'compare_price' => !empty($_POST['compare_price']) ? (float) $_POST['compare_price'] : null,
-            'cost_price' => !empty($_POST['cost_price']) ? (float) $_POST['cost_price'] : null,
-            'manage_stock' => !empty($_POST['manage_stock']),
-            'stock_quantity' => (int) ($_POST['stock_quantity'] ?? 0),
-            'low_stock_threshold' => (int) ($_POST['low_stock_threshold'] ?? 5),
-            'weight' => !empty($_POST['weight']) ? (float) $_POST['weight'] : null,
-            'length' => !empty($_POST['length']) ? (float) $_POST['length'] : null,
-            'width' => !empty($_POST['width']) ? (float) $_POST['width'] : null,
-            'height' => !empty($_POST['height']) ? (float) $_POST['height'] : null,
-            'vendor_id' => !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null,
-            'meta_title' => $_POST['meta_title'] ?? null,
-            'meta_description' => $_POST['meta_description'] ?? null,
-            'meta_keywords' => $_POST['meta_keywords'] ?? null,
-            'is_featured' => !empty($_POST['is_featured']),
-            'is_new' => !empty($_POST['is_new']),
-            'is_on_sale' => !empty($_POST['is_on_sale']),
-        ]);
-
-        // Handle categories
-        if (!empty($_POST['categories'])) {
-            $isPrimary = true;
-            foreach ($_POST['categories'] as $catId) {
-                $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
-                $stmt->execute([$product->id, $catId, $isPrimary ? 1 : 0]);
-                $isPrimary = false;
-            }
-        }
-
-        // Handle attributes
         $this->saveProductAttributes($db, $product->id);
 
-        // Handle image uploads (multiple)
         if (!empty($_FILES['images']['tmp_name'][0])) {
             $this->handleImageUploads($product->id, $_FILES['images']);
         }
 
-        // Handle variants for variable products
         if (($product->type ?? 'simple') === 'variable') {
             $this->saveProductVariants($db, $product->id);
         }
@@ -287,44 +243,25 @@ class ProductController extends Controller
             return;
         }
 
-        // Update product
-        $product->name = $_POST['name'];
-        $product->description = $_POST['description'] ?? null;
-        $product->short_description = $_POST['short_description'] ?? null;
-        $product->type = $_POST['type'] ?? 'simple';
-        $product->status = $_POST['status'] ?? 'draft';
-        $product->price = (float) $_POST['price'];
-        $product->compare_price = !empty($_POST['compare_price']) ? (float) $_POST['compare_price'] : null;
-        $product->cost_price = !empty($_POST['cost_price']) ? (float) $_POST['cost_price'] : null;
-        $product->manage_stock = !empty($_POST['manage_stock']);
-        $product->stock_quantity = (int) ($_POST['stock_quantity'] ?? 0);
-        $product->low_stock_threshold = (int) ($_POST['low_stock_threshold'] ?? 5);
-        $product->weight = !empty($_POST['weight']) ? (float) $_POST['weight'] : null;
-        $product->length = !empty($_POST['length']) ? (float) $_POST['length'] : null;
-        $product->width = !empty($_POST['width']) ? (float) $_POST['width'] : null;
-        $product->height = !empty($_POST['height']) ? (float) $_POST['height'] : null;
-        $product->vendor_id = !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null;
-        $product->meta_title = $_POST['meta_title'] ?? null;
-        $product->meta_description = $_POST['meta_description'] ?? null;
-        $product->meta_keywords = $_POST['meta_keywords'] ?? null;
-        $product->is_featured = !empty($_POST['is_featured']);
-        $product->is_new = !empty($_POST['is_new']);
-        $product->is_on_sale = !empty($_POST['is_on_sale']);
-        $product->save();
-
-        // Update categories
-        $db = Database::getInstance();
-        $stmt = $db->prepare("DELETE FROM product_categories WHERE product_id = ?");
-        $stmt->execute([$product->id]);
-
-        if (!empty($_POST['categories'])) {
-            $isPrimary = true;
-            foreach ($_POST['categories'] as $catId) {
-                $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
-                $stmt->execute([$product->id, $catId, $isPrimary ? 1 : 0]);
-                $isPrimary = false;
-            }
+        $categories = $_POST['categories'] ?? [];
+        $data = $this->buildProductDataFromPost();
+        // Don't change SKU on update unless explicitly posted; ProductService's
+        // unique check otherwise complains about the existing value.
+        unset($data['sku']);
+        if (!empty($categories)) {
+            $data['categories'] = array_map('intval', $categories);
+            $data['primary_category_id'] = (int) $categories[0];
         }
+
+        try {
+            $product = ProductService::getInstance()->updateProduct((int) $id, $data);
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            flash('error', $e->getMessage());
+            $this->redirect('/admin/products/' . $id . '/edit');
+            return;
+        }
+
+        $db = Database::getInstance();
 
         // Update attributes
         $this->saveProductAttributes($db, $product->id);
@@ -352,6 +289,39 @@ class ProductController extends Controller
 
         flash('success', 'Product updated successfully');
         $this->redirect('/admin/products/' . $id . '/edit');
+    }
+
+    /**
+     * Map the product form's $_POST shape into the array shape ProductService
+     * expects. Single source of truth for store() and update().
+     */
+    private function buildProductDataFromPost(): array
+    {
+        return [
+            'sku' => $_POST['sku'] ?? null,
+            'name' => $_POST['name'] ?? '',
+            'description' => $_POST['description'] ?? null,
+            'short_description' => $_POST['short_description'] ?? null,
+            'type' => $_POST['type'] ?? 'simple',
+            'status' => $_POST['status'] ?? 'draft',
+            'price' => isset($_POST['price']) ? (float) $_POST['price'] : 0.0,
+            'compare_price' => !empty($_POST['compare_price']) ? (float) $_POST['compare_price'] : null,
+            'cost_price' => !empty($_POST['cost_price']) ? (float) $_POST['cost_price'] : null,
+            'manage_stock' => !empty($_POST['manage_stock']) ? 1 : 0,
+            'stock_quantity' => (int) ($_POST['stock_quantity'] ?? 0),
+            'low_stock_threshold' => (int) ($_POST['low_stock_threshold'] ?? 5),
+            'weight' => !empty($_POST['weight']) ? (float) $_POST['weight'] : null,
+            'length' => !empty($_POST['length']) ? (float) $_POST['length'] : null,
+            'width' => !empty($_POST['width']) ? (float) $_POST['width'] : null,
+            'height' => !empty($_POST['height']) ? (float) $_POST['height'] : null,
+            'vendor_id' => !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null,
+            'meta_title' => $_POST['meta_title'] ?? null,
+            'meta_description' => $_POST['meta_description'] ?? null,
+            'meta_keywords' => $_POST['meta_keywords'] ?? null,
+            'is_featured' => !empty($_POST['is_featured']) ? 1 : 0,
+            'is_new' => !empty($_POST['is_new']) ? 1 : 0,
+            'is_on_sale' => !empty($_POST['is_on_sale']) ? 1 : 0,
+        ];
     }
 
     public function destroy(string $id): void
@@ -1247,45 +1217,65 @@ class ProductController extends Controller
 
         $aiData = $result['data'];
 
+        // ?force=1 (POST or GET) means the admin explicitly asked us to
+        // overwrite their hand-typed content. Without it we only fill
+        // fields that are currently empty (or, for name, equal to the
+        // SKU stub). This stops a second AI click from silently nuking
+        // a manually-tuned name or description.
+        $force = !empty($_REQUEST['force']);
+
         // Build update array - only update fields that need improvement
         $updates = [];
 
-        // Name - always update from AI since it uses verified pattern matching
+        // Name: empty or unedited-SKU-stub triggers an update by default;
+        // a hand-typed name only gets replaced under ?force=1.
+        // strip_tags() on text-only fields: the AI is never supposed to
+        // emit HTML in them, but a prompt-injection that smuggles in
+        // <script>...</script> would otherwise land in the DB as-is.
         if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
-            $updates['name'] = $aiData['name'];
+            $currentLooksUnedited = empty($product->name) || $product->name === $product->sku;
+            if ($force || $currentLooksUnedited) {
+                $updates['name'] = substr(strip_tags((string) $aiData['name']), 0, 255);
+            }
         }
 
-        // Descriptions - always update from AI (AI generates better content)
-        if (!empty($aiData['description'])) {
-            $updates['description'] = $aiData['description'];
+        // Long description: allow a small set of formatting tags, strip
+        // attributes (defends against onerror=, style=, javascript: URIs).
+        if (!empty($aiData['description']) && ($force || empty($product->description))) {
+            $updates['description'] = sanitizeUntrustedHtml((string) $aiData['description']);
         }
-        if (!empty($aiData['short_description'])) {
-            $updates['short_description'] = $aiData['short_description'];
-        }
-
-        // SEO fields - always update from AI
-        if (!empty($aiData['meta_title'])) {
-            $updates['meta_title'] = substr($aiData['meta_title'], 0, 255);
-        }
-        if (!empty($aiData['meta_description'])) {
-            $updates['meta_description'] = $aiData['meta_description'];
-        }
-        if (!empty($aiData['meta_keywords'])) {
-            $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
+        // Short description: bullet list, plain text. No HTML expected.
+        if (!empty($aiData['short_description']) && ($force || empty($product->short_description))) {
+            $updates['short_description'] = substr(strip_tags((string) $aiData['short_description']), 0, 500);
         }
 
-        // Weight and dimensions - only fill if currently empty
+        // SEO fields: plain text only. Same overwrite rules as descriptions.
+        if (!empty($aiData['meta_title']) && ($force || empty($product->meta_title))) {
+            $updates['meta_title'] = substr(strip_tags((string) $aiData['meta_title']), 0, 255);
+        }
+        if (!empty($aiData['meta_description']) && ($force || empty($product->meta_description))) {
+            $updates['meta_description'] = substr(strip_tags((string) $aiData['meta_description']), 0, 500);
+        }
+        if (!empty($aiData['meta_keywords']) && ($force || empty($product->meta_keywords))) {
+            $updates['meta_keywords'] = substr(strip_tags((string) $aiData['meta_keywords']), 0, 255);
+        }
+
+        // Weight and dimensions - only fill if currently empty, and clamp to
+        // plausible ranges so a hallucinated 999999 doesn't poison shipping
+        // calculations. kg and cm.
         if (!empty($aiData['weight']) && empty($product->weight)) {
-            $updates['weight'] = (float) $aiData['weight'];
+            $clamped = $this->clampAiNumeric($aiData['weight'], 0.001, 500.0);
+            if ($clamped !== null) {
+                $updates['weight'] = $clamped;
+            }
         }
-        if (!empty($aiData['length']) && empty($product->length)) {
-            $updates['length'] = (float) $aiData['length'];
-        }
-        if (!empty($aiData['width']) && empty($product->width)) {
-            $updates['width'] = (float) $aiData['width'];
-        }
-        if (!empty($aiData['height']) && empty($product->height)) {
-            $updates['height'] = (float) $aiData['height'];
+        foreach (['length', 'width', 'height'] as $dim) {
+            if (!empty($aiData[$dim]) && empty($product->{$dim})) {
+                $clamped = $this->clampAiNumeric($aiData[$dim], 0.1, 500.0);
+                if ($clamped !== null) {
+                    $updates[$dim] = $clamped;
+                }
+            }
         }
 
         // Mark as new if AI identifies current-generation product
@@ -1293,43 +1283,62 @@ class ProductController extends Controller
             $updates['is_new'] = 1;
         }
 
-        // Apply updates to database
-        if (!empty($updates)) {
-            $setClauses = [];
-            $params = [];
-            foreach ($updates as $col => $val) {
-                $setClauses[] = "`{$col}` = ?";
-                $params[] = $val;
+        // Wrap all product writes in a transaction so a partial failure
+        // (e.g. attribute insert fails after product UPDATE) doesn't leave
+        // the row in a half-AI'd state. Image generation runs OUTSIDE the
+        // transaction because it talks to remote services and we don't
+        // want to roll back a clean product update just because Bing
+        // rate-limited us.
+        try {
+            Database::beginTransaction();
+
+            if (!empty($updates)) {
+                $setClauses = [];
+                $params = [];
+                foreach ($updates as $col => $val) {
+                    $setClauses[] = "`{$col}` = ?";
+                    $params[] = $val;
+                }
+                $params[] = $product->id;
+                $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
+                $stmt->execute($params);
             }
-            $params[] = $product->id;
-            $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
-            $stmt->execute($params);
-        }
 
-        // Handle specifications
-        if (!empty($aiData['specifications'])) {
-            $productService = ProductService::getInstance();
-            $productService->saveSpecifications($product->id, $aiData['specifications']);
-        }
-
-        // Handle filterable attributes (Series, Memory Size, etc.)
-        if (!empty($aiData['attributes'])) {
-            $productService = $productService ?? ProductService::getInstance();
-            $productService->saveProductAttributes($product->id, $aiData['attributes']);
-        }
-
-        // Handle category auto-assignment if product has no categories
-        if (empty($categories) && !empty($aiData['suggested_category'])) {
-            $productService = $productService ?? ProductService::getInstance();
-            $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
-            if ($matchedCatId) {
-                $productService->assignCategory($product->id, $matchedCatId, true);
+            // Handle specifications
+            if (!empty($aiData['specifications'])) {
+                $productService = ProductService::getInstance();
+                $productService->saveSpecifications($product->id, $aiData['specifications']);
             }
-        }
 
-        // Handle brand attribute if detected and not already set
-        if (!empty($aiData['brand']) && empty($brand)) {
-            $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
+            // Handle filterable attributes (Series, Memory Size, etc.)
+            if (!empty($aiData['attributes'])) {
+                $productService = $productService ?? ProductService::getInstance();
+                $productService->saveProductAttributes($product->id, $aiData['attributes']);
+            }
+
+            // Handle category auto-assignment if product has no categories
+            if (empty($categories) && !empty($aiData['suggested_category'])) {
+                $productService = $productService ?? ProductService::getInstance();
+                $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
+                if ($matchedCatId) {
+                    $productService->assignCategory($product->id, $matchedCatId, true);
+                }
+            }
+
+            // Handle brand attribute if detected and not already set
+            if (!empty($aiData['brand']) && empty($brand)) {
+                $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
+            }
+
+            Database::commit();
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            error_log("makeProductionReady transaction failed for product {$product->id}: " . $e->getMessage());
+            $this->json([
+                'success' => false,
+                'message' => 'AI update failed and was rolled back: ' . $e->getMessage(),
+            ]);
+            return;
         }
 
         // Generate AI product images (if fewer than 4 exist)
@@ -1351,13 +1360,27 @@ class ProductController extends Controller
         }
         ob_end_clean();
 
+        // Surface the fields the AI suggested but we *didn't* write because
+        // the admin had already filled them in. Lets the UI offer a "re-run
+        // with force=1" button instead of silently swallowing the suggestion.
+        $skippedFields = [];
+        $candidateFields = ['name', 'description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'];
+        foreach ($candidateFields as $f) {
+            if (!empty($aiData[$f]) && !array_key_exists($f, $updates)) {
+                $skippedFields[] = $f;
+            }
+        }
+
         // Return all AI data for client-side preview
         $this->json([
             'success' => true,
             'data' => $aiData,
             'updates_applied' => array_keys($updates),
+            'skipped_fields' => $skippedFields,
+            'force_used' => $force,
             'images_generated' => $imageResult['generated'] ?? 0,
             'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.'
+                . (!empty($skippedFields) && !$force ? ' ' . count($skippedFields) . ' field(s) kept (use force to overwrite).' : '')
                 . ($imageResult['generated'] > 0 ? ' ' . $imageResult['generated'] . ' images generated.' : ''),
         ]);
     }
@@ -2653,6 +2676,27 @@ class ProductController extends Controller
         }
         $value = strtolower(trim((string) $value));
         return in_array($value, ['1', 'yes', 'true', 'y', 'on']);
+    }
+
+    /**
+     * Reject AI-supplied numerics that are clearly hallucinated.
+     *
+     * Returns the value as float when it parses cleanly AND falls inside the
+     * plausible range; returns null otherwise so the caller skips the field.
+     * Catches things like negative weights, "N/A" strings, scientific
+     * notation explosions, and the 999999 spam GPT occasionally emits when
+     * it has no real spec data for a SKU.
+     */
+    private function clampAiNumeric($value, float $min, float $max): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $f = (float) $value;
+        if (!is_finite($f) || $f < $min || $f > $max) {
+            return null;
+        }
+        return $f;
     }
 
     /**

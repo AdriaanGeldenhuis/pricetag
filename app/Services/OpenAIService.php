@@ -200,7 +200,89 @@ class OpenAIService
             throw new \Exception('API Error: HTTP ' . $httpCode . ' - ' . $response);
         }
 
-        return json_decode($response, true) ?: [];
+        $decoded = json_decode($response, true) ?: [];
+
+        // Log token usage so admins can monitor cost. Best-effort: if the
+        // DB is down (or the migration hasn't been applied yet) we swallow
+        // the error rather than blocking the actual API call.
+        if (!empty($decoded['usage'])) {
+            $this->logUsage(
+                $endpoint,
+                $data['model'] ?? $this->model,
+                $decoded['usage']
+            );
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Per-million-token rates in USD for our most common models. Used to
+     * surface a rough cost estimate alongside the raw token count. If a
+     * model isn't here we still log the call with a 0 cost; admins can
+     * back-fill the rate later.
+     */
+    private const TOKEN_RATES_USD_PER_M = [
+        // Input rate, output rate. Source: openai.com/api/pricing
+        'gpt-4o-mini'      => [0.15, 0.60],
+        'gpt-4o'           => [2.50, 10.00],
+        'gpt-4-turbo'      => [10.00, 30.00],
+        'gpt-3.5-turbo'    => [0.50, 1.50],
+    ];
+
+    /**
+     * Append a row to ai_usage_log. Also error_logs a warning when the
+     * day's running total crosses the configured threshold so the cost
+     * doesn't silently spiral.
+     */
+    private function logUsage(string $endpoint, string $model, array $usage): void
+    {
+        try {
+            $prompt = (int) ($usage['prompt_tokens'] ?? 0);
+            $completion = (int) ($usage['completion_tokens'] ?? 0);
+            $total = (int) ($usage['total_tokens'] ?? ($prompt + $completion));
+
+            $rate = self::TOKEN_RATES_USD_PER_M[$model] ?? [0, 0];
+            $cost = round(
+                ($prompt * $rate[0] + $completion * $rate[1]) / 1_000_000,
+                6
+            );
+
+            $db = \App\Core\Database::getInstance();
+            $stmt = $db->prepare(
+                "INSERT INTO ai_usage_log
+                    (endpoint, model, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd)
+                 VALUES (?, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([$endpoint, $model, $prompt, $completion, $total, $cost]);
+
+            // Daily threshold check. Default: 1,000,000 tokens (~ $0.45 on
+            // gpt-4o-mini, ~ $25 on gpt-4o). Configurable via env.
+            $threshold = (int) env('AI_DAILY_TOKEN_THRESHOLD', 1_000_000);
+            if ($threshold > 0) {
+                $stmt = $db->prepare(
+                    "SELECT COALESCE(SUM(total_tokens), 0), COALESCE(SUM(estimated_cost_usd), 0)
+                     FROM ai_usage_log
+                     WHERE created_at >= CURDATE()"
+                );
+                $stmt->execute();
+                $row = $stmt->fetch(\PDO::FETCH_NUM);
+                $dailyTokens = (int) ($row[0] ?? 0);
+                $dailyCost = (float) ($row[1] ?? 0);
+                if ($dailyTokens >= $threshold) {
+                    error_log(sprintf(
+                        'AI usage threshold crossed: %d tokens today (~$%.2f). Set AI_DAILY_TOKEN_THRESHOLD or check ai_usage_log.',
+                        $dailyTokens,
+                        $dailyCost
+                    ));
+                }
+            }
+        } catch (\Throwable $e) {
+            // Logging must never block the actual API response from
+            // reaching the caller. The table may not exist yet (migration
+            // not applied) or the DB may be down.
+            error_log('AI usage logging failed: ' . $e->getMessage());
+        }
     }
 
     /**

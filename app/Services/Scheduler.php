@@ -404,7 +404,7 @@ class Scheduler
             SELECT p.id, p.name, p.sku, p.stock_quantity, p.low_stock_threshold
             FROM products p
             WHERE p.stock_quantity <= p.low_stock_threshold
-            AND p.track_stock = 1
+            AND p.manage_stock = 1
             AND p.status = 'active'
         ");
         $stmt->execute();

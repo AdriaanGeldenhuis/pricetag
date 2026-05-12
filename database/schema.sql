@@ -237,7 +237,7 @@ CREATE TABLE IF NOT EXISTS `products` (
     `description` TEXT DEFAULT NULL,
     `short_description` VARCHAR(500) DEFAULT NULL,
     `type` ENUM('simple', 'variable', 'bundle', 'digital') NOT NULL DEFAULT 'simple',
-    `status` ENUM('draft', 'active', 'inactive', 'out_of_stock') NOT NULL DEFAULT 'draft',
+    `status` ENUM('draft', 'active', 'inactive', 'out_of_stock', 'deleted') NOT NULL DEFAULT 'draft',
 
     -- Pricing
     `price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -850,6 +850,24 @@ CREATE TABLE IF NOT EXISTS `redirects` (
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `redirects_from_url_unique` (`from_url`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- AI USAGE LOG
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `ai_usage_log` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `endpoint` VARCHAR(64) NOT NULL,
+    `model` VARCHAR(64) NOT NULL,
+    `prompt_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+    `completion_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+    `total_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+    `estimated_cost_usd` DECIMAL(10,6) NOT NULL DEFAULT 0.000000,
+    PRIMARY KEY (`id`),
+    KEY `idx_ai_usage_created_at` (`created_at`),
+    KEY `idx_ai_usage_model` (`model`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================

@@ -171,13 +171,20 @@ $router->group(['prefix' => 'admin', 'middleware' => ['App\Middleware\AdminMiddl
     $router->post('/products/images/reorder', 'Admin\Controllers\ProductController@reorderImages', 'admin.products.images.reorder');
     $router->put('/products/reviews/{id}', 'Admin\Controllers\ProductController@updateReview', 'admin.products.reviews.update');
     $router->delete('/products/reviews/{id}', 'Admin\Controllers\ProductController@deleteReview', 'admin.products.reviews.destroy');
-    $router->post('/products/{id}/ai-generate', 'Admin\Controllers\ProductController@generateAiContent', 'admin.products.ai.generate');
-    $router->post('/products/{id}/ai-regenerate-sku', 'Admin\Controllers\ProductController@regenerateFromSku', 'admin.products.ai.regenerate');
-    $router->post('/products/ai-search', 'Admin\Controllers\ProductController@searchAiInfo', 'admin.products.ai.search');
-    $router->post('/products/{id}/ai-complete', 'Admin\Controllers\ProductController@makeProductionReady', 'admin.products.ai.complete');
-    $router->post('/products/{id}/ai-images', 'Admin\Controllers\ProductController@generateAiImages', 'admin.products.ai.images');
-    $router->post('/products/bulk-action', 'Admin\Controllers\ProductController@bulkAction', 'admin.products.bulk');
-    $router->post('/products/bulk-edit', 'Admin\Controllers\ProductController@bulkEdit', 'admin.products.bulk.edit');
+    $router->post('/products/{id}/ai-generate', 'Admin\Controllers\ProductController@generateAiContent', 'admin.products.ai.generate')
+        ->middleware('App\Middleware\ProductAiRateLimit');
+    $router->post('/products/{id}/ai-regenerate-sku', 'Admin\Controllers\ProductController@regenerateFromSku', 'admin.products.ai.regenerate')
+        ->middleware('App\Middleware\ProductAiRateLimit');
+    $router->post('/products/ai-search', 'Admin\Controllers\ProductController@searchAiInfo', 'admin.products.ai.search')
+        ->middleware('App\Middleware\ProductAiRateLimit');
+    $router->post('/products/{id}/ai-complete', 'Admin\Controllers\ProductController@makeProductionReady', 'admin.products.ai.complete')
+        ->middleware('App\Middleware\ProductAiRateLimit');
+    $router->post('/products/{id}/ai-images', 'Admin\Controllers\ProductController@generateAiImages', 'admin.products.ai.images')
+        ->middleware('App\Middleware\ProductAiRateLimit');
+    $router->post('/products/bulk-action', 'Admin\Controllers\ProductController@bulkAction', 'admin.products.bulk')
+        ->middleware('App\Middleware\ProductBulkRateLimit');
+    $router->post('/products/bulk-edit', 'Admin\Controllers\ProductController@bulkEdit', 'admin.products.bulk.edit')
+        ->middleware('App\Middleware\ProductBulkRateLimit');
     $router->post('/products/{id}/duplicate', 'Admin\Controllers\ProductController@duplicate', 'admin.products.duplicate');
     $router->post('/products/{id}/autosave', 'Admin\Controllers\ProductController@autosave', 'admin.products.autosave');
 

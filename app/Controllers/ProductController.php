@@ -7,6 +7,7 @@
 namespace App\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
 
@@ -58,6 +59,20 @@ class ProductController extends Controller
         $product = Product::findBySlug($slug);
 
         if (!$product) {
+            // Old slug? Follow a recorded 301 from the redirects table so
+            // existing inbound links keep working after a rename.
+            $stmt = Database::getInstance()->prepare(
+                "SELECT to_url, status_code FROM redirects
+                 WHERE from_url = ? AND is_active = 1
+                 LIMIT 1"
+            );
+            $stmt->execute(["/products/{$slug}"]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $this->redirect($row['to_url'], (int)($row['status_code'] ?? 301));
+                return;
+            }
+
             http_response_code(404);
             $this->layout('main');
             $this->view('errors/404');
@@ -76,6 +91,35 @@ class ProductController extends Controller
         $specifications = $product->getSpecifications();
         $reviews = $product->getReviews();
         $relatedProducts = $product->getRelatedProducts(4);
+
+        // Fallback: if no manually-curated related products exist, fill the
+        // "Related" slot with other products from the primary category so
+        // customers always have something to browse next.
+        if (empty($relatedProducts) && $primaryCategory) {
+            $category = Category::find($primaryCategory['id']);
+            if ($category) {
+                $page = $category->getProducts([], 1, 8);
+                $relatedProducts = array_values(array_filter(
+                    $page['data'] ?? [],
+                    fn($p) => (int)($p->id ?? 0) !== (int)$product->id
+                ));
+                $relatedProducts = array_slice($relatedProducts, 0, 4);
+            }
+        }
+
+        // Initial wishlist state so the heart button renders filled if the
+        // logged-in user has already saved this product.
+        $inWishlist = false;
+        if (auth()) {
+            $currentUser = user();
+            if ($currentUser && !empty($currentUser['id'])) {
+                $stmt = Database::getInstance()->prepare(
+                    "SELECT 1 FROM wishlists WHERE user_id = ? AND product_id = ? LIMIT 1"
+                );
+                $stmt->execute([(int) $currentUser['id'], (int) $product->id]);
+                $inWishlist = (bool) $stmt->fetchColumn();
+            }
+        }
 
         // Build breadcrumbs
         $breadcrumbs = [
@@ -104,6 +148,7 @@ class ProductController extends Controller
         $this->view('pages/products/show', [
             'meta_title' => $product->meta_title ?: $product->name . ' | ' . config('app.name'),
             'meta_description' => $product->meta_description ?: $product->short_description,
+            'canonical' => url('/products/' . $product->slug),
             'og_type' => 'product',
             'og_image' => $product->getPrimaryImage() ? url('storage/uploads/' . $product->getPrimaryImage()) : null,
             'schema' => $schema,
@@ -117,6 +162,7 @@ class ProductController extends Controller
             'reviews' => $reviews,
             'relatedProducts' => $relatedProducts,
             'breadcrumbs' => $breadcrumbs,
+            'inWishlist' => $inWishlist,
         ]);
     }
 }

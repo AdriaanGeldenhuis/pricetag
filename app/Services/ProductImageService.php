@@ -1383,33 +1383,81 @@ class ProductImageService
     }
 
     /**
+     * Maximum bytes we'll accept from a remote image download.
+     * Large enough for high-res PNGs from manufacturer CDNs (~15-20 MB
+     * occasionally), small enough that a hostile server can't fill the
+     * disk by streaming gigabytes through us.
+     */
+    private const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+
+    /**
      * Download an image from URL and save it as a product image
      */
     private function downloadAndSaveImage(int $productId, string $url, string $altText = '', bool $isPrimary = false): array
     {
         try {
-            // Download the image
+            $reason = isUnsafePublicUrl($url);
+            if ($reason !== null) {
+                error_log("ProductImageService: refusing to fetch {$url}: {$reason}");
+                return ['success' => false, 'error' => 'Unsafe URL: ' . $reason];
+            }
+
+            // Stream into memory with a hard size cap. Aborts mid-flight if
+            // the server tries to send more than MAX_DOWNLOAD_BYTES.
+            $imageData = '';
+            $aborted = false;
             $ch = curl_init();
             curl_setopt_array($ch, [
                 CURLOPT_URL => $url,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 15,
+                CURLOPT_CONNECTTIMEOUT => 5,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_MAXREDIRS => 5,
+                CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
                 CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_WRITEFUNCTION => function ($ch, $chunk) use (&$imageData, &$aborted) {
+                    $imageData .= $chunk;
+                    if (strlen($imageData) > self::MAX_DOWNLOAD_BYTES) {
+                        $aborted = true;
+                        return 0; // Tells curl to abort the transfer.
+                    }
+                    return strlen($chunk);
+                },
             ]);
 
-            $imageData = curl_exec($ch);
+            curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            $effectiveUrl = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
             curl_close($ch);
 
-            if (!$imageData || $httpCode !== 200 || strlen($imageData) < 1000) {
-                return ['success' => false, 'error' => 'Download failed'];
+            if ($aborted) {
+                return ['success' => false, 'error' => 'Image exceeded max size (' . self::MAX_DOWNLOAD_BYTES . ' bytes)'];
+            }
+            if ($httpCode !== 200 || strlen($imageData) < 1000) {
+                return ['success' => false, 'error' => 'Download failed (HTTP ' . $httpCode . ')'];
+            }
+            // Re-check the post-redirect URL: a same-origin URL we accepted
+            // could legitimately have redirected to an internal target.
+            if ($effectiveUrl && $effectiveUrl !== $url) {
+                $reason = isUnsafePublicUrl($effectiveUrl);
+                if ($reason !== null) {
+                    error_log("ProductImageService: redirect landed on unsafe URL {$effectiveUrl}: {$reason}");
+                    return ['success' => false, 'error' => 'Unsafe redirect target'];
+                }
+            }
+            // Content-Type must look like an image. Anti-spoof is enforced
+            // separately by getimagesize() on the bytes, but the header
+            // gives us a cheap early reject for HTML/JSON/etc.
+            if ($contentType !== '' && stripos($contentType, 'image/') !== 0) {
+                return ['success' => false, 'error' => 'Not an image (Content-Type: ' . $contentType . ')'];
             }
 
-            // Verify it's actually an image
+            // Verify it's actually an image (magic-byte check)
             $tmpFile = tempnam(sys_get_temp_dir(), 'pt_img_');
             file_put_contents($tmpFile, $imageData);
 

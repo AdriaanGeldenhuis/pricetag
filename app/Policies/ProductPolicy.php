@@ -81,7 +81,7 @@ class ProductPolicy extends Policy
         }
 
         // Check stock if tracking is enabled
-        if (($product['track_stock'] ?? false) && ($product['stock_quantity'] ?? 0) <= 0) {
+        if (($product['manage_stock'] ?? false) && ($product['stock_quantity'] ?? 0) <= 0) {
             return $this->deny();
         }
 

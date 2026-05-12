@@ -1229,30 +1229,35 @@ class ProductController extends Controller
 
         // Name: empty or unedited-SKU-stub triggers an update by default;
         // a hand-typed name only gets replaced under ?force=1.
+        // strip_tags() on text-only fields: the AI is never supposed to
+        // emit HTML in them, but a prompt-injection that smuggles in
+        // <script>...</script> would otherwise land in the DB as-is.
         if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
             $currentLooksUnedited = empty($product->name) || $product->name === $product->sku;
             if ($force || $currentLooksUnedited) {
-                $updates['name'] = $aiData['name'];
+                $updates['name'] = substr(strip_tags((string) $aiData['name']), 0, 255);
             }
         }
 
-        // Long + short description: only fill when empty, unless force.
+        // Long description: allow a small set of formatting tags, strip
+        // attributes (defends against onerror=, style=, javascript: URIs).
         if (!empty($aiData['description']) && ($force || empty($product->description))) {
-            $updates['description'] = $aiData['description'];
+            $updates['description'] = sanitizeUntrustedHtml((string) $aiData['description']);
         }
+        // Short description: bullet list, plain text. No HTML expected.
         if (!empty($aiData['short_description']) && ($force || empty($product->short_description))) {
-            $updates['short_description'] = $aiData['short_description'];
+            $updates['short_description'] = substr(strip_tags((string) $aiData['short_description']), 0, 500);
         }
 
-        // SEO fields: same rule. Hand-tuned meta is usually deliberate.
+        // SEO fields: plain text only. Same overwrite rules as descriptions.
         if (!empty($aiData['meta_title']) && ($force || empty($product->meta_title))) {
-            $updates['meta_title'] = substr($aiData['meta_title'], 0, 255);
+            $updates['meta_title'] = substr(strip_tags((string) $aiData['meta_title']), 0, 255);
         }
         if (!empty($aiData['meta_description']) && ($force || empty($product->meta_description))) {
-            $updates['meta_description'] = substr($aiData['meta_description'], 0, 500);
+            $updates['meta_description'] = substr(strip_tags((string) $aiData['meta_description']), 0, 500);
         }
         if (!empty($aiData['meta_keywords']) && ($force || empty($product->meta_keywords))) {
-            $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
+            $updates['meta_keywords'] = substr(strip_tags((string) $aiData['meta_keywords']), 0, 255);
         }
 
         // Weight and dimensions - only fill if currently empty, and clamp to

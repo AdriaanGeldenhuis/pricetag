@@ -125,6 +125,41 @@ function e(?string $value): string
 }
 
 /**
+ * Sanitize untrusted HTML (e.g. AI-generated descriptions) before storage.
+ *
+ * - Keeps a small allowlist of formatting tags (h3, p, ul, ol, li, strong,
+ *   em, br) and strips everything else. strip_tags handles tag stripping
+ *   but leaves attributes intact on allowed tags, so we follow with a
+ *   regex that removes EVERY attribute from each surviving tag. The AI is
+ *   never asked to emit attributes, and dropping them defends against
+ *   onerror=, style="expression(...)", href="javascript:..." and similar.
+ * - Also strips any inline <script>/<style>/<iframe>/<object> blocks that
+ *   slip through with their contents.
+ */
+function sanitizeUntrustedHtml(?string $html): string
+{
+    if ($html === null || $html === '') {
+        return '';
+    }
+    // Drop script/style/iframe/object/embed blocks WITH their contents
+    // before strip_tags() runs (strip_tags only removes the tags, leaving
+    // <script>alert(1)</script> as the bare text "alert(1)").
+    $html = preg_replace(
+        '#<(script|style|iframe|object|embed|svg)\b[^>]*>.*?</\1>#is',
+        '',
+        $html
+    ) ?? $html;
+
+    $allowed = '<h3><h4><p><ul><ol><li><strong><em><b><i><br>';
+    $html = strip_tags($html, $allowed);
+
+    // Strip every attribute from every surviving tag.
+    $html = preg_replace('#<(\w+)\b[^>]*>#', '<$1>', $html) ?? $html;
+
+    return $html;
+}
+
+/**
  * Get CSRF token
  */
 function csrfToken(): string

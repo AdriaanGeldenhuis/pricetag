@@ -986,17 +986,17 @@ class ProductService
             }
         }
 
-        // Status validation
+        // Status validation - must match products.status ENUM (schema.sql:240)
         if (isset($data['status'])) {
-            $validStatuses = ['draft', 'active', 'inactive', 'deleted'];
+            $validStatuses = ['draft', 'active', 'inactive', 'out_of_stock', 'deleted'];
             if (!in_array($data['status'], $validStatuses, true)) {
                 $errors['status'] = 'Invalid status. Valid values: ' . implode(', ', $validStatuses);
             }
         }
 
-        // Type validation
+        // Type validation - must match products.type ENUM (schema.sql:239)
         if (isset($data['type'])) {
-            $validTypes = ['simple', 'variable', 'grouped', 'virtual', 'downloadable'];
+            $validTypes = ['simple', 'variable', 'bundle', 'digital'];
             if (!in_array($data['type'], $validTypes, true)) {
                 $errors['type'] = 'Invalid type. Valid values: ' . implode(', ', $validTypes);
             }

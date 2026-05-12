@@ -148,75 +148,31 @@ class ProductController extends Controller
             return;
         }
 
-        $slug = slugify($_POST['name']);
+        $categories = $_POST['categories'] ?? [];
+        $data = $this->buildProductDataFromPost();
+        if (!empty($categories)) {
+            $data['categories'] = array_map('intval', $categories);
+            $data['primary_category_id'] = (int) $categories[0];
+        }
 
-        // Ensure unique slug with proper collision handling
+        try {
+            $product = ProductService::getInstance()->createProduct($data);
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            flash('error', $e->getMessage());
+            $this->redirect('/admin/products/create');
+            return;
+        }
+
+        // Attributes, variants and image uploads still come straight from $_POST/$_FILES;
+        // the admin form's shape doesn't match ProductService's existing helpers (those
+        // were built for AI-generated content). Keep them here for now.
         $db = Database::getInstance();
-        $baseSlug = $slug;
-        $counter = 1;
-
-        while (true) {
-            $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? LIMIT 1");
-            $stmt->execute([$slug]);
-            if (!$stmt->fetch()) {
-                break; // Slug is unique
-            }
-            $counter++;
-            $slug = $baseSlug . '-' . $counter;
-
-            // Safety limit to prevent infinite loop
-            if ($counter > 1000) {
-                $slug = $baseSlug . '-' . uniqid();
-                break;
-            }
-        }
-
-        $product = Product::create([
-            'sku' => $_POST['sku'],
-            'name' => $_POST['name'],
-            'slug' => $slug,
-            'description' => $_POST['description'] ?? null,
-            'short_description' => $_POST['short_description'] ?? null,
-            'type' => $_POST['type'] ?? 'simple',
-            'status' => $_POST['status'] ?? 'draft',
-            'price' => (float) $_POST['price'],
-            'compare_price' => !empty($_POST['compare_price']) ? (float) $_POST['compare_price'] : null,
-            'cost_price' => !empty($_POST['cost_price']) ? (float) $_POST['cost_price'] : null,
-            'manage_stock' => !empty($_POST['manage_stock']),
-            'stock_quantity' => (int) ($_POST['stock_quantity'] ?? 0),
-            'low_stock_threshold' => (int) ($_POST['low_stock_threshold'] ?? 5),
-            'weight' => !empty($_POST['weight']) ? (float) $_POST['weight'] : null,
-            'length' => !empty($_POST['length']) ? (float) $_POST['length'] : null,
-            'width' => !empty($_POST['width']) ? (float) $_POST['width'] : null,
-            'height' => !empty($_POST['height']) ? (float) $_POST['height'] : null,
-            'vendor_id' => !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null,
-            'meta_title' => $_POST['meta_title'] ?? null,
-            'meta_description' => $_POST['meta_description'] ?? null,
-            'meta_keywords' => $_POST['meta_keywords'] ?? null,
-            'is_featured' => !empty($_POST['is_featured']),
-            'is_new' => !empty($_POST['is_new']),
-            'is_on_sale' => !empty($_POST['is_on_sale']),
-        ]);
-
-        // Handle categories
-        if (!empty($_POST['categories'])) {
-            $isPrimary = true;
-            foreach ($_POST['categories'] as $catId) {
-                $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
-                $stmt->execute([$product->id, $catId, $isPrimary ? 1 : 0]);
-                $isPrimary = false;
-            }
-        }
-
-        // Handle attributes
         $this->saveProductAttributes($db, $product->id);
 
-        // Handle image uploads (multiple)
         if (!empty($_FILES['images']['tmp_name'][0])) {
             $this->handleImageUploads($product->id, $_FILES['images']);
         }
 
-        // Handle variants for variable products
         if (($product->type ?? 'simple') === 'variable') {
             $this->saveProductVariants($db, $product->id);
         }
@@ -287,44 +243,25 @@ class ProductController extends Controller
             return;
         }
 
-        // Update product
-        $product->name = $_POST['name'];
-        $product->description = $_POST['description'] ?? null;
-        $product->short_description = $_POST['short_description'] ?? null;
-        $product->type = $_POST['type'] ?? 'simple';
-        $product->status = $_POST['status'] ?? 'draft';
-        $product->price = (float) $_POST['price'];
-        $product->compare_price = !empty($_POST['compare_price']) ? (float) $_POST['compare_price'] : null;
-        $product->cost_price = !empty($_POST['cost_price']) ? (float) $_POST['cost_price'] : null;
-        $product->manage_stock = !empty($_POST['manage_stock']);
-        $product->stock_quantity = (int) ($_POST['stock_quantity'] ?? 0);
-        $product->low_stock_threshold = (int) ($_POST['low_stock_threshold'] ?? 5);
-        $product->weight = !empty($_POST['weight']) ? (float) $_POST['weight'] : null;
-        $product->length = !empty($_POST['length']) ? (float) $_POST['length'] : null;
-        $product->width = !empty($_POST['width']) ? (float) $_POST['width'] : null;
-        $product->height = !empty($_POST['height']) ? (float) $_POST['height'] : null;
-        $product->vendor_id = !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null;
-        $product->meta_title = $_POST['meta_title'] ?? null;
-        $product->meta_description = $_POST['meta_description'] ?? null;
-        $product->meta_keywords = $_POST['meta_keywords'] ?? null;
-        $product->is_featured = !empty($_POST['is_featured']);
-        $product->is_new = !empty($_POST['is_new']);
-        $product->is_on_sale = !empty($_POST['is_on_sale']);
-        $product->save();
-
-        // Update categories
-        $db = Database::getInstance();
-        $stmt = $db->prepare("DELETE FROM product_categories WHERE product_id = ?");
-        $stmt->execute([$product->id]);
-
-        if (!empty($_POST['categories'])) {
-            $isPrimary = true;
-            foreach ($_POST['categories'] as $catId) {
-                $stmt = $db->prepare("INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, ?)");
-                $stmt->execute([$product->id, $catId, $isPrimary ? 1 : 0]);
-                $isPrimary = false;
-            }
+        $categories = $_POST['categories'] ?? [];
+        $data = $this->buildProductDataFromPost();
+        // Don't change SKU on update unless explicitly posted; ProductService's
+        // unique check otherwise complains about the existing value.
+        unset($data['sku']);
+        if (!empty($categories)) {
+            $data['categories'] = array_map('intval', $categories);
+            $data['primary_category_id'] = (int) $categories[0];
         }
+
+        try {
+            $product = ProductService::getInstance()->updateProduct((int) $id, $data);
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            flash('error', $e->getMessage());
+            $this->redirect('/admin/products/' . $id . '/edit');
+            return;
+        }
+
+        $db = Database::getInstance();
 
         // Update attributes
         $this->saveProductAttributes($db, $product->id);
@@ -352,6 +289,39 @@ class ProductController extends Controller
 
         flash('success', 'Product updated successfully');
         $this->redirect('/admin/products/' . $id . '/edit');
+    }
+
+    /**
+     * Map the product form's $_POST shape into the array shape ProductService
+     * expects. Single source of truth for store() and update().
+     */
+    private function buildProductDataFromPost(): array
+    {
+        return [
+            'sku' => $_POST['sku'] ?? null,
+            'name' => $_POST['name'] ?? '',
+            'description' => $_POST['description'] ?? null,
+            'short_description' => $_POST['short_description'] ?? null,
+            'type' => $_POST['type'] ?? 'simple',
+            'status' => $_POST['status'] ?? 'draft',
+            'price' => isset($_POST['price']) ? (float) $_POST['price'] : 0.0,
+            'compare_price' => !empty($_POST['compare_price']) ? (float) $_POST['compare_price'] : null,
+            'cost_price' => !empty($_POST['cost_price']) ? (float) $_POST['cost_price'] : null,
+            'manage_stock' => !empty($_POST['manage_stock']) ? 1 : 0,
+            'stock_quantity' => (int) ($_POST['stock_quantity'] ?? 0),
+            'low_stock_threshold' => (int) ($_POST['low_stock_threshold'] ?? 5),
+            'weight' => !empty($_POST['weight']) ? (float) $_POST['weight'] : null,
+            'length' => !empty($_POST['length']) ? (float) $_POST['length'] : null,
+            'width' => !empty($_POST['width']) ? (float) $_POST['width'] : null,
+            'height' => !empty($_POST['height']) ? (float) $_POST['height'] : null,
+            'vendor_id' => !empty($_POST['vendor_id']) ? (int) $_POST['vendor_id'] : null,
+            'meta_title' => $_POST['meta_title'] ?? null,
+            'meta_description' => $_POST['meta_description'] ?? null,
+            'meta_keywords' => $_POST['meta_keywords'] ?? null,
+            'is_featured' => !empty($_POST['is_featured']) ? 1 : 0,
+            'is_new' => !empty($_POST['is_new']) ? 1 : 0,
+            'is_on_sale' => !empty($_POST['is_on_sale']) ? 1 : 0,
+        ];
     }
 
     public function destroy(string $id): void

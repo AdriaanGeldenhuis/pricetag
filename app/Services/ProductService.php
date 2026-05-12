@@ -1581,6 +1581,16 @@ class ProductService
     }
 
     /**
+     * Public wrapper around assignBrandAttribute for callers (e.g. the CSV
+     * importer) that need to set a brand outside the applyAiDataToProduct
+     * flow. Validates and trims; a no-op if the value is empty.
+     */
+    public function setBrandAttribute(int $productId, string $brandValue): void
+    {
+        $this->assignBrandAttribute($productId, $brandValue);
+    }
+
+    /**
      * Set a product's "Brand" attribute, creating the attribute definition
      * and attribute_value rows as needed. Existing brand assignments for
      * this product are deleted first so we don't accumulate duplicates.

@@ -127,6 +127,8 @@ class ProductService
             );
         }
 
+        $oldSlug = $product->slug;
+
         try {
             Database::beginTransaction();
 
@@ -138,6 +140,12 @@ class ProductService
             // Fill and save
             $product->fill($data);
             $product->save();
+
+            // Record a 301 redirect from the old slug so existing inbound links
+            // (Google, social shares, customer bookmarks) don't 404 after a rename.
+            if ($oldSlug && $product->slug && $oldSlug !== $product->slug) {
+                $this->recordSlugRedirect($oldSlug, $product->slug);
+            }
 
             // Handle categories if provided
             if (isset($data['categories'])) {
@@ -879,6 +887,22 @@ class ProductService
         $stmt->execute($params);
 
         return (int)$stmt->fetchColumn() === 0;
+    }
+
+    /**
+     * Record a 301 redirect from an old product slug to the new one.
+     *
+     * Idempotent via the redirects.from_url UNIQUE key: if the same product
+     * is renamed twice, the row is updated to point at the latest slug.
+     */
+    private function recordSlugRedirect(string $oldSlug, string $newSlug): void
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO redirects (from_url, to_url, status_code, is_active)
+             VALUES (?, ?, 301, 1)
+             ON DUPLICATE KEY UPDATE to_url = VALUES(to_url), is_active = 1"
+        );
+        $stmt->execute(["/products/{$oldSlug}", "/products/{$newSlug}"]);
     }
 
     // =========================================================================

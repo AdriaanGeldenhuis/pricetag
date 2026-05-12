@@ -7,6 +7,7 @@
 namespace App\Controllers;
 
 use App\Core\Controller;
+use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
 
@@ -58,6 +59,20 @@ class ProductController extends Controller
         $product = Product::findBySlug($slug);
 
         if (!$product) {
+            // Old slug? Follow a recorded 301 from the redirects table so
+            // existing inbound links keep working after a rename.
+            $stmt = Database::getInstance()->prepare(
+                "SELECT to_url, status_code FROM redirects
+                 WHERE from_url = ? AND is_active = 1
+                 LIMIT 1"
+            );
+            $stmt->execute(["/products/{$slug}"]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $this->redirect($row['to_url'], (int)($row['status_code'] ?? 301));
+                return;
+            }
+
             http_response_code(404);
             $this->layout('main');
             $this->view('errors/404');
@@ -104,6 +119,7 @@ class ProductController extends Controller
         $this->view('pages/products/show', [
             'meta_title' => $product->meta_title ?: $product->name . ' | ' . config('app.name'),
             'meta_description' => $product->meta_description ?: $product->short_description,
+            'canonical' => url('/products/' . $product->slug),
             'og_type' => 'product',
             'og_image' => $product->getPrimaryImage() ? url('storage/uploads/' . $product->getPrimaryImage()) : null,
             'schema' => $schema,

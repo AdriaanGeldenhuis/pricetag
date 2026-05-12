@@ -1217,30 +1217,41 @@ class ProductController extends Controller
 
         $aiData = $result['data'];
 
+        // ?force=1 (POST or GET) means the admin explicitly asked us to
+        // overwrite their hand-typed content. Without it we only fill
+        // fields that are currently empty (or, for name, equal to the
+        // SKU stub). This stops a second AI click from silently nuking
+        // a manually-tuned name or description.
+        $force = !empty($_REQUEST['force']);
+
         // Build update array - only update fields that need improvement
         $updates = [];
 
-        // Name - always update from AI since it uses verified pattern matching
+        // Name: empty or unedited-SKU-stub triggers an update by default;
+        // a hand-typed name only gets replaced under ?force=1.
         if (!empty($aiData['name']) && $aiData['name'] !== $product->sku) {
-            $updates['name'] = $aiData['name'];
+            $currentLooksUnedited = empty($product->name) || $product->name === $product->sku;
+            if ($force || $currentLooksUnedited) {
+                $updates['name'] = $aiData['name'];
+            }
         }
 
-        // Descriptions - always update from AI (AI generates better content)
-        if (!empty($aiData['description'])) {
+        // Long + short description: only fill when empty, unless force.
+        if (!empty($aiData['description']) && ($force || empty($product->description))) {
             $updates['description'] = $aiData['description'];
         }
-        if (!empty($aiData['short_description'])) {
+        if (!empty($aiData['short_description']) && ($force || empty($product->short_description))) {
             $updates['short_description'] = $aiData['short_description'];
         }
 
-        // SEO fields - always update from AI
-        if (!empty($aiData['meta_title'])) {
+        // SEO fields: same rule. Hand-tuned meta is usually deliberate.
+        if (!empty($aiData['meta_title']) && ($force || empty($product->meta_title))) {
             $updates['meta_title'] = substr($aiData['meta_title'], 0, 255);
         }
-        if (!empty($aiData['meta_description'])) {
+        if (!empty($aiData['meta_description']) && ($force || empty($product->meta_description))) {
             $updates['meta_description'] = substr($aiData['meta_description'], 0, 500);
         }
-        if (!empty($aiData['meta_keywords'])) {
+        if (!empty($aiData['meta_keywords']) && ($force || empty($product->meta_keywords))) {
             $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
         }
 
@@ -1344,13 +1355,27 @@ class ProductController extends Controller
         }
         ob_end_clean();
 
+        // Surface the fields the AI suggested but we *didn't* write because
+        // the admin had already filled them in. Lets the UI offer a "re-run
+        // with force=1" button instead of silently swallowing the suggestion.
+        $skippedFields = [];
+        $candidateFields = ['name', 'description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'];
+        foreach ($candidateFields as $f) {
+            if (!empty($aiData[$f]) && !array_key_exists($f, $updates)) {
+                $skippedFields[] = $f;
+            }
+        }
+
         // Return all AI data for client-side preview
         $this->json([
             'success' => true,
             'data' => $aiData,
             'updates_applied' => array_keys($updates),
+            'skipped_fields' => $skippedFields,
+            'force_used' => $force,
             'images_generated' => $imageResult['generated'] ?? 0,
             'message' => 'Product enhanced with AI. ' . count($updates) . ' fields updated.'
+                . (!empty($skippedFields) && !$force ? ' ' . count($skippedFields) . ' field(s) kept (use force to overwrite).' : '')
                 . ($imageResult['generated'] > 0 ? ' ' . $imageResult['generated'] . ' images generated.' : ''),
         ]);
     }

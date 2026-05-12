@@ -237,7 +237,7 @@ CREATE TABLE IF NOT EXISTS `products` (
     `description` TEXT DEFAULT NULL,
     `short_description` VARCHAR(500) DEFAULT NULL,
     `type` ENUM('simple', 'variable', 'bundle', 'digital') NOT NULL DEFAULT 'simple',
-    `status` ENUM('draft', 'active', 'inactive', 'out_of_stock') NOT NULL DEFAULT 'draft',
+    `status` ENUM('draft', 'active', 'inactive', 'out_of_stock', 'deleted') NOT NULL DEFAULT 'draft',
 
     -- Pricing
     `price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,

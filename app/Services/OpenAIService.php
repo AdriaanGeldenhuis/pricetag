@@ -1567,8 +1567,11 @@ class OpenAIService
 
             $data = json_decode($content, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                error_log('AI JSON parse failed: ' . json_last_error_msg());
-                return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
+                error_log('AI JSON parse failed: ' . json_last_error_msg() . ' :: raw="' . substr($content, 0, 200) . '"');
+                $fallback = $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
+                $fallback['method'] = $recognized ? 'pattern' : 'fallback';
+                $fallback['fallback_reason'] = 'json_parse_failed';
+                return $fallback;
             }
 
             // STEP 3: Enforce identity based on recognition status
@@ -1638,11 +1641,25 @@ class OpenAIService
 
             error_log("AI COMPLETE: Final product name='{$data['name']}', brand='{$data['brand']}', category='{$data['suggested_category']}'");
 
-            return ['success' => true, 'data' => $data];
+            // 'method' indicator lets callers (and the admin UI) tell the
+            // difference between a real AI response, a pattern-match
+            // fallback, and an OpenAI failure that quietly silently
+            // degraded. Without this, an admin watching the button spin
+            // for 10 seconds had no way to know they ended up with a
+            // shallow result.
+            return [
+                'success' => true,
+                'data' => $data,
+                'method' => 'ai',
+            ];
 
         } catch (\Exception $e) {
             error_log('AI Complete Product Error: ' . $e->getMessage());
-            return $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
+            $reason = $e->getMessage();
+            $fallback = $this->buildFallbackResult($productName, $verifiedBrand, $verifiedCategory, $identity, $shortDescription);
+            $fallback['method'] = $recognized ? 'pattern' : 'fallback';
+            $fallback['fallback_reason'] = $reason;
+            return $fallback;
         }
     }
 

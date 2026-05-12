@@ -1244,16 +1244,33 @@ class ProductController extends Controller
         $skipped = $applyResult['skipped_fields'];
         $imagesGenerated = $applyResult['images_generated'];
 
-        $message = 'Product enhanced with AI. ' . count($applied) . ' fields updated.';
+        // Did OpenAI actually answer, or did we silently fall back to a
+        // pattern-match? The frontend surfaces this so admins know when
+        // the model was unavailable.
+        $method = $result['method'] ?? 'ai';
+        $fallbackReason = $result['fallback_reason'] ?? null;
+        $methodLabel = match ($method) {
+            'ai'       => 'AI',
+            'pattern'  => 'SKU pattern match (AI unavailable)',
+            'fallback' => 'fallback (AI unavailable)',
+            default    => $method,
+        };
+
+        $message = 'Product enhanced via ' . $methodLabel . '. ' . count($applied) . ' fields updated.';
         if (!empty($skipped) && !$force) {
             $message .= ' ' . count($skipped) . ' field(s) kept (use force to overwrite).';
         }
         if ($imagesGenerated > 0) {
             $message .= ' ' . $imagesGenerated . ' images generated.';
         }
+        if ($method !== 'ai') {
+            $message .= ' Tip: check OPENAI_API_KEY and try again for a deeper result.';
+        }
 
         $this->json([
             'success' => true,
+            'method' => $method,
+            'fallback_reason' => $fallbackReason,
             'data' => $aiData,
             'updates_applied' => $applied,
             'skipped_fields' => $skipped,

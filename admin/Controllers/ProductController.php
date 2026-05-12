@@ -1238,24 +1238,28 @@ class ProductController extends Controller
             $updates['meta_title'] = substr($aiData['meta_title'], 0, 255);
         }
         if (!empty($aiData['meta_description'])) {
-            $updates['meta_description'] = $aiData['meta_description'];
+            $updates['meta_description'] = substr($aiData['meta_description'], 0, 500);
         }
         if (!empty($aiData['meta_keywords'])) {
             $updates['meta_keywords'] = substr($aiData['meta_keywords'], 0, 255);
         }
 
-        // Weight and dimensions - only fill if currently empty
+        // Weight and dimensions - only fill if currently empty, and clamp to
+        // plausible ranges so a hallucinated 999999 doesn't poison shipping
+        // calculations. kg and cm.
         if (!empty($aiData['weight']) && empty($product->weight)) {
-            $updates['weight'] = (float) $aiData['weight'];
+            $clamped = $this->clampAiNumeric($aiData['weight'], 0.001, 500.0);
+            if ($clamped !== null) {
+                $updates['weight'] = $clamped;
+            }
         }
-        if (!empty($aiData['length']) && empty($product->length)) {
-            $updates['length'] = (float) $aiData['length'];
-        }
-        if (!empty($aiData['width']) && empty($product->width)) {
-            $updates['width'] = (float) $aiData['width'];
-        }
-        if (!empty($aiData['height']) && empty($product->height)) {
-            $updates['height'] = (float) $aiData['height'];
+        foreach (['length', 'width', 'height'] as $dim) {
+            if (!empty($aiData[$dim]) && empty($product->{$dim})) {
+                $clamped = $this->clampAiNumeric($aiData[$dim], 0.1, 500.0);
+                if ($clamped !== null) {
+                    $updates[$dim] = $clamped;
+                }
+            }
         }
 
         // Mark as new if AI identifies current-generation product
@@ -1263,43 +1267,62 @@ class ProductController extends Controller
             $updates['is_new'] = 1;
         }
 
-        // Apply updates to database
-        if (!empty($updates)) {
-            $setClauses = [];
-            $params = [];
-            foreach ($updates as $col => $val) {
-                $setClauses[] = "`{$col}` = ?";
-                $params[] = $val;
+        // Wrap all product writes in a transaction so a partial failure
+        // (e.g. attribute insert fails after product UPDATE) doesn't leave
+        // the row in a half-AI'd state. Image generation runs OUTSIDE the
+        // transaction because it talks to remote services and we don't
+        // want to roll back a clean product update just because Bing
+        // rate-limited us.
+        try {
+            Database::beginTransaction();
+
+            if (!empty($updates)) {
+                $setClauses = [];
+                $params = [];
+                foreach ($updates as $col => $val) {
+                    $setClauses[] = "`{$col}` = ?";
+                    $params[] = $val;
+                }
+                $params[] = $product->id;
+                $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
+                $stmt->execute($params);
             }
-            $params[] = $product->id;
-            $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . ", updated_at = NOW() WHERE id = ?");
-            $stmt->execute($params);
-        }
 
-        // Handle specifications
-        if (!empty($aiData['specifications'])) {
-            $productService = ProductService::getInstance();
-            $productService->saveSpecifications($product->id, $aiData['specifications']);
-        }
-
-        // Handle filterable attributes (Series, Memory Size, etc.)
-        if (!empty($aiData['attributes'])) {
-            $productService = $productService ?? ProductService::getInstance();
-            $productService->saveProductAttributes($product->id, $aiData['attributes']);
-        }
-
-        // Handle category auto-assignment if product has no categories
-        if (empty($categories) && !empty($aiData['suggested_category'])) {
-            $productService = $productService ?? ProductService::getInstance();
-            $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
-            if ($matchedCatId) {
-                $productService->assignCategory($product->id, $matchedCatId, true);
+            // Handle specifications
+            if (!empty($aiData['specifications'])) {
+                $productService = ProductService::getInstance();
+                $productService->saveSpecifications($product->id, $aiData['specifications']);
             }
-        }
 
-        // Handle brand attribute if detected and not already set
-        if (!empty($aiData['brand']) && empty($brand)) {
-            $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
+            // Handle filterable attributes (Series, Memory Size, etc.)
+            if (!empty($aiData['attributes'])) {
+                $productService = $productService ?? ProductService::getInstance();
+                $productService->saveProductAttributes($product->id, $aiData['attributes']);
+            }
+
+            // Handle category auto-assignment if product has no categories
+            if (empty($categories) && !empty($aiData['suggested_category'])) {
+                $productService = $productService ?? ProductService::getInstance();
+                $matchedCatId = $productService->matchCategory($aiData['suggested_category']);
+                if ($matchedCatId) {
+                    $productService->assignCategory($product->id, $matchedCatId, true);
+                }
+            }
+
+            // Handle brand attribute if detected and not already set
+            if (!empty($aiData['brand']) && empty($brand)) {
+                $this->handleBrandAttribute($db, $product->id, trim($aiData['brand']));
+            }
+
+            Database::commit();
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            error_log("makeProductionReady transaction failed for product {$product->id}: " . $e->getMessage());
+            $this->json([
+                'success' => false,
+                'message' => 'AI update failed and was rolled back: ' . $e->getMessage(),
+            ]);
+            return;
         }
 
         // Generate AI product images (if fewer than 4 exist)
@@ -2623,6 +2646,27 @@ class ProductController extends Controller
         }
         $value = strtolower(trim((string) $value));
         return in_array($value, ['1', 'yes', 'true', 'y', 'on']);
+    }
+
+    /**
+     * Reject AI-supplied numerics that are clearly hallucinated.
+     *
+     * Returns the value as float when it parses cleanly AND falls inside the
+     * plausible range; returns null otherwise so the caller skips the field.
+     * Catches things like negative weights, "N/A" strings, scientific
+     * notation explosions, and the 999999 spam GPT occasionally emits when
+     * it has no real spec data for a SKU.
+     */
+    private function clampAiNumeric($value, float $min, float $max): ?float
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $f = (float) $value;
+        if (!is_finite($f) || $f < $min || $f > $max) {
+            return null;
+        }
+        return $f;
     }
 
     /**

@@ -2564,7 +2564,7 @@ class ProductController extends Controller
      * specs, no images" looks identical to "AI worked fine but the
      * product simply isn't well-known" until you can see this list.
      */
-    private function describeMissingAiFields(?array $aiData): string
+    private function describeMissingAiFields(?array $aiData, int $imagesSaved = 0): string
     {
         if (!is_array($aiData)) {
             return '';
@@ -2582,13 +2582,40 @@ class ProductController extends Controller
         if (empty($aiData['attributes']) || !is_array($aiData['attributes']) || count($aiData['attributes']) === 0) {
             $missing[] = 'attributes';
         }
-        if (empty(trim((string) ($aiData['image_url'] ?? ''))) && empty($aiData['image_candidates'])) {
+        // Only flag images as missing if NEITHER the AI returned URLs
+        // NOR the image-search fallback (generateProductImages, inside
+        // applyAiDataToProduct) actually saved anything. The previous
+        // check fired on AI-returned URLs alone, which always claimed
+        // "missing: images" for OpenAI (it never returns image URLs)
+        // even when the fallback succeeded - misleading the operator
+        // into thinking images weren't saved when they actually were.
+        if ($imagesSaved === 0) {
             $missing[] = 'images';
         }
         if (empty(trim((string) ($aiData['meta_title'] ?? ''))) && empty(trim((string) ($aiData['meta_description'] ?? '')))) {
             $missing[] = 'seo';
         }
         return implode(', ', $missing);
+    }
+
+    /**
+     * Tell the operator the most useful next step based on which fields
+     * came back empty and which AI service ran. Images are the common
+     * failure case for OpenAI rows (no built-in web image search) and
+     * Claude rows return URLs but they sometimes 404 on download - the
+     * recommendation differs.
+     */
+    private function describeRemediation(string $missingCsv, string $serviceName): string
+    {
+        $isImagesOnly = trim($missingCsv) === 'images';
+        $isClaude = str_starts_with($serviceName, 'claude');
+        if ($isImagesOnly) {
+            if ($isClaude) {
+                return 'Claude returned image URLs but downloading failed - try the Media tab to upload manually, or rerun with a different model.';
+            }
+            return 'OpenAI cannot search the web for image URLs - switch the model to one of the Claude options (Haiku 4.5 is fastest) to get manufacturer images automatically, or upload via the Media tab.';
+        }
+        return 'Re-run on the edit page (AI: Make Production Ready) or try a different model.';
     }
 
     /**
@@ -3232,14 +3259,20 @@ class ProductController extends Controller
                         // from aiData.image_url + image_candidates (Claude's
                         // web_search returns the manufacturer URL). force=false
                         // so we don't clobber fields already set above.
+                        $applyResult = null;
                         try {
-                            ProductService::getInstance()->applyAiDataToProduct(
+                            $applyResult = ProductService::getInstance()->applyAiDataToProduct(
                                 (int) $existing['id'],
                                 $aiData,
                                 ['force' => false, 'generate_images' => true]
                             );
                         } catch (\Throwable $applyErr) {
                             $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
+                        }
+                        $imagesSaved = (int) ($applyResult['images_generated'] ?? 0);
+                        $missing = $this->describeMissingAiFields($aiData, $imagesSaved);
+                        if ($missing !== '') {
+                            $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {
@@ -3336,8 +3369,9 @@ class ProductController extends Controller
                     // ai_identified flag at all - gating on it dropped every
                     // OpenAI row's specs/attributes/images on the floor.
                     if ($aiData && $productId) {
+                        $applyResult = null;
                         try {
-                            ProductService::getInstance()->applyAiDataToProduct(
+                            $applyResult = ProductService::getInstance()->applyAiDataToProduct(
                                 $productId,
                                 $aiData,
                                 ['force' => false, 'generate_images' => true]
@@ -3345,9 +3379,10 @@ class ProductController extends Controller
                         } catch (\Throwable $applyErr) {
                             $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
                         }
-                        $missing = $this->describeMissingAiFields($aiData);
+                        $imagesSaved = (int) ($applyResult['images_generated'] ?? 0);
+                        $missing = $this->describeMissingAiFields($aiData, $imagesSaved);
                         if ($missing !== '') {
-                            $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. Re-run on the edit page or try a different model.";
+                            $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {

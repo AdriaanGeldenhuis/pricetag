@@ -1177,36 +1177,36 @@ class ProductImageService
         $html = $this->fetchUrl($searchUrl, $altAgent);
         if (!$html) return [];
 
-        // Bing embeds image URLs in data attributes: murl="https://..."
-        if (preg_match_all('/murl[&"]:\s*[&"]?(https?:\/\/[^"&]+\.(?:jpg|jpeg|png|webp)(?:\?[^"&]*)?)/i', $html, $matches)) {
-            foreach ($matches[1] as $url) {
-                $url = html_entity_decode($url, ENT_QUOTES);
-                $url = str_replace('&amp;', '&', $url);
-                if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                    $urls[] = $url;
+        // Bing wraps every image result in an <a class="iusc" m="{JSON}">
+        // tag whose JSON-encoded m attribute has the full image metadata.
+        // The JSON's " characters get HTML-entity-encoded to &quot; when
+        // serialised into the attribute, so the previous regex (which
+        // tried to match `murl"` or `murl&` directly without entity
+        // decoding) silently produced zero hits once Bing started always
+        // encoding. Extract the whole m attribute, decode entities, then
+        // JSON-decode to pull murl reliably.
+        if (preg_match_all('#<a[^>]*\bclass\s*=\s*["\'][^"\']*\biusc\b[^"\']*["\'][^>]*\bm\s*=\s*"([^"]+)"#i', $html, $matches)) {
+            foreach ($matches[1] as $attr) {
+                $decoded = html_entity_decode($attr, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $data = json_decode($decoded, true);
+                if (!is_array($data)) continue;
+                $candidate = (string) ($data['murl'] ?? '');
+                if ($candidate === '') continue;
+                if (!$this->isValidImageUrl($candidate)) continue;
+                if (!in_array($candidate, $urls, true)) {
+                    $urls[] = $candidate;
                     if (count($urls) >= $count) break;
                 }
             }
         }
 
-        // Fallback: look for imgurl in href parameters
+        // Older direct murl match (kept in case Bing serves an unencoded
+        // variant on some routes). No-op when the iusc path above worked.
         if (count($urls) < $count) {
-            if (preg_match_all('/imgurl:(https?[^&"]+)/i', $html, $matches)) {
+            if (preg_match_all('/"murl"\s*:\s*"(https?:\\\\?\/\\\\?\/[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*)?)"/i', $html, $matches)) {
                 foreach ($matches[1] as $url) {
-                    $url = urldecode($url);
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                        $urls[] = $url;
-                        if (count($urls) >= $count) break;
-                    }
-                }
-            }
-        }
-
-        // Fallback: data-src or src with real image URLs
-        if (count($urls) < $count) {
-            if (preg_match_all('/(?:data-src|src)="(https?:\/\/(?!www\.bing|tse\d)[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i', $html, $matches)) {
-                foreach ($matches[1] as $url) {
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                    $url = str_replace(['\\/', '\\\\/'], '/', $url);
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls, true)) {
                         $urls[] = $url;
                         if (count($urls) >= $count) break;
                     }
@@ -1296,30 +1296,38 @@ class ProductImageService
         $html = $this->fetchUrl($searchUrl, $altAgent);
         if (!$html) return [];
 
-        // Method 1: Full-size image URLs in Google's JSON data
-        if (preg_match_all('/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\s*\d+,\s*\d+\]/i', $html, $matches)) {
-            foreach ($matches[1] as $url) {
-                $url = str_replace(['\u003d', '\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
-                if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                    $urls[] = $url;
-                    if (count($urls) >= $count) break;
-                }
-            }
-        }
-
-        // Method 2: Generic image URLs in script tags
-        if (count($urls) < $count) {
-            if (preg_match_all('/"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/', $html, $matches)) {
+        // Google's image search has cycled through several JS data shapes -
+        // current version embeds the result list inside AF_initDataCallback
+        // with the original image URL prefixed by "ou":"...". Try the
+        // specific patterns first, then back off to permissive matchers
+        // so the search still returns something when Google changes shape.
+        $patterns = [
+            // 1. "ou":"https://example.com/image.jpg" - current dominant key
+            '#"ou"\s*:\s*"(https?:(?:\\\\/\\\\/|//)[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)"#i',
+            // 2. data-iurl / data-src previews on the results page
+            '#\bdata-(?:iurl|src)="(https?://[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)"#i',
+            // 3. Generic "imageUrl" / "url" / "image" / "src" JSON keys
+            '#"(?:imageUrl|url|image|src)"\s*:\s*"(https?:(?:\\\\/\\\\/|//)[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)"#i',
+            // 4. Old array form ["URL", w, h]
+            '#\["(https?://[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)",\s*\d+,\s*\d+\]#i',
+        ];
+        foreach ($patterns as $pat) {
+            if (count($urls) >= $count) break;
+            if (preg_match_all($pat, $html, $matches)) {
                 foreach ($matches[1] as $url) {
-                    $url = str_replace(['\\u003d', '\\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                    // Decode JS string escapes Google sprinkles into the blob.
+                    $url = str_replace(
+                        ['\u003d', '\u0026', '\u002F', '\\/'],
+                        ['=', '&', '/', '/'],
+                        $url
+                    );
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls, true)) {
                         $urls[] = $url;
                         if (count($urls) >= $count) break;
                     }
                 }
             }
         }
-
         $this->recordDebug([
             'kind' => 'search', 'engine' => 'google',
             'query' => $query, 'urls_found' => count($urls),

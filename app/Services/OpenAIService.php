@@ -40,6 +40,14 @@ class OpenAIService
      */
     private array $imageDebugLog = [];
 
+    /**
+     * HTTP code + curl error from the most recent fetchPage() call. Set
+     * by fetchPage() and read by the page_fetch debug recorders so the
+     * trail can say "fetch_failed HTTP 404" instead of just "fetch_failed".
+     */
+    private int $lastFetchHttpCode = 0;
+    private string $lastFetchCurlError = '';
+
     public function getImageDebugLog(): array
     {
         return $this->imageDebugLog;
@@ -1176,7 +1184,7 @@ class OpenAIService
             $page = $this->fetchPage($directUrl);
             $bytes = is_string($page) ? strlen($page) : 0;
             $bot = $page ? $this->isBotCheckPage($page) : false;
-            $outcome = !$page ? 'fetch_failed'
+            $outcome = !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : ''))
                 : ($bot ? 'bot_check'
                 : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok'));
             $this->recordImageDebug([
@@ -1253,7 +1261,7 @@ class OpenAIService
                     $this->recordImageDebug([
                         'kind' => 'page_fetch',
                         'url' => $url,
-                        'outcome' => !$page ? 'fetch_failed' : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                        'outcome' => !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : '')) : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
                         'bytes' => $bytes,
                     ]);
                     if ($page && $bytes > 1000 && !$bot) {
@@ -1274,13 +1282,65 @@ class OpenAIService
                     $this->recordImageDebug([
                         'kind' => 'page_fetch',
                         'url' => $url,
-                        'outcome' => !$page ? 'fetch_failed' : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                        'outcome' => !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : '')) : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
                         'bytes' => $bytes,
                     ]);
                     if ($page && $bytes > 1000 && !$bot) {
                         $this->lastFetchedPageUrl = $url;
                         return $page;
                     }
+                }
+            }
+        }
+
+        // Last strategy: any of the top N DDG result URLs that look like
+        // a real product page. Manufacturer and trusted-spec-site filters
+        // exclude retailers (Newegg, PCPartPicker, Amazon, etc.) that
+        // routinely set og:image to the actual product photo and don't
+        // bot-check casual scrapes. Cap at 5 to keep one row under a
+        // reasonable wall-clock.
+        $rejectDomains = [
+            'youtube.com', 'youtu.be', 'reddit.com', 'twitter.com', 'x.com',
+            'facebook.com', 'instagram.com', 'tiktok.com', 'pinterest.com',
+            'linkedin.com', 'quora.com', 'wikipedia.org/wiki/Special:',
+        ];
+        $tried = 0;
+        foreach ($resultUrls as $url) {
+            if ($tried >= 5) break;
+            $skip = false;
+            foreach ($rejectDomains as $d) {
+                if (stripos($url, $d) !== false) { $skip = true; break; }
+            }
+            if ($skip) continue;
+            // Already tried in the manufacturer / spec-site loops above.
+            if ($manufacturerDomain && stripos($url, $manufacturerDomain) !== false) continue;
+            $alreadyTried = false;
+            foreach ($trustedSpecSites as $specSite) {
+                if (stripos($url, $specSite) !== false) { $alreadyTried = true; break; }
+            }
+            if ($alreadyTried) continue;
+
+            $tried++;
+            $page = $this->fetchPage($url);
+            $bytes = is_string($page) ? strlen($page) : 0;
+            $bot = $page ? $this->isBotCheckPage($page) : false;
+            $this->recordImageDebug([
+                'kind' => 'page_fetch',
+                'url' => $url,
+                'outcome' => !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : '')) : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                'bytes' => $bytes,
+                'strategy' => 'generic_ddg',
+            ]);
+            if ($page && $bytes > 1000 && !$bot) {
+                // Only accept the page for image harvest if it actually
+                // contains an og:image - we don't want a Reddit thread
+                // or forum post as a "manufacturer page". The page's
+                // text won't be used here (specs come from DDG snippets
+                // already), so we only care that there's at least one
+                // image to harvest.
+                if (preg_match('#<meta[^>]+(?:property|name)\s*=\s*["\'](?:og:image|twitter:image)#i', $page)) {
+                    $this->lastFetchedPageUrl = $url;
+                    return $page;
                 }
             }
         }
@@ -1316,7 +1376,11 @@ class OpenAIService
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
         curl_close($ch);
+
+        $this->lastFetchHttpCode = (int) $httpCode;
+        $this->lastFetchCurlError = (string) $curlErr;
 
         if ($httpCode !== 200 || empty($response)) {
             return null;

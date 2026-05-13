@@ -2557,6 +2557,41 @@ class ProductController extends Controller
     }
 
     /**
+     * Return a short, user-facing list of which content fields the AI
+     * didn't fill. Empty string when the response was complete. Used so
+     * the operator can see *which* fields are missing per row without
+     * needing server-log access - the symptom "description blank, no
+     * specs, no images" looks identical to "AI worked fine but the
+     * product simply isn't well-known" until you can see this list.
+     */
+    private function describeMissingAiFields(?array $aiData): string
+    {
+        if (!is_array($aiData)) {
+            return '';
+        }
+        $missing = [];
+        if (empty(trim((string) ($aiData['description'] ?? '')))) {
+            $missing[] = 'description';
+        }
+        if (empty(trim((string) ($aiData['short_description'] ?? '')))) {
+            $missing[] = 'short_description';
+        }
+        if (empty($aiData['specifications']) || !is_array($aiData['specifications'])) {
+            $missing[] = 'specifications';
+        }
+        if (empty($aiData['attributes']) || !is_array($aiData['attributes']) || count($aiData['attributes']) === 0) {
+            $missing[] = 'attributes';
+        }
+        if (empty(trim((string) ($aiData['image_url'] ?? ''))) && empty($aiData['image_candidates'])) {
+            $missing[] = 'images';
+        }
+        if (empty(trim((string) ($aiData['meta_title'] ?? ''))) && empty(trim((string) ($aiData['meta_description'] ?? '')))) {
+            $missing[] = 'seo';
+        }
+        return implode(', ', $missing);
+    }
+
+    /**
      * Pull import option flags out of $_POST or a queued job payload with
      * the same defaults applied either way.
      */
@@ -3297,6 +3332,10 @@ class ProductController extends Controller
                             );
                         } catch (\Throwable $applyErr) {
                             $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
+                        }
+                        $missing = $this->describeMissingAiFields($aiData);
+                        if ($missing !== '') {
+                            $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. Re-run on the edit page or try a different model.";
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {

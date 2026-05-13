@@ -119,9 +119,10 @@ class Scheduler
         }
 
         // Delegate the actual row processing to the controller's worker
-        // method so we have one canonical implementation. Constructed
-        // without going through the router because we're running in CLI.
-        $processor = new \App\Admin\Controllers\ProductController();
+        // method so we have one canonical implementation. The class lives
+        // under the Admin\ namespace which the bootstrap autoloader maps
+        // to /admin/Controllers/ - do NOT prefix with App\.
+        $processor = new \Admin\Controllers\ProductController();
         try {
             $result = $processor->processImportJob($job, $jobService);
             return "Job #{$job['id']}: created={$result['created']}, updated={$result['updated']}, failed={$result['failed']}";

@@ -593,7 +593,7 @@
             </div>
 
             <div class="template-links">
-                <button type="button" id="aiGenerateBtn" class="template-link template-link-ai" title="Import using only SKU + Vendor + Cost + Category - AI fills the rest">
+                <button type="button" id="aiGenerate" class="template-link template-link-ai" title="Import using only SKU + Vendor + Cost + Category - AI fills the rest">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
                     </svg>
@@ -781,7 +781,7 @@
                     </div>
                 </label>
                 <label class="import-option" style="border: 1px solid rgba(139, 92, 246, 0.4); background: rgba(139, 92, 246, 0.08);">
-                    <input type="checkbox" id="aiGenerate">
+                    <input type="checkbox" id="aiGenerateAll">
                     <div class="import-option-content">
                         <h5 style="color: #a78bfa;">AI Generate Missing Data</h5>
                         <p>Fill ALL empty fields: names, descriptions, SEO, specs, categories, brand, weight, and product images. Only SKU is required.</p>
@@ -1204,7 +1204,7 @@ document.addEventListener('DOMContentLoaded', function() {
         step2.classList.add('completed');
         startImportBtn.disabled = false;
         const dryRunBtn = document.getElementById('dryRunBtn');
-        if (dryRunBtn) dryRunBtn.disabled = !document.getElementById('aiGenerate').checked;
+        if (dryRunBtn) dryRunBtn.disabled = !document.getElementById('aiGenerateAll').checked;
         updatePreview();
     }
 
@@ -1361,10 +1361,20 @@ document.addEventListener('DOMContentLoaded', function() {
     clearMappingBtn.addEventListener('click', clearAllMappings);
 
     function checkMappingComplete() {
-        // When AI is enabled, only SKU is required - AI fills everything else
-        const aiEnabled = document.getElementById('aiGenerate').checked;
-        const requiredFields = aiEnabled ? ['sku'] : ['sku', 'name', 'price'];
-        const allMapped = requiredFields.every(f => columnMapping[f]);
+        // When AI is enabled, we need SKU + Cost Price + Vendor (mapped or default) + Category (mapped or default).
+        // Backend has graceful fallback for vendor/category via defaults from the AI Settings panel.
+        const aiEnabled = document.getElementById('aiGenerateAll').checked;
+        let allMapped;
+        if (aiEnabled) {
+            const defaultVendor = document.getElementById('defaultVendor');
+            const defaultCategory = document.getElementById('defaultCategory');
+            const hasVendor = !!columnMapping['vendor'] || (defaultVendor && defaultVendor.value);
+            const hasCategory = !!columnMapping['category'] || (defaultCategory && defaultCategory.value);
+            allMapped = !!columnMapping['sku'] && !!columnMapping['cost_price'] && hasVendor && hasCategory;
+        } else {
+            const requiredFields = ['sku', 'name', 'price'];
+            allMapped = requiredFields.every(f => columnMapping[f]);
+        }
 
         if (allMapped) {
             enableStep3();
@@ -1409,9 +1419,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // AI Generate checkbox - re-check required mappings when toggled
     function setAiMode(on) {
-        const aiCheckbox = document.getElementById('aiGenerate');
+        const aiCheckbox = document.getElementById('aiGenerateAll');
         const aiSettings = document.getElementById('aiSettings');
-        const aiBtn = document.getElementById('aiGenerateBtn');
+        const aiBtn = document.getElementById('aiGenerate');
         const dryRunBtn = document.getElementById('dryRunBtn');
         const nameRequired = document.getElementById('nameRequiredBadge');
         const nameAi = document.getElementById('nameAiBadge');
@@ -1429,10 +1439,18 @@ document.addEventListener('DOMContentLoaded', function() {
         checkMappingComplete();
     }
 
-    document.getElementById('aiGenerate').addEventListener('change', e => setAiMode(e.target.checked));
-    if (document.getElementById('aiGenerateBtn')) {
-        document.getElementById('aiGenerateBtn').addEventListener('click', () => {
-            setAiMode(!document.getElementById('aiGenerate').checked);
+    document.getElementById('aiGenerateAll').addEventListener('change', e => setAiMode(e.target.checked));
+
+    // Re-check required mappings when the AI Settings default-vendor or
+    // default-category selects change - picking a default should unblock
+    // the Import button if everything else is mapped.
+    ['defaultVendor', 'defaultCategory'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => checkMappingComplete());
+    });
+    if (document.getElementById('aiGenerate')) {
+        document.getElementById('aiGenerate').addEventListener('click', () => {
+            setAiMode(!document.getElementById('aiGenerateAll').checked);
             const step3 = document.getElementById('step3');
             if (step3) step3.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
@@ -1552,7 +1570,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateExisting: document.getElementById('updateExisting').checked,
             createNew: document.getElementById('createNew').checked,
             skipErrors: document.getElementById('skipErrors').checked,
-            aiGenerate: document.getElementById('aiGenerate').checked,
+            aiGenerate: document.getElementById('aiGenerateAll').checked,
             aiFields: aiFields,
             marginPercent: document.getElementById('marginPercent') ? document.getElementById('marginPercent').value || '0' : '0',
             vatRate: document.getElementById('vatRate') ? document.getElementById('vatRate').value || '0' : '0',

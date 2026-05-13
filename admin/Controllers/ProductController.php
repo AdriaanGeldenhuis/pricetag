@@ -3181,14 +3181,19 @@ class ProductController extends Controller
                     }
                     $this->updateProductFromImport($db, (int) $existing['id'], $row, $categoryMap);
                     if ($aiData) {
-                        $this->saveAiProductSpecifications($db, (int) $existing['id'], $aiData['specifications'] ?? []);
-                        $this->saveAiProductAttributes($db, (int) $existing['id'], $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
-                    }
-                    if ($aiData && !empty($aiData['image_url'])) {
-                        $hasImage = (int) $this->q($db, "SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$existing['id']])->fetchColumn();
-                        if ($hasImage === 0) {
-                            try { $this->importProductImage($db, (int) $existing['id'], $aiData['image_url']); }
-                            catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
+                        // Single comprehensive write path: specs, attributes,
+                        // brand attribute, category sync, AND up to 4 images
+                        // from aiData.image_url + image_candidates (Claude's
+                        // web_search returns the manufacturer URL). force=false
+                        // so we don't clobber fields already set above.
+                        try {
+                            ProductService::getInstance()->applyAiDataToProduct(
+                                (int) $existing['id'],
+                                $aiData,
+                                ['force' => false, 'generate_images' => true]
+                            );
+                        } catch (\Throwable $applyErr) {
+                            $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {
@@ -3278,13 +3283,21 @@ class ProductController extends Controller
 
                     $productId = $this->createProductFromImport($db, $row, $categoryMap);
 
-                    if ($aiData && $aiIdentified && $productId) {
-                        $this->saveAiProductSpecifications($db, $productId, $aiData['specifications'] ?? []);
-                        $this->saveAiProductAttributes($db, $productId, $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
-                    }
-                    if ($aiData && $aiIdentified && $productId && !empty($aiData['image_url'])) {
-                        try { $this->importProductImage($db, $productId, $aiData['image_url']); }
-                        catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
+                    // Apply AI data (specs, attributes, brand, up to 4 images
+                    // from image_url + image_candidates) regardless of whether
+                    // ai_identified is true. OpenAI doesn't return an
+                    // ai_identified flag at all - gating on it dropped every
+                    // OpenAI row's specs/attributes/images on the floor.
+                    if ($aiData && $productId) {
+                        try {
+                            ProductService::getInstance()->applyAiDataToProduct(
+                                $productId,
+                                $aiData,
+                                ['force' => false, 'generate_images' => true]
+                            );
+                        } catch (\Throwable $applyErr) {
+                            $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
+                        }
                     }
                     if ($aiGenerate && $aiResult !== null) {
                         $this->logAiImport($db, $productId ?: null, $sku, $aiServiceName, $aiResult);

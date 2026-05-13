@@ -2475,6 +2475,31 @@ class ProductController extends Controller
     }
 
     /**
+     * Build a short, user-facing reason string for why the AI did not return
+     * a usable product name. Pulls from the AI service's structured result
+     * so the import error message tells the operator *why* a row stubbed out.
+     */
+    private function describeAiFailure(?array $aiResult, string $serviceName): string
+    {
+        if ($aiResult === null) {
+            return "ai={$serviceName}, no_call";
+        }
+        $method = $aiResult['method'] ?? 'unknown';
+        if ($method === 'fallback') {
+            $reason = (string) ($aiResult['fallback_reason'] ?? 'unknown');
+            return "ai={$serviceName}, fallback: " . substr($reason, 0, 120);
+        }
+        $data = $aiResult['data'] ?? [];
+        if (empty($data['ai_identified'])) {
+            return "ai={$serviceName}, model returned ai_identified=false";
+        }
+        if (empty($data['name'])) {
+            return "ai={$serviceName}, model returned empty name";
+        }
+        return "ai={$serviceName}, name rejected by validator";
+    }
+
+    /**
      * Pull import option flags out of $_POST or a queued job payload with
      * the same defaults applied either way.
      */
@@ -3170,7 +3195,8 @@ class ProductController extends Controller
                             $name = $sku;
                             $row['name'] = $sku;
                             $row['status'] = 'draft';
-                            $errors[] = "Row {$rowNum}: AI could not identify SKU {$sku} - created as draft for manual review";
+                            $reason = $this->describeAiFailure($aiResult, $aiServiceName);
+                            $errors[] = "Row {$rowNum}: AI could not identify SKU {$sku} ({$reason}) - created as draft for manual review";
                         } else {
                             if ($skipErrors) {
                                 $errors[] = "Row {$rowNum}: Name is required for new products";

@@ -71,8 +71,8 @@ class ClaudeService
         }
 
         $isBulkImport = !empty($context['bulk_import']);
-        $maxTokens = $isBulkImport ? 6000 : 12000;
-        $timeout = $isBulkImport ? 60 : 120;
+        $maxTokens = $isBulkImport ? 16000 : 16000;
+        $timeout = $isBulkImport ? 120 : 180;
 
         $systemBlocks = $this->buildSystemBlocks();
         $userPrompt = $this->buildUserPrompt($sku, $shortDescription, $context);
@@ -107,17 +107,23 @@ class ClaudeService
             // Extract image URLs from web_search results
             $imageCandidates = $this->extractImageCandidates($response);
 
+            $stopReason = (string) ($response['stop_reason'] ?? '');
+
             // Extract the final text block - the JSON we asked for
             $jsonText = $this->extractFinalText($response);
             if ($jsonText === '') {
-                return $this->buildFallback($sku, 'no_text_response', $this->extractUsage($response));
+                $reason = $stopReason !== '' ? "no_text_response(stop={$stopReason})" : 'no_text_response';
+                return $this->buildFallback($sku, $reason, $this->extractUsage($response));
             }
 
             $jsonText = $this->stripCodeFences($jsonText);
             $data = json_decode($jsonText, true);
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
-                error_log('ClaudeService JSON parse failed: ' . json_last_error_msg() . ' :: raw="' . substr($jsonText, 0, 200) . '"');
-                return $this->buildFallback($sku, 'json_parse_failed', $this->extractUsage($response));
+                error_log('ClaudeService JSON parse failed: ' . json_last_error_msg() . ' :: stop=' . $stopReason . ' :: raw="' . substr($jsonText, 0, 200) . '"');
+                $reason = $stopReason === 'max_tokens'
+                    ? 'json_truncated_at_max_tokens'
+                    : 'json_parse_failed: ' . json_last_error_msg();
+                return $this->buildFallback($sku, $reason, $this->extractUsage($response));
             }
 
             $data = $this->validateAndNormalize($data, $sku, $imageCandidates);

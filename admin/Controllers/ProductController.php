@@ -1120,7 +1120,7 @@ class ProductController extends Controller
             return;
         }
 
-        $openai = new OpenAIService();
+        [$aiService, $aiServiceName] = $this->resolveAiService();
 
         // Get product brand from attributes
         $db = Database::getInstance();
@@ -1141,7 +1141,7 @@ class ProductController extends Controller
         $categoryName = !empty($categories) ? $categories[0]['name'] : '';
 
         // Use the SAME pipeline as everything else - pattern match first, then AI
-        $result = $openai->generateCompleteProduct($product->sku, $product->short_description ?? '', [
+        $result = $aiService->generateCompleteProduct($product->sku, $product->short_description ?? '', [
             'brand' => $brand,
             'category' => $categoryName,
             'price' => $product->price,
@@ -1178,10 +1178,10 @@ class ProductController extends Controller
             return;
         }
 
-        $openai = new OpenAIService();
+        [$aiService, $aiServiceName] = $this->resolveAiService();
 
-        if (!$openai->isConfigured()) {
-            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+        if ($aiServiceName === 'openai' && !$aiService->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'No AI key configured. Add ANTHROPIC_API_KEY (recommended, has image search) or OPENAI_API_KEY to .env.']);
             return;
         }
 
@@ -1204,7 +1204,7 @@ class ProductController extends Controller
         $categoryName = !empty($categories) ? $categories[0]['name'] : '';
 
         // Call comprehensive AI generation
-        $result = $openai->generateCompleteProduct($product->sku, $product->short_description ?? '', [
+        $result = $aiService->generateCompleteProduct($product->sku, $product->short_description ?? '', [
             'brand' => $brand,
             'category' => $categoryName,
             'price' => $product->price,
@@ -1213,7 +1213,8 @@ class ProductController extends Controller
         ]);
 
         if (empty($result['success']) || empty($result['data'])) {
-            $this->json(['success' => false, 'message' => $result['error'] ?? 'AI generation failed']);
+            $reason = $result['fallback_reason'] ?? $result['error'] ?? 'AI generation failed';
+            $this->json(['success' => false, 'message' => "AI generation failed (ai={$aiServiceName}, {$reason})"]);
             return;
         }
 

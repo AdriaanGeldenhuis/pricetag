@@ -2835,12 +2835,12 @@ class ProductController extends Controller
             }
         }
 
-        $this->q($db, 
+        $this->q($db,
             "INSERT INTO products
              (name, slug, sku, description, short_description, price, compare_price, cost_price,
-              category_id, vendor_id, stock_quantity, low_stock_threshold, weight, length, width, height,
+              vendor_id, stock_quantity, low_stock_threshold, weight, length, width, height,
               meta_title, meta_description, meta_keywords, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
             [
                 $name, $slug, $sku,
                 $row['description'] ?? '',
@@ -2848,7 +2848,7 @@ class ProductController extends Controller
                 !empty($row['price']) ? (float) $row['price'] : 0,
                 !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
                 !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
-                $categoryId, $vendorId,
+                $vendorId,
                 !empty($row['stock']) ? (int) $row['stock'] : 0,
                 10,
                 !empty($row['weight']) ? (float) $row['weight'] : null,
@@ -2861,7 +2861,9 @@ class ProductController extends Controller
                 $status,
             ]
         );
-        return (int) $db->lastInsertId();
+        $productId = (int) $db->lastInsertId();
+        $this->syncImportProductCategory($db, $productId, $categoryId);
+        return $productId;
     }
 
     private function updateProductFromImport(\PDO $db, int $productId, array $row, array $categoryMap): void
@@ -2894,13 +2896,10 @@ class ProductController extends Controller
                 $params[] = $value;
             }
         }
+        $categoryId = null;
         if (!empty($row['category'])) {
             $catKey = is_numeric($row['category']) ? (int) $row['category'] : strtolower(trim((string) $row['category']));
             $categoryId = $categoryMap[$catKey] ?? null;
-            if ($categoryId) {
-                $updates[] = "category_id = ?";
-                $params[] = $categoryId;
-            }
         }
         $vendorId = null;
         if (!empty($row['vendor_id'])) {
@@ -2929,6 +2928,24 @@ class ProductController extends Controller
             $params[] = $productId;
             $this->q($db, "UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?", $params);
         }
+        $this->syncImportProductCategory($db, $productId, $categoryId);
+    }
+
+    /**
+     * Categories on products are a M2M relation via `product_categories`,
+     * not a column on `products`. When an import row carries a single
+     * category, replace any existing rows and mark this one primary.
+     */
+    private function syncImportProductCategory(\PDO $db, int $productId, ?int $categoryId): void
+    {
+        if ($categoryId === null) {
+            return;
+        }
+        $this->q($db, "DELETE FROM product_categories WHERE product_id = ?", [$productId]);
+        $this->q($db,
+            "INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)",
+            [$productId, $categoryId]
+        );
     }
 
     /**
@@ -3062,8 +3079,11 @@ class ProductController extends Controller
                                     $row[$f] = (float) $aiData[$f];
                                 }
                             }
-                            if (empty($existingProduct['category_id']) && !empty($aiData['suggested_category'])) {
-                                $row['category'] = $aiData['suggested_category'];
+                            if (!empty($aiData['suggested_category']) && empty($row['category'])) {
+                                $hasCategory = (int) $this->q($db, "SELECT COUNT(*) FROM product_categories WHERE product_id = ?", [$existing['id']])->fetchColumn();
+                                if ($hasCategory === 0) {
+                                    $row['category'] = $aiData['suggested_category'];
+                                }
                             }
                         }
                     }

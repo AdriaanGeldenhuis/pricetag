@@ -132,7 +132,7 @@
 
                     <?php if ($category): ?>
                     <?php
-                    $productCount = db()->query("SELECT COUNT(*) FROM products WHERE category_id = ?", [$category['id']])->fetchColumn();
+                    $productCount = db()->query("SELECT COUNT(*) FROM product_categories WHERE category_id = ?", [$category['id']])->fetchColumn();
                     $childCount = db()->query("SELECT COUNT(*) FROM categories WHERE parent_id = ?", [$category['id']])->fetchColumn();
                     ?>
                     <?php if ($productCount == 0 && $childCount == 0): ?>

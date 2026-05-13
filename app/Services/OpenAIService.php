@@ -1293,12 +1293,14 @@ class OpenAIService
             }
         }
 
-        // Last strategy: any of the top N DDG result URLs that look like
-        // a real product page. Manufacturer and trusted-spec-site filters
-        // exclude retailers (Newegg, PCPartPicker, Amazon, etc.) that
-        // routinely set og:image to the actual product photo and don't
-        // bot-check casual scrapes. Cap at 5 to keep one row under a
-        // reasonable wall-clock.
+        // Last strategy: any of the top N DDG result URLs whose URL slug
+        // actually contains the SKU or model number. Without this
+        // relevance gate, the previous run grabbed og:image from random
+        // pages DDG happened to return - including a Christmas-garland
+        // image and a European-street-scene image - because those pages
+        // had og:image set to their site banner, and we treated "page
+        // has og:image" as "page is the product". Now we require the
+        // result URL to match the SKU or model before fetching.
         $rejectDomains = [
             'youtube.com', 'youtu.be', 'reddit.com', 'twitter.com', 'x.com',
             'facebook.com', 'instagram.com', 'tiktok.com', 'pinterest.com',
@@ -1320,6 +1322,19 @@ class OpenAIService
             }
             if ($alreadyTried) continue;
 
+            // RELEVANCE GATE: refuse to fetch a page whose URL slug bears
+            // no relation to the SKU we're looking up. This is what stops
+            // a random festive shop page from being treated as the
+            // product page just because it shipped up in the SERP.
+            if (!$this->urlMatchesProduct($url, $brand, $sku, $productName)) {
+                $this->recordImageDebug([
+                    'kind' => 'page_fetch_skipped',
+                    'url' => $url,
+                    'reason' => 'url_does_not_match_sku',
+                ]);
+                continue;
+            }
+
             $tried++;
             $page = $this->fetchPage($url);
             $bytes = is_string($page) ? strlen($page) : 0;
@@ -1332,12 +1347,6 @@ class OpenAIService
                 'strategy' => 'generic_ddg',
             ]);
             if ($page && $bytes > 1000 && !$bot) {
-                // Only accept the page for image harvest if it actually
-                // contains an og:image - we don't want a Reddit thread
-                // or forum post as a "manufacturer page". The page's
-                // text won't be used here (specs come from DDG snippets
-                // already), so we only care that there's at least one
-                // image to harvest.
                 if (preg_match('#<meta[^>]+(?:property|name)\s*=\s*["\'](?:og:image|twitter:image)#i', $page)) {
                     $this->lastFetchedPageUrl = $url;
                     return $page;
@@ -1347,6 +1356,48 @@ class OpenAIService
 
         $this->recordImageDebug(['kind' => 'no_page_found']);
         return null;
+    }
+
+    /**
+     * True when $resultUrl looks like it's about the SKU we're looking
+     * up. Used to reject random DDG results that happened to surface
+     * for a generic query. Checks (in order of decreasing strictness):
+     *   1. URL contains the full cleaned SKU
+     *   2. URL contains the SKU with brand-prefix and separators stripped
+     *   3. URL contains a GPU-family model fragment (RTX 5080, RX 9070, ...)
+     */
+    private function urlMatchesProduct(string $resultUrl, string $brand, string $sku, string $productName): bool
+    {
+        $haystack = preg_replace('/[^a-z0-9]/i', '', strtolower($resultUrl));
+        if ($haystack === '') return false;
+
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+        $skuNorm = preg_replace('/[^a-z0-9]/i', '', strtolower($cleanSku));
+        if (strlen($skuNorm) >= 5 && strpos($haystack, $skuNorm) !== false) {
+            return true;
+        }
+
+        // SKU with brand prefix stripped (e.g. "GV-N506TWF2MAX OC-8GD" -> "N506TWF2MAXOC8GD")
+        $stripped = preg_replace('/^' . preg_quote($brand, '/') . '[\s\-]+/i', '', $cleanSku);
+        $strippedNorm = preg_replace('/[^a-z0-9]/i', '', strtolower($stripped));
+        if (strlen($strippedNorm) >= 6 && strpos($haystack, $strippedNorm) !== false) {
+            return true;
+        }
+
+        // GPU/CPU model family + number (RTX 5080, GTX 1660, RX 7900 XT,
+        // Radeon 7900, Ryzen 9 7950X, etc.). Pulled from product name OR
+        // SKU since some SKUs only have a part code with no model in it.
+        $modelHaystack = $sku . ' ' . $productName;
+        if (preg_match_all('/(?:RTX|GTX|RX|Radeon|Ryzen|Core\s*i\d|GeForce)\s*[\s\-]*([A-Z]?\d{3,5})(?:\s*(?:Ti|XT|Super|XTX))?/i', $modelHaystack, $matches)) {
+            foreach ($matches[0] as $modelHit) {
+                $modelNorm = preg_replace('/[^a-z0-9]/i', '', strtolower($modelHit));
+                if (strlen($modelNorm) >= 5 && strpos($haystack, $modelNorm) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1483,6 +1534,19 @@ class OpenAIService
                 '1x1.', 'pixel.gif', 'spacer.', 'blank.gif',
                 'social-', 'icon-', '/icons/', '/flags/',
                 'placeholder', 'loading.gif', 'loader.gif',
+                // Banner/header/site-branding hints. These are what made
+                // the previous run attach a Christmas-garland og:image
+                // and a European-street-scene og:image to two GPU rows -
+                // the random pages had og:image=their site banner and we
+                // accepted it. Reject anything whose URL path strongly
+                // hints at "site banner" rather than "product photo".
+                'banner', 'hero-image', 'header.jpg', 'header.png',
+                'masthead', 'site-logo', '/branding/', '/wallpaper',
+                'background.', 'cover.', 'avatar', 'profile-',
+                // Stock-photo / festive themes - any of these in a path
+                // is a strong signal it isn't this SKU's product image.
+                'christmas', 'holiday', 'winter', 'summer-sale',
+                'lifestyle', 'stock-photo',
             ];
             foreach ($skipPatterns as $sp) {
                 if (str_contains($lower, $sp)) return;

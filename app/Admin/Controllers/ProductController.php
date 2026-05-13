@@ -1133,6 +1133,85 @@ class ProductController extends Controller
      * Import product image from URL
      */
     /**
+     * Dry-run: call AI on a single row and return the parsed response
+     * without saving anything. Lets the user check naming, image URL,
+     * specs etc. for one product before kicking off a full bulk import.
+     */
+    public function importDryRun(): void
+    {
+        set_time_limit(120);
+        header('Content-Type: application/json');
+
+        if (!$this->validateCsrf()) {
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+            exit;
+        }
+
+        $row = json_decode($_POST['row'] ?? '{}', true);
+        if (!is_array($row)) {
+            $row = [];
+        }
+        $marginPercent = max(0.0, (float) ($_POST['margin_percent'] ?? 0));
+        $vatRate = max(0.0, (float) ($_POST['vat_rate'] ?? 0));
+
+        $sku = trim((string) ($row['sku'] ?? ''));
+        if ($sku === '') {
+            echo json_encode(['success' => false, 'error' => 'SKU is required for dry-run']);
+            exit;
+        }
+
+        try {
+            [$aiService, $aiServiceName] = $this->resolveAiService();
+            $aiResult = $aiService->generateCompleteProduct($sku, trim((string) ($row['short_description'] ?? '')), [
+                'brand' => $row['brand'] ?? '',
+                'category' => $row['category'] ?? '',
+                'price' => $row['price'] ?? 0,
+                'existingName' => $row['name'] ?? '',
+                'bulk_import' => true,
+            ]);
+
+            $data = $aiResult['data'] ?? [];
+            $cost = !empty($row['cost_price']) ? (float) $row['cost_price'] : null;
+            $calculatedPrice = $cost !== null
+                ? round($cost * (1 + $marginPercent / 100) * (1 + $vatRate / 100), 2)
+                : null;
+
+            echo json_encode([
+                'success' => !empty($aiResult['success']),
+                'ai_service' => $aiServiceName,
+                'method' => $aiResult['method'] ?? 'unknown',
+                'fallback_reason' => $aiResult['fallback_reason'] ?? null,
+                'ai_identified' => !empty($data['ai_identified']),
+                'preview' => [
+                    'name' => $data['name'] ?? '',
+                    'brand' => $this->normalizeBrand((string) ($data['brand'] ?? '')),
+                    'suggested_category' => $data['suggested_category'] ?? '',
+                    'short_description' => $data['short_description'] ?? '',
+                    'description' => $data['description'] ?? '',
+                    'image_url' => $data['image_url'] ?? '',
+                    'image_candidates' => array_slice($data['image_candidates'] ?? [], 0, 4),
+                    'specifications' => array_slice($data['specifications'] ?? [], 0, 12),
+                    'attributes' => $data['attributes'] ?? [],
+                    'weight' => $data['weight'] ?? null,
+                    'dimensions' => trim(($data['length'] ?? '') . ' x ' . ($data['width'] ?? '') . ' x ' . ($data['height'] ?? ''), ' x'),
+                    'is_new' => !empty($data['is_new']),
+                ],
+                'pricing' => [
+                    'cost_excl_vat' => $cost,
+                    'margin_percent' => $marginPercent,
+                    'vat_rate' => $vatRate,
+                    'calculated_sell_price_incl_vat' => $calculatedPrice,
+                ],
+                'usage' => $aiResult['usage'] ?? null,
+            ], JSON_UNESCAPED_SLASHES);
+            exit;
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
      * Pick the AI service for bulk imports. Claude (with web search) when
      * ANTHROPIC_API_KEY is configured, otherwise fall back to OpenAI so
      * existing installs keep working without an env change.
@@ -1146,28 +1225,189 @@ class ProductController extends Controller
         return [new OpenAIService(), 'openai'];
     }
 
+    /**
+     * Record one AI import attempt - kept separate from the row insert so the
+     * same SKU can be re-imported later from the captured response without
+     * paying for another AI call. Silently no-ops if the audit table doesn't
+     * exist yet (migration 018 not applied) - existing installs keep working.
+     */
+    private function logAiImport(
+        \PDO $db,
+        ?int $productId,
+        string $sku,
+        string $aiService,
+        array $aiResult
+    ): void {
+        try {
+            $data = $aiResult['data'] ?? [];
+            $usage = $aiResult['usage'] ?? [];
+            $method = $aiResult['method'] ?? 'unknown';
+            $identified = !empty($data['ai_identified']);
+            $confidence = $identified ? 'high' : ($method === 'fallback' ? 'unknown' : 'low');
+
+            // Strip image_candidates from the stored response - they can be 4+ huge URLs
+            $storedData = $data;
+            unset($storedData['image_candidates']);
+
+            $db->query(
+                "INSERT INTO product_ai_imports
+                 (product_id, sku, ai_service, ai_model, ai_method, ai_identified, confidence,
+                  ai_response, image_url, input_tokens, output_tokens, cache_read_tokens,
+                  estimated_cost_usd, fallback_reason, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                [
+                    $productId,
+                    $sku,
+                    $aiService,
+                    $usage['model'] ?? '',
+                    $method,
+                    $identified ? 1 : 0,
+                    $confidence,
+                    !empty($storedData) ? json_encode($storedData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null,
+                    !empty($data['image_url']) ? substr((string) $data['image_url'], 0, 1024) : null,
+                    (int) ($usage['input_tokens'] ?? 0),
+                    (int) ($usage['output_tokens'] ?? 0),
+                    (int) ($usage['cache_read_input_tokens'] ?? 0),
+                    $this->estimateAiCost($usage),
+                    $aiResult['fallback_reason'] ?? null,
+                ]
+            );
+        } catch (\Throwable $e) {
+            // Audit table optional - log but don't break the import
+            error_log("logAiImport skipped: " . $e->getMessage());
+        }
+    }
+
+    private function estimateAiCost(array $usage): float
+    {
+        if (empty($usage['model'])) {
+            return 0.0;
+        }
+        // Mirror ClaudeService::PRICING for cross-service consistency
+        $rates = [
+            'claude-sonnet-4-6' => [3.00, 15.00, 0.30],
+            'claude-haiku-4-5'  => [1.00,  5.00, 0.10],
+            'claude-opus-4-7'   => [5.00, 25.00, 0.50],
+            'gpt-4o-mini'       => [0.15,  0.60, 0.00],
+            'gpt-4o'            => [2.50, 10.00, 0.00],
+        ][$usage['model']] ?? [3.00, 15.00, 0.30];
+        $cost = (
+            ($usage['input_tokens'] ?? 0) * $rates[0]
+            + ($usage['output_tokens'] ?? 0) * $rates[1]
+            + ($usage['cache_read_input_tokens'] ?? 0) * $rates[2]
+        ) / 1_000_000;
+        return round($cost, 6);
+    }
+
+    /**
+     * Canonicalize brand strings before they're stored as attributes. AI
+     * output is inconsistent ("HP" vs "HP Inc." vs "Hewlett-Packard") and
+     * without this the storefront filter ends up with three duplicate
+     * brand entries that all point at the same vendor.
+     */
+    private function normalizeBrand(string $brand): string
+    {
+        $brand = trim($brand);
+        if ($brand === '') {
+            return '';
+        }
+        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '', $brand));
+
+        $canonical = [
+            'hp' => 'HP',
+            'hpinc' => 'HP',
+            'hewlettpackard' => 'HP',
+            'hpe' => 'HPE',
+            'dell' => 'Dell',
+            'delltechnologies' => 'Dell',
+            'asus' => 'ASUS',
+            'asustek' => 'ASUS',
+            'lenovo' => 'Lenovo',
+            'apple' => 'Apple',
+            'appleinc' => 'Apple',
+            'samsung' => 'Samsung',
+            'samsungelectronics' => 'Samsung',
+            'lg' => 'LG',
+            'lgelectronics' => 'LG',
+            'sony' => 'Sony',
+            'intel' => 'Intel',
+            'amd' => 'AMD',
+            'advancedmicrodevices' => 'AMD',
+            'nvidia' => 'NVIDIA',
+            'msi' => 'MSI',
+            'gigabyte' => 'Gigabyte',
+            'asrock' => 'ASRock',
+            'corsair' => 'Corsair',
+            'kingston' => 'Kingston',
+            'westerndigital' => 'Western Digital',
+            'wd' => 'Western Digital',
+            'sandisk' => 'SanDisk',
+            'seagate' => 'Seagate',
+            'crucial' => 'Crucial',
+            'tplink' => 'TP-Link',
+            'mikrotik' => 'MikroTik',
+            'cisco' => 'Cisco',
+            'logitech' => 'Logitech',
+            'razer' => 'Razer',
+            'acer' => 'Acer',
+            'msi' => 'MSI',
+            'benq' => 'BenQ',
+            'epson' => 'Epson',
+            'canon' => 'Canon',
+            'brother' => 'Brother',
+            'huawei' => 'Huawei',
+            'xiaomi' => 'Xiaomi',
+            'redmi' => 'Xiaomi',
+            'pinnacle' => 'Pinnacle',
+        ];
+
+        return $canonical[$slug] ?? $brand;
+    }
+
+    /**
+     * The product_images table has both `path` (per schema.sql) and
+     * `image_url` (used by existing controllers) referenced in different
+     * places. Production may have either column. This figures out which
+     * one exists once per request and caches the answer.
+     */
+    private static ?string $productImagesColumn = null;
+    private function productImagesUrlColumn(\PDO $db): string
+    {
+        if (self::$productImagesColumn !== null) {
+            return self::$productImagesColumn;
+        }
+        try {
+            $cols = $db->query("SHOW COLUMNS FROM product_images")->fetchAll();
+            $names = array_column($cols, 'Field');
+            self::$productImagesColumn = in_array('image_url', $names, true) ? 'image_url' : 'path';
+        } catch (\Throwable $e) {
+            self::$productImagesColumn = 'image_url';
+        }
+        return self::$productImagesColumn;
+    }
+
     private function importProductImage(\PDO $db, int $productId, string $imageUrl): void
     {
-        // Skip if not a valid URL
         if (!filter_var($imageUrl, FILTER_VALIDATE_URL)) {
             return;
         }
 
         try {
-            // Download image
             $context = stream_context_create([
                 'http' => [
-                    'timeout' => 10,
-                    'user_agent' => 'PricetagBot/1.0',
+                    'timeout' => 15,
+                    'user_agent' => 'Mozilla/5.0 (compatible; PricetagBot/1.0)',
+                    'follow_location' => 1,
+                    'max_redirects' => 3,
                 ]
             ]);
 
             $imageData = @file_get_contents($imageUrl, false, $context);
-            if (!$imageData) {
+            if (!$imageData || strlen($imageData) < 200) {
+                // Less than 200 bytes is almost certainly an error page, not a real image
                 return;
             }
 
-            // Detect image type
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mimeType = finfo_buffer($finfo, $imageData);
             finfo_close($finfo);
@@ -1178,13 +1418,31 @@ class ProductController extends Controller
                 'image/webp' => 'webp',
                 'image/gif' => 'gif',
             ];
-
             $ext = $extMap[$mimeType] ?? null;
             if (!$ext) {
                 return;
             }
 
-            // Save image
+            // Validate dimensions - reject icons/thumbnails/error placeholders.
+            // We use getimagesizefromstring to peek without writing to disk first.
+            $dimensions = @getimagesizefromstring($imageData);
+            if ($dimensions === false) {
+                return;
+            }
+            [$width, $height] = $dimensions;
+            if ($width < 200 || $height < 200) {
+                error_log("Product {$productId}: skipping tiny image {$width}x{$height} from {$imageUrl}");
+                return;
+            }
+
+            // Resize if larger than 1500px on the long edge. Storefront product cards
+            // never render larger than ~1200px, so anything bigger is wasted bandwidth.
+            $maxEdge = 1500;
+            $longEdge = max($width, $height);
+            if ($longEdge > $maxEdge && function_exists('imagecreatefromstring')) {
+                $imageData = $this->resizeImage($imageData, $width, $height, $maxEdge, $ext) ?? $imageData;
+            }
+
             $uploadDir = PUBLIC_PATH . '/uploads/products/';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
@@ -1192,28 +1450,83 @@ class ProductController extends Controller
 
             $filename = $productId . '_' . time() . '_import.' . $ext;
             $filepath = $uploadDir . $filename;
-
             file_put_contents($filepath, $imageData);
 
-            // Check if primary image exists
-            $hasImage = $db->query(
+            $urlColumn = $this->productImagesUrlColumn($db);
+            $hasImage = (int) $db->query(
                 "SELECT COUNT(*) FROM product_images WHERE product_id = ?",
                 [$productId]
             )->fetchColumn();
 
-            // Add to database
-            $db->query("
-                INSERT INTO product_images (product_id, image_url, is_primary, sort_order, created_at)
-                VALUES (?, ?, ?, 0, NOW())
-            ", [
-                $productId,
-                '/uploads/products/' . $filename,
-                $hasImage ? 0 : 1
-            ]);
-
+            $db->query(
+                "INSERT INTO product_images (product_id, `{$urlColumn}`, is_primary, sort_order, created_at)
+                 VALUES (?, ?, ?, 0, NOW())",
+                [
+                    $productId,
+                    '/uploads/products/' . $filename,
+                    $hasImage ? 0 : 1,
+                ]
+            );
         } catch (\Exception $e) {
             // Silently fail for image imports
         }
+    }
+
+    /**
+     * Resize an image to fit within $maxEdge px on the long side, preserving
+     * aspect ratio. Returns the encoded bytes (jpeg/png/webp/gif) or null on
+     * failure - caller should fall back to the original.
+     */
+    private function resizeImage(string $data, int $width, int $height, int $maxEdge, string $ext): ?string
+    {
+        $src = @imagecreatefromstring($data);
+        if (!$src) {
+            return null;
+        }
+        $ratio = $maxEdge / max($width, $height);
+        $newW = (int) round($width * $ratio);
+        $newH = (int) round($height * $ratio);
+        $dst = imagecreatetruecolor($newW, $newH);
+
+        // Preserve transparency for png/webp/gif
+        if (in_array($ext, ['png', 'webp', 'gif'], true)) {
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+            imagefilledrectangle($dst, 0, 0, $newW, $newH, $transparent);
+        }
+
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $width, $height);
+        imagedestroy($src);
+
+        ob_start();
+        switch ($ext) {
+            case 'jpg':
+                imagejpeg($dst, null, 85);
+                break;
+            case 'png':
+                imagepng($dst, null, 7);
+                break;
+            case 'webp':
+                if (function_exists('imagewebp')) {
+                    imagewebp($dst, null, 85);
+                } else {
+                    imagedestroy($dst);
+                    ob_end_clean();
+                    return null;
+                }
+                break;
+            case 'gif':
+                imagegif($dst);
+                break;
+            default:
+                imagedestroy($dst);
+                ob_end_clean();
+                return null;
+        }
+        $out = ob_get_clean();
+        imagedestroy($dst);
+        return $out !== false ? $out : null;
     }
 
     /**
@@ -1476,6 +1789,11 @@ class ProductController extends Controller
                             }
                         }
 
+                        // Audit trail
+                        if ($aiGenerate && isset($aiResult)) {
+                            $this->logAiImport($db, (int) $existing['id'], $sku, $aiServiceName, $aiResult);
+                        }
+
                         $updated++;
                     } else {
                         if (!$createNew) {
@@ -1617,6 +1935,11 @@ class ProductController extends Controller
                             }
                         }
 
+                        // Audit trail - always logged, even for unknown-SKU draft stubs
+                        if ($aiGenerate && isset($aiResult)) {
+                            $this->logAiImport($db, $productId ?: null, $sku, $aiServiceName, $aiResult);
+                        }
+
                         $created++;
                     }
 
@@ -1733,6 +2056,11 @@ class ProductController extends Controller
 
                 if (empty($attrName) || empty($attrValue)) {
                     continue;
+                }
+
+                // Normalize brand variations (HP / HP Inc. / Hewlett-Packard -> HP)
+                if (strcasecmp($attrName, 'brand') === 0 || strcasecmp($attrName, 'manufacturer') === 0) {
+                    $attrValue = $this->normalizeBrand($attrValue);
                 }
 
                 // Find or create the attribute

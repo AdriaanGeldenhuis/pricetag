@@ -386,6 +386,13 @@
                     </svg>
                     Preview Data
                 </button>
+                <button type="button" class="admin-btn admin-btn-secondary" id="dryRunBtn" disabled style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="9"></circle>
+                        <path d="M12 8v4M12 16h.01"></path>
+                    </svg>
+                    Test First Row (AI dry-run)
+                </button>
                 <button type="button" class="admin-btn admin-btn-primary" id="importBtn" disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -394,6 +401,13 @@
                     </svg>
                     Import Products
                 </button>
+            </div>
+
+            <!-- Dry-run result panel -->
+            <div class="dry-run-result" id="dryRunResult" style="display:none;">
+                <h4>Dry-run result <span id="dryRunStatus"></span></h4>
+                <pre id="dryRunOutput"></pre>
+                <img id="dryRunImage" alt="" style="display:none;max-width:200px;border:1px solid var(--admin-border);border-radius:4px;margin-top:0.5rem;">
             </div>
         </div>
     </div>
@@ -834,6 +848,37 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+}
+
+.dry-run-result {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--admin-bg);
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+}
+.dry-run-result h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+}
+.dry-run-result h4 span {
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: var(--admin-text-muted);
+    margin-left: 0.5rem;
+}
+.dry-run-result pre {
+    margin: 0;
+    padding: 0.75rem;
+    background: var(--admin-card-bg);
+    border: 1px solid var(--admin-border);
+    border-radius: 4px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    max-height: 400px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* Mapping Container */
@@ -1480,6 +1525,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (num === 3) {
             previewBtn.disabled = false;
             importBtn.disabled = false;
+            const dryRunBtn = document.getElementById('dryRunBtn');
+            if (dryRunBtn) {
+                dryRunBtn.disabled = !document.getElementById('aiGenerateAll').checked;
+            }
         }
     }
 
@@ -1490,6 +1539,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (num === 3) {
             previewBtn.disabled = true;
             importBtn.disabled = true;
+            const dryRunBtn = document.getElementById('dryRunBtn');
+            if (dryRunBtn) dryRunBtn.disabled = true;
         }
     }
 
@@ -1619,6 +1670,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const aiCheckbox = document.getElementById('aiGenerateAll');
         const aiSettings = document.getElementById('aiSettings');
         const aiBtn = document.getElementById('aiGenerate');
+        const dryRunBtn = document.getElementById('dryRunBtn');
         const nameField = document.getElementById('targetName');
         const nameRequiredBadge = document.getElementById('nameRequiredBadge');
         const nameAiBadge = document.getElementById('nameAiBadge');
@@ -1629,6 +1681,10 @@ document.addEventListener('DOMContentLoaded', function() {
         aiCheckbox.checked = on;
         aiSettings.style.display = on ? 'block' : 'none';
         if (aiBtn) aiBtn.classList.toggle('active', on);
+        if (dryRunBtn) {
+            dryRunBtn.style.display = on ? 'inline-flex' : 'none';
+            dryRunBtn.disabled = !on || !parsedData;
+        }
         if (nameField) nameField.classList.toggle('required', !on);
         if (nameRequiredBadge) nameRequiredBadge.style.display = on ? 'none' : 'inline-block';
         if (nameAiBadge) nameAiBadge.style.display = on ? 'inline-block' : 'none';
@@ -1636,6 +1692,54 @@ document.addEventListener('DOMContentLoaded', function() {
         if (vendorBadge) vendorBadge.style.display = on ? 'inline-block' : 'none';
         if (categoryBadge) categoryBadge.style.display = on ? 'inline-block' : 'none';
     }
+
+    // Dry-run handler - sends first parsed row through AI and shows the result
+    document.getElementById('dryRunBtn').addEventListener('click', async () => {
+        if (!parsedData || !parsedData.length) return;
+        const btn = document.getElementById('dryRunBtn');
+        const result = document.getElementById('dryRunResult');
+        const status = document.getElementById('dryRunStatus');
+        const out = document.getElementById('dryRunOutput');
+        const img = document.getElementById('dryRunImage');
+
+        btn.disabled = true;
+        const originalLabel = btn.textContent;
+        btn.textContent = 'Testing first row...';
+        result.style.display = 'block';
+        status.textContent = '(running...)';
+        out.textContent = '';
+        img.style.display = 'none';
+
+        const row = {};
+        Object.keys(columnMapping).forEach(field => {
+            row[field] = parsedData[0][columnMapping[field]] || '';
+        });
+
+        const fd = new FormData();
+        fd.append('_token', '<?= csrf_token() ?>');
+        fd.append('row', JSON.stringify(row));
+        fd.append('margin_percent', document.getElementById('marginPercent').value || '0');
+        fd.append('vat_rate', document.getElementById('vatRate').value || '0');
+
+        try {
+            const res = await fetch('<?= url("/admin/products/import/dry-run") ?>', { method: 'POST', body: fd });
+            const json = await res.json();
+            status.textContent = json.success
+                ? '(' + (json.ai_service || 'ai') + ', method: ' + (json.method || '?') + ')'
+                : '(FAILED: ' + (json.error || json.fallback_reason || 'unknown') + ')';
+            out.textContent = JSON.stringify(json, null, 2);
+            if (json.preview && json.preview.image_url) {
+                img.src = json.preview.image_url;
+                img.style.display = 'block';
+            }
+        } catch (e) {
+            status.textContent = '(network error)';
+            out.textContent = e.message;
+        } finally {
+            btn.textContent = originalLabel;
+            btn.disabled = false;
+        }
+    });
 
     // AI mode triggers - top button and Step 3 checkbox stay in sync
     document.getElementById('aiGenerate').addEventListener('click', () => {

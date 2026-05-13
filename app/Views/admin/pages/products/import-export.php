@@ -59,6 +59,15 @@
             </div>
 
             <div class="template-links">
+                <button type="button" id="aiGenerate" class="template-link template-link-ai" title="Import using only SKU + Vendor + Cost + Category - AI fills the rest">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                    </svg>
+                    <span>
+                        <strong>AI Generate from SKU</strong>
+                        <small>Only SKU, Vendor, Cost &amp; Category needed - AI builds the rest</small>
+                    </span>
+                </button>
                 <a href="<?= url('/admin/products/import/template') ?>" class="template-link">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -120,10 +129,11 @@
                                 <span class="placeholder">Drop column here</span>
                             </div>
                         </div>
-                        <div class="target-field required" data-field="name">
+                        <div class="target-field required" data-field="name" id="targetName">
                             <div class="field-label">
                                 <span>Product Name</span>
-                                <span class="required-badge">Required</span>
+                                <span class="required-badge" id="nameRequiredBadge">Required</span>
+                                <span class="ai-fills-badge" id="nameAiBadge" style="display:none;">AI fills this</span>
                                 <button type="button" class="ai-btn" data-field="name" title="AI Generate">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -151,12 +161,22 @@
                                 <span class="placeholder">Drop column here</span>
                             </div>
                         </div>
-                        <div class="target-field" data-field="cost_price">
+                        <div class="target-field" data-field="cost_price" id="targetCostPrice">
                             <div class="field-label">
-                                <span>Cost Price</span>
+                                <span>Cost Price (Excl VAT)</span>
+                                <span class="required-badge" id="costPriceRequiredBadge" style="display:none;">AI mode</span>
                             </div>
                             <div class="field-dropzone" data-field="cost_price">
                                 <span class="placeholder">Drop column here</span>
+                            </div>
+                        </div>
+                        <div class="target-field" data-field="vendor" id="targetVendor">
+                            <div class="field-label">
+                                <span>Vendor</span>
+                                <span class="required-badge" id="vendorRequiredBadge" style="display:none;">AI mode</span>
+                            </div>
+                            <div class="field-dropzone" data-field="vendor">
+                                <span class="placeholder">Drop column here, or use default below</span>
                             </div>
                         </div>
                         <div class="target-field" data-field="stock">
@@ -167,12 +187,13 @@
                                 <span class="placeholder">Drop column here</span>
                             </div>
                         </div>
-                        <div class="target-field" data-field="category">
+                        <div class="target-field" data-field="category" id="targetCategory">
                             <div class="field-label">
                                 <span>Category</span>
+                                <span class="required-badge" id="categoryRequiredBadge" style="display:none;">AI mode</span>
                             </div>
                             <div class="field-dropzone" data-field="category">
-                                <span class="placeholder">Drop column here</span>
+                                <span class="placeholder">Drop column here, or use default below</span>
                             </div>
                         </div>
                         <div class="target-field" data-field="description">
@@ -260,11 +281,54 @@
                     <span class="checkmark"></span>
                     Skip rows with errors and continue
                 </label>
-                <label class="option-checkbox">
+                <label class="option-checkbox option-ai">
                     <input type="checkbox" id="aiGenerateAll">
                     <span class="checkmark"></span>
-                    <strong>AI Generate from SKU</strong> - Replace names with proper product names (e.g., BX8071514600K → Intel Core i5-14600K)
+                    <strong>AI Generate from SKU</strong> - Build the full product from the SKU (e.g., BX8071514600K → Intel Core i5-14600K)
                 </label>
+            </div>
+
+            <!-- AI Pricing & Vendor Settings (visible only in AI mode) -->
+            <div class="ai-settings" id="aiSettings" style="display:none;">
+                <div class="ai-settings-header">
+                    <h4>AI Import Settings</h4>
+                    <p>The sell price will be calculated as: <code>Cost (excl VAT) &times; (1 + Margin%) &times; (1 + VAT%)</code></p>
+                </div>
+                <div class="ai-settings-grid">
+                    <div class="ai-settings-field">
+                        <label for="marginPercent">Profit Margin %</label>
+                        <input type="number" id="marginPercent" min="0" max="500" step="0.01" value="25" placeholder="25">
+                        <small>Applied to cost (excl VAT) before adding VAT</small>
+                    </div>
+                    <div class="ai-settings-field">
+                        <label for="vatRate">VAT Rate %</label>
+                        <input type="number" id="vatRate" min="0" max="100" step="0.01" value="<?= e((string) ($taxRate ?? 15)) ?>">
+                        <small>From store settings - editable for this import</small>
+                    </div>
+                    <div class="ai-settings-field">
+                        <label for="defaultVendor">Default Vendor</label>
+                        <select id="defaultVendor">
+                            <option value="">- Use vendor from row -</option>
+                            <?php foreach (($vendors ?? []) as $v): ?>
+                                <option value="<?= e((string) $v['id']) ?>"><?= e($v['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small>Used when row has no vendor column</small>
+                    </div>
+                    <div class="ai-settings-field">
+                        <label for="defaultCategory">Default Category</label>
+                        <select id="defaultCategory">
+                            <option value="">- Use category from row -</option>
+                            <?php foreach (($categories ?? []) as $c): ?>
+                                <option value="<?= e((string) $c['id']) ?>"><?= e($c['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small>Used when row has no category column</small>
+                    </div>
+                </div>
+                <div class="ai-settings-note">
+                    <strong>Unknown SKU behavior:</strong> If AI cannot identify the product, it will still be created with SKU, cost, vendor and category - status will be <em>draft</em> and not visible to customers, so you can review later.
+                </div>
             </div>
 
             <!-- Preview Stats -->
@@ -641,6 +705,135 @@
 .template-link svg {
     width: 16px;
     height: 16px;
+    flex-shrink: 0;
+}
+
+.template-link-ai {
+    background: linear-gradient(135deg, var(--admin-primary, #2563eb), var(--admin-secondary, #1e40af));
+    border-color: transparent;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0.75rem 1.25rem;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.template-link-ai:hover {
+    color: #fff;
+    border-color: transparent;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+}
+
+.template-link-ai svg {
+    width: 22px;
+    height: 22px;
+}
+
+.template-link-ai span {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    line-height: 1.2;
+}
+
+.template-link-ai small {
+    font-size: 0.7rem;
+    opacity: 0.85;
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+.template-link-ai.active {
+    background: linear-gradient(135deg, #059669, #047857);
+    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35);
+}
+
+/* AI Settings Panel */
+.ai-settings {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    background: rgba(37, 99, 235, 0.04);
+    border: 1px solid rgba(37, 99, 235, 0.18);
+    border-radius: var(--admin-radius);
+}
+
+.ai-settings-header h4 {
+    margin: 0 0 0.25rem;
+    font-size: 1rem;
+    color: var(--admin-text);
+}
+
+.ai-settings-header p {
+    margin: 0 0 1rem;
+    font-size: 0.8125rem;
+    color: var(--admin-text-muted);
+}
+
+.ai-settings-header code {
+    background: rgba(0,0,0,0.06);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+}
+
+.ai-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.ai-settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.ai-settings-field label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--admin-text);
+}
+
+.ai-settings-field input,
+.ai-settings-field select {
+    padding: 0.5rem 0.75rem;
+    background: var(--admin-card-bg);
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    color: var(--admin-text);
+    font-size: 0.875rem;
+}
+
+.ai-settings-field small {
+    font-size: 0.72rem;
+    color: var(--admin-text-muted);
+}
+
+.ai-settings-note {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(245, 158, 11, 0.08);
+    border-left: 3px solid var(--admin-warning, #f59e0b);
+    border-radius: var(--admin-radius);
+    font-size: 0.8125rem;
+    color: var(--admin-text);
+}
+
+.option-checkbox.option-ai strong {
+    color: var(--admin-primary);
+}
+
+.ai-fills-badge {
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--admin-primary);
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 /* Mapping Container */
@@ -1422,6 +1615,42 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function setAiMode(on) {
+        const aiCheckbox = document.getElementById('aiGenerateAll');
+        const aiSettings = document.getElementById('aiSettings');
+        const aiBtn = document.getElementById('aiGenerate');
+        const nameField = document.getElementById('targetName');
+        const nameRequiredBadge = document.getElementById('nameRequiredBadge');
+        const nameAiBadge = document.getElementById('nameAiBadge');
+        const costBadge = document.getElementById('costPriceRequiredBadge');
+        const vendorBadge = document.getElementById('vendorRequiredBadge');
+        const categoryBadge = document.getElementById('categoryRequiredBadge');
+
+        aiCheckbox.checked = on;
+        aiSettings.style.display = on ? 'block' : 'none';
+        if (aiBtn) aiBtn.classList.toggle('active', on);
+        if (nameField) nameField.classList.toggle('required', !on);
+        if (nameRequiredBadge) nameRequiredBadge.style.display = on ? 'none' : 'inline-block';
+        if (nameAiBadge) nameAiBadge.style.display = on ? 'inline-block' : 'none';
+        if (costBadge) costBadge.style.display = on ? 'inline-block' : 'none';
+        if (vendorBadge) vendorBadge.style.display = on ? 'inline-block' : 'none';
+        if (categoryBadge) categoryBadge.style.display = on ? 'inline-block' : 'none';
+    }
+
+    // AI mode triggers - top button and Step 3 checkbox stay in sync
+    document.getElementById('aiGenerate').addEventListener('click', () => {
+        const aiCheckbox = document.getElementById('aiGenerateAll');
+        setAiMode(!aiCheckbox.checked);
+        // Scroll to step 3 if file already uploaded so user can see the settings
+        if (parsedData) {
+            document.getElementById('step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+
+    document.getElementById('aiGenerateAll').addEventListener('change', e => {
+        setAiMode(e.target.checked);
+    });
+
     // Auto-map button
     autoMapBtn.addEventListener('click', () => {
         if (!parsedData || parsedData.length === 0) return;
@@ -1430,9 +1659,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const mappings = {
             'sku': ['sku', 'product_code', 'code', 'item_number', 'item_code', 'barcode'],
             'name': ['name', 'product_name', 'title', 'product_title', 'product'],
-            'price': ['price', 'cost', 'selling_price', 'retail_price', 'unit_price'],
+            'price': ['price', 'selling_price', 'retail_price', 'unit_price'],
             'compare_price': ['compare_price', 'original_price', 'msrp', 'rrp', 'was_price'],
-            'cost_price': ['cost_price', 'cost', 'wholesale_price', 'buy_price'],
+            'cost_price': ['cost_price', 'cost_excl', 'cost_excl_vat', 'purchase_price', 'cost', 'wholesale_price', 'buy_price'],
+            'vendor': ['vendor', 'supplier', 'vendor_name', 'supplier_name', 'brand'],
             'stock': ['stock', 'quantity', 'qty', 'inventory', 'stock_quantity', 'available'],
             'category': ['category', 'category_name', 'product_category', 'type'],
             'description': ['description', 'product_description', 'desc', 'details', 'long_description'],
@@ -1532,17 +1762,37 @@ document.addEventListener('DOMContentLoaded', function() {
     function validateRow(row, rowNum) {
         const errors = [];
         let isNew = true;
+        const aiEnabled = document.getElementById('aiGenerateAll').checked;
 
         const skuCol = columnMapping.sku;
         if (!skuCol || !row[skuCol] || String(row[skuCol]).trim() === '') {
             errors.push(`Row ${rowNum}: SKU is required`);
         }
 
-        const nameCol = columnMapping.name;
         const priceCol = columnMapping.price;
+        const costCol = columnMapping.cost_price;
 
         if (priceCol && row[priceCol] && isNaN(parseFloat(row[priceCol]))) {
             errors.push(`Row ${rowNum}: Invalid price`);
+        }
+        if (costCol && row[costCol] && isNaN(parseFloat(row[costCol]))) {
+            errors.push(`Row ${rowNum}: Invalid cost price`);
+        }
+
+        if (aiEnabled) {
+            // AI mode: need cost (for price calculation) and either vendor/category from row or default
+            const defaultVendor = document.getElementById('defaultVendor').value;
+            const defaultCategory = document.getElementById('defaultCategory').value;
+
+            if (!costCol || !row[costCol] || String(row[costCol]).trim() === '') {
+                errors.push(`Row ${rowNum}: Cost Price (Excl VAT) is required for AI mode`);
+            }
+            if (!defaultVendor && (!columnMapping.vendor || !row[columnMapping.vendor])) {
+                errors.push(`Row ${rowNum}: Vendor is required (map a column or pick a default)`);
+            }
+            if (!defaultCategory && (!columnMapping.category || !row[columnMapping.category])) {
+                errors.push(`Row ${rowNum}: Category is required (map a column or pick a default)`);
+            }
         }
 
         return { errors, isNew };
@@ -1584,6 +1834,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const createNew = document.getElementById('createNew').checked ? '1' : '0';
         const skipErrors = document.getElementById('skipErrors').checked ? '1' : '0';
         const aiGenerate = aiEnabled ? '1' : '0';
+        const marginPercent = aiEnabled ? (document.getElementById('marginPercent').value || '0') : '0';
+        const vatRate = aiEnabled ? (document.getElementById('vatRate').value || '0') : '0';
+        const defaultVendorId = aiEnabled ? (document.getElementById('defaultVendor').value || '') : '';
+        const defaultCategoryId = aiEnabled ? (document.getElementById('defaultCategory').value || '') : '';
 
         let totalCreated = 0;
         let totalUpdated = 0;
@@ -1602,6 +1856,10 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('create_new', createNew);
             formData.append('skip_errors', '1'); // Always skip errors in batch mode
             formData.append('ai_generate', aiGenerate);
+            formData.append('margin_percent', marginPercent);
+            formData.append('vat_rate', vatRate);
+            formData.append('default_vendor_id', defaultVendorId);
+            formData.append('default_category_id', defaultCategoryId);
 
             const response = await fetch('<?= url("/admin/products/import/process") ?>', {
                 method: 'POST',

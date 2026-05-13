@@ -484,9 +484,20 @@ class ProductController extends Controller
         foreach ($categoryTree as &$cat) {
             $cat['product_count'] = $categoryMap[$cat['id']] ?? 0;
         }
+        unset($cat);
 
         // Get total products
         $totalProducts = (int) $db->query("SELECT COUNT(*) FROM products")->fetchColumn();
+
+        // Get vendors for AI-mode default vendor selector
+        $vendors = $db->query("
+            SELECT id, name FROM vendors
+            WHERE status IN ('active', 'pending')
+            ORDER BY name
+        ")->fetchAll();
+
+        // Tax rate from store settings (default 15% for South Africa VAT)
+        $taxRate = (float) (function_exists('getSetting') ? getSetting('tax_rate', 'store', '15') : '15');
 
         // Get recent import/export history
         $history = $db->query("
@@ -500,6 +511,8 @@ class ProductController extends Controller
             'title' => 'Import & Export Products',
             'categories' => $categoryTree,
             'totalProducts' => $totalProducts,
+            'vendors' => $vendors ?: [],
+            'taxRate' => $taxRate,
             'history' => $history ?: [],
         ]);
     }
@@ -945,14 +958,40 @@ class ProductController extends Controller
             $categoryId = $categoryMap[$catKey] ?? null;
         }
 
+        // Resolve vendor - either explicit vendor_id, or look up vendor name in vendors table
+        $vendorId = null;
+        if (!empty($row['vendor_id'])) {
+            $vendorId = (int) $row['vendor_id'];
+        } elseif (!empty($row['vendor'])) {
+            $vendorValue = trim((string) $row['vendor']);
+            if (is_numeric($vendorValue)) {
+                $vendorId = (int) $vendorValue;
+            } else {
+                $stmt = $db->query("SELECT id FROM vendors WHERE name = ? LIMIT 1", [$vendorValue]);
+                $found = $stmt ? $stmt->fetch() : null;
+                $vendorId = $found ? (int) $found['id'] : null;
+            }
+        }
+
+        // Status: accept string ('draft', 'active') or legacy int (0/1)
+        $status = 0;
+        if (isset($row['status'])) {
+            if (is_string($row['status']) && !is_numeric($row['status'])) {
+                $status = in_array($row['status'], ['active', 'inactive', 'draft', 'out_of_stock'], true)
+                    ? $row['status'] : 'draft';
+            } else {
+                $status = (int) $row['status'];
+            }
+        }
+
         $db->query("
             INSERT INTO products (
                 name, slug, sku, description, short_description,
-                price, compare_price, cost_price, category_id,
+                price, compare_price, cost_price, category_id, vendor_id,
                 stock, low_stock_threshold, weight, length, width, height,
                 meta_title, meta_description, meta_keywords,
                 status, featured, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ", [
             $name,
             $slug,
@@ -963,6 +1002,7 @@ class ProductController extends Controller
             !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
             !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
             $categoryId,
+            $vendorId,
             !empty($row['stock']) ? (int) $row['stock'] : 0,
             10,
             !empty($row['weight']) ? (float) $row['weight'] : null,
@@ -972,7 +1012,7 @@ class ProductController extends Controller
             $row['meta_title'] ?? null,
             $row['meta_description'] ?? null,
             $row['meta_keywords'] ?? null,
-            isset($row['status']) ? (int) $row['status'] : 0,
+            $status,
             isset($row['featured']) ? (int) $row['featured'] : 0,
         ]);
 
@@ -1021,7 +1061,13 @@ class ProductController extends Controller
                 // Type conversion
                 if (in_array($dbField, ['price', 'compare_price', 'cost_price', 'weight', 'length', 'width', 'height'])) {
                     $value = (float) $value;
-                } elseif (in_array($dbField, ['stock', 'status', 'featured'])) {
+                } elseif ($dbField === 'status') {
+                    if (is_string($value) && !is_numeric($value)) {
+                        $value = in_array($value, ['active', 'inactive', 'draft', 'out_of_stock'], true) ? $value : 'draft';
+                    } else {
+                        $value = (int) $value;
+                    }
+                } elseif (in_array($dbField, ['stock', 'featured'])) {
                     $value = (int) $value;
                 }
 
@@ -1038,6 +1084,25 @@ class ProductController extends Controller
                 $updates[] = "category_id = ?";
                 $params[] = $categoryId;
             }
+        }
+
+        // Handle vendor
+        $vendorId = null;
+        if (!empty($row['vendor_id'])) {
+            $vendorId = (int) $row['vendor_id'];
+        } elseif (!empty($row['vendor'])) {
+            $vendorValue = trim((string) $row['vendor']);
+            if (is_numeric($vendorValue)) {
+                $vendorId = (int) $vendorValue;
+            } else {
+                $stmt = $db->query("SELECT id FROM vendors WHERE name = ? LIMIT 1", [$vendorValue]);
+                $found = $stmt ? $stmt->fetch() : null;
+                $vendorId = $found ? (int) $found['id'] : null;
+            }
+        }
+        if ($vendorId) {
+            $updates[] = "vendor_id = ?";
+            $params[] = $vendorId;
         }
 
         // Update slug if name changed
@@ -1165,26 +1230,30 @@ class ProductController extends Controller
         // BOM for Excel UTF-8
         fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
 
-        // Header row
+        // Header row - minimal AI-friendly columns first
         fputcsv($output, [
-            'sku', 'name', 'price', 'compare_price', 'cost_price', 'stock',
-            'category', 'description', 'short_description', 'weight', 'status', 'featured', 'image_url'
+            'sku', 'cost_price', 'vendor', 'category',
+            'name', 'price', 'compare_price', 'stock',
+            'description', 'short_description', 'weight', 'status', 'featured', 'image_url'
         ]);
 
-        // Sample data
+        // AI-mode example: only sku, cost (excl VAT), vendor, category needed
         fputcsv($output, [
-            'SKU001', 'Sample Product 1', '199.99', '249.99', '100.00', '50',
-            'Electronics', 'This is a sample product description.', 'Short description here.',
-            '0.5', '1', '0', 'https://example.com/image1.jpg'
+            'BX8071514600K', '4200.00', 'Pinnacle', 'CPUs',
+            '', '', '', '20',
+            '', '', '', '', '', ''
         ]);
+        // Manual-mode example: all fields filled
         fputcsv($output, [
-            'SKU002', 'Sample Product 2', '299.99', '', '150.00', '25',
-            'Clothing', 'Another product description.', 'Brief description.',
-            '0.3', '1', '1', ''
+            'SKU002', '150.00', 'Acme Supplies', 'Clothing',
+            'Cotton T-Shirt', '299.99', '349.99', '25',
+            'Premium cotton t-shirt.', 'Soft, breathable cotton.',
+            '0.3', 'active', '1', ''
         ]);
+        // AI fallback example: unknown SKU - will be created as draft
         fputcsv($output, [
-            'SKU003', 'Sample Product 3', '99.99', '129.99', '', '100',
-            '', 'Product without category.', '', '', '0', '0', ''
+            'UNKNOWN-123', '500.00', 'Pinnacle', 'Accessories',
+            '', '', '', '10', '', '', '', '', '', ''
         ]);
 
         fclose($output);
@@ -1202,34 +1271,32 @@ class ProductController extends Controller
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $template = [
+            '_notes' => [
+                'ai_mode' => 'In AI mode only sku, cost_price (excl VAT), vendor and category are required - the rest is generated.',
+                'price_calculation' => 'AI mode: sell price = cost_price * (1 + margin/100) * (1 + vat/100). Margin and VAT are set on the import screen.',
+                'unknown_sku' => 'If AI cannot identify a SKU, the product is still created as status=draft so you can review it.',
+            ],
             'products' => [
                 [
-                    'sku' => 'SKU001',
-                    'name' => 'Sample Product 1',
-                    'price' => 199.99,
-                    'compare_price' => 249.99,
-                    'cost_price' => 100.00,
-                    'stock' => 50,
-                    'category' => 'Electronics',
-                    'description' => 'This is a sample product description.',
-                    'short_description' => 'Short description here.',
-                    'weight' => 0.5,
-                    'status' => 1,
-                    'featured' => 0,
-                    'image_url' => 'https://example.com/image1.jpg'
+                    'sku' => 'BX8071514600K',
+                    'cost_price' => 4200.00,
+                    'vendor' => 'Pinnacle',
+                    'category' => 'CPUs',
+                    'stock' => 20,
                 ],
                 [
                     'sku' => 'SKU002',
-                    'name' => 'Sample Product 2',
+                    'name' => 'Cotton T-Shirt',
                     'price' => 299.99,
-                    'compare_price' => null,
+                    'compare_price' => 349.99,
                     'cost_price' => 150.00,
+                    'vendor' => 'Acme Supplies',
                     'stock' => 25,
                     'category' => 'Clothing',
-                    'description' => 'Another product description.',
-                    'short_description' => 'Brief description.',
+                    'description' => 'Premium cotton t-shirt.',
+                    'short_description' => 'Soft, breathable cotton.',
                     'weight' => 0.3,
-                    'status' => 1,
+                    'status' => 'active',
                     'featured' => 1,
                     'image_url' => null
                 ]
@@ -1265,6 +1332,12 @@ class ProductController extends Controller
         $createNew = ($_POST['create_new'] ?? '1') === '1';
         $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
         $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
+
+        // AI-mode pricing & defaults
+        $marginPercent = max(0.0, (float) ($_POST['margin_percent'] ?? 0));
+        $vatRate = max(0.0, (float) ($_POST['vat_rate'] ?? 0));
+        $defaultVendorId = !empty($_POST['default_vendor_id']) ? (int) $_POST['default_vendor_id'] : null;
+        $defaultCategoryId = !empty($_POST['default_category_id']) ? (int) $_POST['default_category_id'] : null;
 
         if (empty($data)) {
             echo json_encode(['success' => false, 'error' => 'No data provided']);
@@ -1377,7 +1450,27 @@ class ProductController extends Controller
                         $name = trim($row['name'] ?? '');
                         $shortDesc = trim($row['short_description'] ?? '');
 
+                        // Apply AI-mode defaults for vendor/category before AI call
+                        if ($aiGenerate) {
+                            if (empty($row['vendor']) && $defaultVendorId) {
+                                $row['vendor_id'] = $defaultVendorId;
+                            }
+                            if (empty($row['category']) && $defaultCategoryId) {
+                                $row['category'] = (string) $defaultCategoryId;
+                            }
+                        }
+
+                        // Calculate sell price from cost + margin + VAT (AI mode only, if no explicit price)
+                        if ($aiGenerate && empty($row['price']) && !empty($row['cost_price'])) {
+                            $cost = (float) $row['cost_price'];
+                            $row['price'] = round(
+                                $cost * (1 + $marginPercent / 100) * (1 + $vatRate / 100),
+                                2
+                            );
+                        }
+
                         // AI Generate: use real OpenAI service for complete product generation
+                        $aiIdentified = false;
                         if ($aiGenerate) {
                             $openai = $openai ?? new OpenAIService();
                             $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
@@ -1395,6 +1488,7 @@ class ProductController extends Controller
                                 // AI-generated name: always prefer it when available and not raw SKU
                                 if (!empty($aiData['name']) && $aiData['name'] !== $sku) {
                                     $name = $aiData['name'];
+                                    $aiIdentified = true;
                                 }
 
                                 // AI-generated descriptions
@@ -1448,20 +1542,30 @@ class ProductController extends Controller
                         }
 
                         if (empty($name)) {
-                            if ($skipErrors) {
-                                $errors[] = "Row {$rowNum}: Name is required for new products (AI could not identify SKU: {$sku})";
-                                $failed++;
-                                continue;
+                            if ($aiGenerate) {
+                                // Unknown SKU fallback: create a draft stub so the user can review later.
+                                // Only SKU, cost, vendor, category are populated. status='draft' keeps it off the storefront.
+                                $name = $sku;
+                                $row['name'] = $sku;
+                                $row['status'] = 'draft';
+                                $row['_unknown_sku'] = true;
+                                $errors[] = "Row {$rowNum}: AI could not identify SKU {$sku} - created as draft for manual review";
+                            } else {
+                                if ($skipErrors) {
+                                    $errors[] = "Row {$rowNum}: Name is required for new products";
+                                    $failed++;
+                                    continue;
+                                }
+                                throw new \Exception("Row {$rowNum}: Name is required for new products");
                             }
-                            throw new \Exception("Row {$rowNum}: Name is required for new products");
+                        } else {
+                            $row['name'] = $name;
                         }
-
-                        $row['name'] = $name;
 
                         $productId = $this->createProductFromImport($db, $row, $categoryMap);
 
-                        // Save AI-generated specifications and attributes
-                        if ($aiData && $productId) {
+                        // Save AI-generated specifications and attributes (only when AI actually identified the product)
+                        if ($aiData && $aiIdentified && $productId) {
                             $this->saveProductSpecifications($db, $productId, $aiData['specifications'] ?? []);
                             $this->saveProductAttributes($db, $productId, $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
                         }

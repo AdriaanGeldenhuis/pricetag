@@ -1608,19 +1608,37 @@ class OpenAIService
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
-            // Use shorter timeout and fewer tokens for bulk imports to avoid 504
-            $apiTimeout = $isBulkImport ? 20 : 30;
-            $maxTokens = $isBulkImport ? 2000 : 4000;
+            // Output budget: the JSON spec asks for ~17 fields including a
+            // 250-400 word HTML description, 8+ specs, attributes, SEO meta.
+            // The full response is typically 1500-2500 tokens. Cutting to
+            // 2000 during bulk imports truncated the JSON, which then
+            // failed to parse and the fallback returned almost-empty
+            // fields - that's where the "import only fills 20%" bug came
+            // from. Same generous limits as the per-product "Make
+            // Production Ready" button so both paths produce the same
+            // depth of content.
+            $apiTimeout = 30;
+            $maxTokens = 4000;
 
-            $response = $this->makeRequest('/chat/completions', [
+            $payload = [
                 'model' => $this->model,
                 'messages' => [
                     ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given. Product names MUST follow the structure: Brand first, then series/model/specs, then category type last (e.g. "ASUS ROG Strix RTX 4070 12GB Graphics Card").'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => $maxTokens,
-                'temperature' => 0.3,
-            ], $apiTimeout);
+            ];
+
+            // GPT-5 family uses `max_completion_tokens` instead of
+            // `max_tokens` and doesn't accept `temperature` overrides.
+            // Send the right shape per model family.
+            if (str_starts_with($this->model, 'gpt-5')) {
+                $payload['max_completion_tokens'] = $maxTokens;
+            } else {
+                $payload['max_tokens'] = $maxTokens;
+                $payload['temperature'] = 0.3;
+            }
+
+            $response = $this->makeRequest('/chat/completions', $payload, $apiTimeout);
 
             $content = $response['choices'][0]['message']['content'] ?? '';
             $content = preg_replace('/^```json\s*/i', '', $content);

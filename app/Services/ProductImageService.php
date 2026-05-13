@@ -1148,8 +1148,23 @@ class ProductImageService
     {
         $urls = [];
 
+        // SA retailers FIRST. The user sells in South Africa and these
+        // three carry virtually every PC component they import. Their
+        // search-results pages list each product with its image on a
+        // media CDN and the HTML structure has been stable for years,
+        // unlike Bing/Google image-search which rewrites their JSON
+        // shape every few months. Search-engine scraping below is kept
+        // only as a last-resort fallback for SKUs not stocked locally.
+        $urls = $this->searchTakealot($query, $count);
+
+        if (count($urls) < $count) {
+            $urls = array_merge($urls, $this->searchWootware($query, $count - count($urls)));
+        }
+
         // Strategy 1: Bing Images (most reliable for scraping)
-        $urls = $this->searchBingImages($query, $count, $altAgent);
+        if (count($urls) < $count) {
+            $urls = array_merge($urls, $this->searchBingImages($query, $count - count($urls), $altAgent));
+        }
 
         // Strategy 2: DuckDuckGo image search
         if (count($urls) < $count) {
@@ -1164,6 +1179,75 @@ class ProductImageService
         }
 
         return array_slice(array_unique($urls), 0, $count);
+    }
+
+    /**
+     * Search Takealot for a SKU and harvest product cover images from the
+     * results page. Takealot's search-results HTML lists each product with
+     * an <img> on media.takealot.com - that CDN URL pattern has been
+     * stable for years. We grab the first $count cover images on the page
+     * which by Takealot's grid layout are the top relevance matches.
+     */
+    private function searchTakealot(string $query, int $count = 5): array
+    {
+        $urls = [];
+        $searchUrl = 'https://www.takealot.com/all?qsearch=' . urlencode($query);
+        $html = $this->fetchUrl($searchUrl);
+        if (!$html) {
+            $this->recordDebug(['kind' => 'search', 'engine' => 'takealot', 'query' => $query, 'urls_found' => 0]);
+            return [];
+        }
+
+        // Pattern matches every Takealot cover CDN URL regardless of suffix
+        // variant: covers_images/{hash}/cover_zoom.jpg, covers/{hash}/...,
+        // covers_tablets/..., and so on.
+        if (preg_match_all('#https://media\.takealot\.com/covers[^"\'\s<>]+\.(?:jpe?g|png|webp)#i', $html, $matches)) {
+            foreach ($matches[0] as $u) {
+                if (!in_array($u, $urls, true)) {
+                    $urls[] = $u;
+                    if (count($urls) >= $count) break;
+                }
+            }
+        }
+
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'takealot',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
+        return $urls;
+    }
+
+    /**
+     * Search Wootware (SA tech retailer) for the SKU and harvest product
+     * thumbnails. Wootware's search results live at the OpenCart route
+     * /index.php?route=product/search&search=... and product images are
+     * served from /image/cache/data/.
+     */
+    private function searchWootware(string $query, int $count = 5): array
+    {
+        $urls = [];
+        $searchUrl = 'https://www.wootware.co.za/index.php?route=product/search&search=' . urlencode($query);
+        $html = $this->fetchUrl($searchUrl);
+        if (!$html) {
+            $this->recordDebug(['kind' => 'search', 'engine' => 'wootware', 'query' => $query, 'urls_found' => 0]);
+            return [];
+        }
+
+        // Wootware product images use the OpenCart cache path.
+        if (preg_match_all('#https?://(?:www\.)?wootware\.co\.za/image/cache/[^"\'\s<>]+\.(?:jpe?g|png|webp)#i', $html, $matches)) {
+            foreach ($matches[0] as $u) {
+                if (!in_array($u, $urls, true)) {
+                    $urls[] = $u;
+                    if (count($urls) >= $count) break;
+                }
+            }
+        }
+
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'wootware',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
+        return $urls;
     }
 
     /**

@@ -1293,67 +1293,16 @@ class OpenAIService
             }
         }
 
-        // Last strategy: any of the top N DDG result URLs whose URL slug
-        // actually contains the SKU or model number. Without this
-        // relevance gate, the previous run grabbed og:image from random
-        // pages DDG happened to return - including a Christmas-garland
-        // image and a European-street-scene image - because those pages
-        // had og:image set to their site banner, and we treated "page
-        // has og:image" as "page is the product". Now we require the
-        // result URL to match the SKU or model before fetching.
-        $rejectDomains = [
-            'youtube.com', 'youtu.be', 'reddit.com', 'twitter.com', 'x.com',
-            'facebook.com', 'instagram.com', 'tiktok.com', 'pinterest.com',
-            'linkedin.com', 'quora.com', 'wikipedia.org/wiki/Special:',
-        ];
-        $tried = 0;
-        foreach ($resultUrls as $url) {
-            if ($tried >= 5) break;
-            $skip = false;
-            foreach ($rejectDomains as $d) {
-                if (stripos($url, $d) !== false) { $skip = true; break; }
-            }
-            if ($skip) continue;
-            // Already tried in the manufacturer / spec-site loops above.
-            if ($manufacturerDomain && stripos($url, $manufacturerDomain) !== false) continue;
-            $alreadyTried = false;
-            foreach ($trustedSpecSites as $specSite) {
-                if (stripos($url, $specSite) !== false) { $alreadyTried = true; break; }
-            }
-            if ($alreadyTried) continue;
-
-            // RELEVANCE GATE: refuse to fetch a page whose URL slug bears
-            // no relation to the SKU we're looking up. This is what stops
-            // a random festive shop page from being treated as the
-            // product page just because it shipped up in the SERP.
-            if (!$this->urlMatchesProduct($url, $brand, $sku, $productName)) {
-                $this->recordImageDebug([
-                    'kind' => 'page_fetch_skipped',
-                    'url' => $url,
-                    'reason' => 'url_does_not_match_sku',
-                ]);
-                continue;
-            }
-
-            $tried++;
-            $page = $this->fetchPage($url);
-            $bytes = is_string($page) ? strlen($page) : 0;
-            $bot = $page ? $this->isBotCheckPage($page) : false;
-            $this->recordImageDebug([
-                'kind' => 'page_fetch',
-                'url' => $url,
-                'outcome' => !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : '')) : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
-                'bytes' => $bytes,
-                'strategy' => 'generic_ddg',
-            ]);
-            if ($page && $bytes > 1000 && !$bot) {
-                if (preg_match('#<meta[^>]+(?:property|name)\s*=\s*["\'](?:og:image|twitter:image)#i', $page)) {
-                    $this->lastFetchedPageUrl = $url;
-                    return $page;
-                }
-            }
-        }
-
+        // The generic-DDG widening loop that used to live here is REMOVED.
+        // Even with a URL-slug relevance gate it kept attaching wrong
+        // og:images to product rows (Dulux paint to a Gigabyte GPU, a
+        // street-scene to another). The replacement is in
+        // ProductImageService::searchProductImages, which now scrapes
+        // Takealot, Wootware, and Evetech search-result pages directly -
+        // those return image URLs from their media CDNs which are by
+        // definition product photos, not og:image banners. So the
+        // applyAiDataToProduct fallback path now handles SA-retailer
+        // image discovery without OpenAIService having to do it.
         $this->recordImageDebug(['kind' => 'no_page_found']);
         return null;
     }

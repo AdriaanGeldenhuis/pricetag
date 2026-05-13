@@ -586,6 +586,22 @@ class UserController extends Controller
     // ============================================================================
 
     /**
+     * Run a SQL statement with optional bound params. Wraps prepare/execute
+     * so callers can chain ->fetch() / ->fetchAll() / ->fetchColumn() like
+     * they would on a raw PDO::query() result. Falls back to PDO::query()
+     * when there are no params.
+     */
+    private function q(\PDO $db, string $sql, array $params = []): \PDOStatement
+    {
+        if (empty($params)) {
+            return $db->query($sql);
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
+    /**
      * Force a password reset on a target user. Sends them through the
      * standard reset-token flow and kills all their existing sessions.
      */
@@ -598,7 +614,7 @@ class UserController extends Controller
 
         $currentUser = user();
         $db = Database::getInstance();
-        $targetUser = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        $targetUser = $this->q($db, "SELECT * FROM users WHERE id = ?", [$id])->fetch();
         if (!$targetUser) {
             $this->jsonResponse(['success' => false, 'error' => 'User not found.'], 404);
             return;
@@ -611,9 +627,9 @@ class UserController extends Controller
         $db->beginTransaction();
         try {
             $token = bin2hex(random_bytes(32));
-            $db->query("DELETE FROM password_resets WHERE email = ?", [$targetUser['email']]);
-            $db->query("INSERT INTO password_resets (email, token, created_at) VALUES (?, ?, NOW())", [$targetUser['email'], $token]);
-            $db->query("DELETE FROM user_sessions WHERE user_id = ?", [$id]);
+            $this->q($db, "DELETE FROM password_resets WHERE email = ?", [$targetUser['email']]);
+            $this->q($db, "INSERT INTO password_resets (email, token, created_at) VALUES (?, ?, NOW())", [$targetUser['email'], $token]);
+            $this->q($db, "DELETE FROM user_sessions WHERE user_id = ?", [$id]);
             $this->logActivity((int) $currentUser['id'], 'force_password_reset', "Forced password reset for user: {$targetUser['email']}", ['target_user_id' => $id]);
             $db->commit();
             $this->jsonResponse([
@@ -635,7 +651,7 @@ class UserController extends Controller
     public function auditLog(int $id): void
     {
         $db = Database::getInstance();
-        $targetUser = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        $targetUser = $this->q($db, "SELECT * FROM users WHERE id = ?", [$id])->fetch();
         if (!$targetUser) {
             if (function_exists('flash')) {
                 flash('error', 'User not found.');
@@ -651,7 +667,7 @@ class UserController extends Controller
             return;
         }
 
-        $logs = $db->query(
+        $logs = $this->q($db, 
             "SELECT al.*, u.first_name AS actor_first_name, u.last_name AS actor_last_name, u.email AS actor_email
              FROM activity_logs al
              LEFT JOIN users u ON al.user_id = u.id
@@ -662,7 +678,7 @@ class UserController extends Controller
 
         $roleHistory = [];
         try {
-            $roleHistory = $db->query(
+            $roleHistory = $this->q($db, 
                 "SELECT rh.*, u.first_name AS changer_first_name, u.last_name AS changer_last_name, u.email AS changer_email
                  FROM role_history rh
                  LEFT JOIN users u ON rh.changed_by = u.id
@@ -675,7 +691,7 @@ class UserController extends Controller
 
         $loginHistory = [];
         try {
-            $loginHistory = $db->query(
+            $loginHistory = $this->q($db, 
                 "SELECT ip_address, user_agent, success, created_at FROM login_attempts WHERE email = ? ORDER BY created_at DESC LIMIT 50",
                 [$targetUser['email']]
             )->fetchAll() ?: [];
@@ -706,7 +722,7 @@ class UserController extends Controller
         }
         $currentUser = user();
         $db = Database::getInstance();
-        $targetUser = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        $targetUser = $this->q($db, "SELECT * FROM users WHERE id = ?", [$id])->fetch();
         if (!$targetUser) {
             if (function_exists('flash')) { flash('error', 'User not found.'); }
             $this->redirect('/admin/users');
@@ -747,7 +763,7 @@ class UserController extends Controller
         $impersonatedUserId = (int) ($_SESSION['user_id'] ?? 0);
 
         $db = Database::getInstance();
-        $impersonatedUser = $db->query("SELECT email FROM users WHERE id = ?", [$impersonatedUserId])->fetch();
+        $impersonatedUser = $this->q($db, "SELECT email FROM users WHERE id = ?", [$impersonatedUserId])->fetch();
 
         $_SESSION['user_id'] = $originalUserId;
         unset($_SESSION['impersonating_from']);
@@ -763,7 +779,8 @@ class UserController extends Controller
     private function logActivity(int $userId, string $type, string $description, array $properties = []): void
     {
         try {
-            Database::getInstance()->query(
+            $this->q(
+                Database::getInstance(),
                 "INSERT INTO activity_logs (user_id, type, description, properties, ip_address, user_agent, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, NOW())",
                 [

@@ -481,11 +481,8 @@ PROMPT;
 
     private function logUsage(array $usage): void
     {
-        if (!function_exists('db')) {
-            return;
-        }
         try {
-            $db = db();
+            $db = \App\Core\Database::getInstance();
             $pricing = self::PRICING[$this->model] ?? [3.00, 15.00, 3.75, 0.30];
             [$inputRate, $outputRate, $cacheWriteRate, $cacheReadRate] = $pricing;
             $cost = (
@@ -495,18 +492,18 @@ PROMPT;
                 + $usage['cache_read_input_tokens'] * $cacheReadRate
             ) / 1_000_000;
 
-            $db->query(
+            $stmt = $db->prepare(
                 "INSERT INTO ai_usage_log (endpoint, model, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, NOW())",
-                [
-                    'messages',
-                    $this->model,
-                    $usage['input_tokens'] + $usage['cache_creation_input_tokens'] + $usage['cache_read_input_tokens'],
-                    $usage['output_tokens'],
-                    $usage['input_tokens'] + $usage['output_tokens'] + $usage['cache_creation_input_tokens'] + $usage['cache_read_input_tokens'],
-                    round($cost, 6),
-                ]
+                 VALUES (?, ?, ?, ?, ?, ?, NOW())"
             );
+            $stmt->execute([
+                'messages',
+                $this->model,
+                $usage['input_tokens'] + $usage['cache_creation_input_tokens'] + $usage['cache_read_input_tokens'],
+                $usage['output_tokens'],
+                $usage['input_tokens'] + $usage['output_tokens'] + $usage['cache_creation_input_tokens'] + $usage['cache_read_input_tokens'],
+                round($cost, 6),
+            ]);
         } catch (\Throwable $e) {
             // Don't let logging failures break the import
             error_log('ClaudeService logUsage failed: ' . $e->getMessage());

@@ -34,6 +34,22 @@ class ImportJobService
     }
 
     /**
+     * Run a SQL statement with optional bound params. Wraps the
+     * prepare/execute dance so callers can chain ->fetch() / ->fetchAll()
+     * / ->fetchColumn() / ->rowCount() like they would on a raw
+     * PDO::query() result.
+     */
+    private function q(string $sql, array $params = []): \PDOStatement
+    {
+        if (empty($params)) {
+            return $this->db->query($sql);
+        }
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
+    /**
      * Add a new import to the queue. Returns the job id.
      */
     public function enqueue(array $payload, ?int $userId = null): int
@@ -41,7 +57,7 @@ class ImportJobService
         $rows = is_array($payload['data'] ?? null) ? count($payload['data']) : 0;
         $aiService = (string) ($payload['ai_service'] ?? 'none');
 
-        $this->db->query(
+        $this->q(
             "INSERT INTO product_import_jobs
              (status, payload, total_rows, ai_service, created_by_user_id, created_at)
              VALUES ('queued', ?, ?, ?, ?, NOW())",
@@ -63,7 +79,7 @@ class ImportJobService
     {
         $this->db->beginTransaction();
         try {
-            $row = $this->db->query(
+            $row = $this->q(
                 "SELECT * FROM product_import_jobs
                  WHERE status = 'queued'
                  ORDER BY created_at ASC
@@ -76,7 +92,7 @@ class ImportJobService
                 return null;
             }
 
-            $this->db->query(
+            $this->q(
                 "UPDATE product_import_jobs
                  SET status = 'running', started_at = NOW(), last_heartbeat_at = NOW()
                  WHERE id = ? AND status = 'queued'",
@@ -96,7 +112,7 @@ class ImportJobService
     public function heartbeat(int $jobId, array $progress): void
     {
         try {
-            $this->db->query(
+            $this->q(
                 "UPDATE product_import_jobs
                  SET processed_rows = ?, created_products = ?, updated_products = ?,
                      failed_products = ?, errors = ?, last_heartbeat_at = NOW()
@@ -117,7 +133,7 @@ class ImportJobService
 
     public function complete(int $jobId, array $progress, ?int $importLogId = null): void
     {
-        $this->db->query(
+        $this->q(
             "UPDATE product_import_jobs
              SET status = 'completed', completed_at = NOW(), last_heartbeat_at = NOW(),
                  processed_rows = ?, created_products = ?, updated_products = ?,
@@ -137,7 +153,7 @@ class ImportJobService
 
     public function fail(int $jobId, string $reason, array $progress = []): void
     {
-        $this->db->query(
+        $this->q(
             "UPDATE product_import_jobs
              SET status = 'failed', completed_at = NOW(), error_message = ?,
                  processed_rows = ?, created_products = ?, updated_products = ?,
@@ -161,7 +177,7 @@ class ImportJobService
      */
     public function recoverOrphaned(): int
     {
-        $stmt = $this->db->query(
+        $stmt = $this->q(
             "UPDATE product_import_jobs
              SET status = 'queued', started_at = NULL, last_heartbeat_at = NULL
              WHERE status = 'running'
@@ -174,7 +190,7 @@ class ImportJobService
 
     public function get(int $jobId): ?array
     {
-        $row = $this->db->query(
+        $row = $this->q(
             "SELECT id, status, total_rows, processed_rows, created_products, updated_products,
                     failed_products, errors, ai_service, import_log_id, error_message,
                     created_at, started_at, completed_at, last_heartbeat_at
@@ -194,7 +210,7 @@ class ImportJobService
 
     public function cancel(int $jobId): bool
     {
-        $stmt = $this->db->query(
+        $stmt = $this->q(
             "UPDATE product_import_jobs
              SET status = 'cancelled', completed_at = NOW()
              WHERE id = ? AND status IN ('queued', 'running')",
@@ -205,7 +221,7 @@ class ImportJobService
 
     public function hasActiveJobs(): bool
     {
-        $count = (int) $this->db->query(
+        $count = (int) $this->q(
             "SELECT COUNT(*) FROM product_import_jobs WHERE status IN ('queued', 'running')"
         )->fetchColumn();
         return $count > 0;

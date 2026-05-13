@@ -724,7 +724,7 @@ class ProductController extends Controller
     {
         try {
             $db = Database::getInstance();
-            $stmt = $db->query("SELECT id, name, status FROM vendors WHERE status = 'active' ORDER BY name ASC");
+            $stmt = $this->q($db, "SELECT id, name, status FROM vendors WHERE status = 'active' ORDER BY name ASC");
             return $stmt->fetchAll() ?: [];
         } catch (\Throwable $e) {
             return [];
@@ -738,7 +738,7 @@ class ProductController extends Controller
     {
         try {
             $db = Database::getInstance();
-            $stmt = $db->query("
+            $stmt = $this->q($db, "
                 SELECT av.id, av.value as name
                 FROM attribute_values av
                 JOIN attributes a ON av.attribute_id = a.id
@@ -760,11 +760,11 @@ class ProductController extends Controller
             $db = Database::getInstance();
 
             // Get all attributes
-            $stmt = $db->query("SELECT * FROM attributes ORDER BY sort_order, name ASC");
+            $stmt = $this->q($db, "SELECT * FROM attributes ORDER BY sort_order, name ASC");
             $attributes = $stmt->fetchAll() ?: [];
 
             // Get all attribute values
-            $stmt = $db->query("SELECT * FROM attribute_values ORDER BY attribute_id, sort_order, value ASC");
+            $stmt = $this->q($db, "SELECT * FROM attribute_values ORDER BY attribute_id, sort_order, value ASC");
             $allValues = $stmt->fetchAll() ?: [];
 
             // Group values by attribute_id
@@ -1699,7 +1699,7 @@ class ProductController extends Controller
         // Vendors for the AI-mode default-vendor selector
         $vendors = [];
         try {
-            $vendors = $db->query("SELECT id, name FROM vendors WHERE status IN ('active','pending') ORDER BY name")->fetchAll() ?: [];
+            $vendors = $this->q($db, "SELECT id, name FROM vendors WHERE status IN ('active','pending') ORDER BY name")->fetchAll() ?: [];
         } catch (\Throwable $e) {
             // vendors table may be missing on some installs
         }
@@ -1717,7 +1717,7 @@ class ProductController extends Controller
         // Recent imports for the new "Recent Imports" history list
         $history = [];
         try {
-            $history = $db->query("SELECT * FROM product_import_logs ORDER BY created_at DESC LIMIT 10")->fetchAll() ?: [];
+            $history = $this->q($db, "SELECT * FROM product_import_logs ORDER BY created_at DESC LIMIT 10")->fetchAll() ?: [];
         } catch (\Throwable $e) {
             // table may not exist yet
         }
@@ -1825,14 +1825,14 @@ class ProductController extends Controller
 
         // Get vendor lookup
         $vendorLookup = [];
-        $stmt = $db->query("SELECT id, name FROM vendors");
+        $stmt = $this->q($db, "SELECT id, name FROM vendors");
         foreach ($stmt->fetchAll() as $v) {
             $vendorLookup[strtolower($v['name'])] = $v['id'];
         }
 
         // Get category lookup
         $categoryLookup = [];
-        $stmt = $db->query("SELECT id, name FROM categories");
+        $stmt = $this->q($db, "SELECT id, name FROM categories");
         foreach ($stmt->fetchAll() as $c) {
             $categoryLookup[strtolower($c['name'])] = $c['id'];
         }
@@ -2448,6 +2448,23 @@ class ProductController extends Controller
      * ANTHROPIC_API_KEY is configured, otherwise fall back to OpenAI so
      * existing installs keep working without an env change.
      */
+    /**
+     * Run a SQL statement with optional bound params. Wraps the
+     * prepare/execute dance so callers can chain ->fetch() / ->fetchAll()
+     * / ->fetchColumn() / ->rowCount() like they would on a raw PDO::query()
+     * result. Falls back to PDO::query() when there are no params (no need
+     * to prepare).
+     */
+    private function q(\PDO $db, string $sql, array $params = []): \PDOStatement
+    {
+        if (empty($params)) {
+            return $db->query($sql);
+        }
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
     private function resolveAiService(): array
     {
         $claude = new ClaudeService();
@@ -2482,7 +2499,7 @@ class ProductController extends Controller
     private function getCategoryMap(\PDO $db): array
     {
         $map = [];
-        $rows = $db->query("SELECT id, name FROM categories")->fetchAll() ?: [];
+        $rows = $this->q($db, "SELECT id, name FROM categories")->fetchAll() ?: [];
         foreach ($rows as $r) {
             $map[strtolower(trim($r['name']))] = (int) $r['id'];
             $map[(int) $r['id']] = (int) $r['id'];
@@ -2499,7 +2516,7 @@ class ProductController extends Controller
         $slug = preg_replace('/[^a-z0-9]+/i', '-', strtolower($name));
         $slug = trim($slug, '-');
         try {
-            $db->query(
+            $this->q($db, 
                 "INSERT INTO categories (name, slug, is_active, created_at) VALUES (?, ?, 1, NOW())",
                 [$name, $slug]
             );
@@ -2587,7 +2604,7 @@ class ProductController extends Controller
             return self::$productImagesColumn;
         }
         try {
-            $cols = $db->query("SHOW COLUMNS FROM product_images")->fetchAll();
+            $cols = $this->q($db, "SHOW COLUMNS FROM product_images")->fetchAll();
             $names = array_column($cols, 'Field');
             self::$productImagesColumn = in_array('image_url', $names, true) ? 'image_url' : 'path';
         } catch (\Throwable $e) {
@@ -2646,8 +2663,8 @@ class ProductController extends Controller
             $filename = $productId . '_' . time() . '_import.' . $ext;
             file_put_contents($uploadDir . $filename, $imageData);
             $urlColumn = $this->productImagesUrlColumn($db);
-            $hasImage = (int) $db->query("SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$productId])->fetchColumn();
-            $db->query(
+            $hasImage = (int) $this->q($db, "SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$productId])->fetchColumn();
+            $this->q($db, 
                 "INSERT INTO product_images (product_id, `{$urlColumn}`, is_primary, sort_order, created_at) VALUES (?, ?, ?, 0, NOW())",
                 [$productId, '/uploads/products/' . $filename, $hasImage ? 0 : 1]
             );
@@ -2700,7 +2717,7 @@ class ProductController extends Controller
             return;
         }
         try {
-            $hasExisting = (int) $db->query("SELECT COUNT(*) FROM product_specifications WHERE product_id = ?", [$productId])->fetchColumn();
+            $hasExisting = (int) $this->q($db, "SELECT COUNT(*) FROM product_specifications WHERE product_id = ?", [$productId])->fetchColumn();
             if ($hasExisting > 0) {
                 return;
             }
@@ -2711,7 +2728,7 @@ class ProductController extends Controller
                 if ($sn === '' || $sv === '') {
                     continue;
                 }
-                $db->query(
+                $this->q($db, 
                     "INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order, created_at) VALUES (?, ?, ?, ?, NOW())",
                     [$productId, substr($sn, 0, 100), substr($sv, 0, 500), $sortOrder]
                 );
@@ -2733,7 +2750,7 @@ class ProductController extends Controller
             return;
         }
         try {
-            $hasExisting = (int) $db->query("SELECT COUNT(*) FROM product_attributes WHERE product_id = ?", [$productId])->fetchColumn();
+            $hasExisting = (int) $this->q($db, "SELECT COUNT(*) FROM product_attributes WHERE product_id = ?", [$productId])->fetchColumn();
             if ($hasExisting > 0) {
                 return;
             }
@@ -2747,9 +2764,9 @@ class ProductController extends Controller
                     $attrValue = $this->normalizeBrand($attrValue);
                 }
                 $attrSlug = $this->generateAttributeSlug($attrName);
-                $row = $db->query("SELECT id FROM attributes WHERE slug = ?", [$attrSlug])->fetch();
+                $row = $this->q($db, "SELECT id FROM attributes WHERE slug = ?", [$attrSlug])->fetch();
                 if (!$row) {
-                    $db->query(
+                    $this->q($db, 
                         "INSERT INTO attributes (name, slug, type, is_filterable, is_visible, created_at) VALUES (?, ?, 'select', 1, 1, NOW())",
                         [$attrName, $attrSlug]
                     );
@@ -2758,9 +2775,9 @@ class ProductController extends Controller
                     $attributeId = (int) $row['id'];
                 }
                 $valueSlug = $this->generateAttributeSlug($attrValue);
-                $vrow = $db->query("SELECT id FROM attribute_values WHERE attribute_id = ? AND slug = ?", [$attributeId, $valueSlug])->fetch();
+                $vrow = $this->q($db, "SELECT id FROM attribute_values WHERE attribute_id = ? AND slug = ?", [$attributeId, $valueSlug])->fetch();
                 if (!$vrow) {
-                    $db->query(
+                    $this->q($db, 
                         "INSERT INTO attribute_values (attribute_id, value, slug, created_at) VALUES (?, ?, ?, NOW())",
                         [$attributeId, substr($attrValue, 0, 255), $valueSlug]
                     );
@@ -2768,7 +2785,7 @@ class ProductController extends Controller
                 } else {
                     $valueId = (int) $vrow['id'];
                 }
-                $db->query(
+                $this->q($db, 
                     "INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)",
                     [$productId, $attributeId, $valueId]
                 );
@@ -2803,7 +2820,7 @@ class ProductController extends Controller
             if (is_numeric($v)) {
                 $vendorId = (int) $v;
             } else {
-                $stmt = $db->query("SELECT id FROM vendors WHERE name = ? LIMIT 1", [$v]);
+                $stmt = $this->q($db, "SELECT id FROM vendors WHERE name = ? LIMIT 1", [$v]);
                 $found = $stmt ? $stmt->fetch() : null;
                 $vendorId = $found ? (int) $found['id'] : null;
             }
@@ -2818,7 +2835,7 @@ class ProductController extends Controller
             }
         }
 
-        $db->query(
+        $this->q($db, 
             "INSERT INTO products
              (name, slug, sku, description, short_description, price, compare_price, cost_price,
               category_id, vendor_id, stock_quantity, low_stock_threshold, weight, length, width, height,
@@ -2893,7 +2910,7 @@ class ProductController extends Controller
             if (is_numeric($v)) {
                 $vendorId = (int) $v;
             } else {
-                $stmt = $db->query("SELECT id FROM vendors WHERE name = ? LIMIT 1", [$v]);
+                $stmt = $this->q($db, "SELECT id FROM vendors WHERE name = ? LIMIT 1", [$v]);
                 $found = $stmt ? $stmt->fetch() : null;
                 $vendorId = $found ? (int) $found['id'] : null;
             }
@@ -2910,7 +2927,7 @@ class ProductController extends Controller
         if (!empty($updates)) {
             $updates[] = "updated_at = NOW()";
             $params[] = $productId;
-            $db->query("UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?", $params);
+            $this->q($db, "UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?", $params);
         }
     }
 
@@ -2929,7 +2946,7 @@ class ProductController extends Controller
             $confidence = $identified ? 'high' : ($method === 'fallback' ? 'unknown' : 'low');
             $storedData = $data;
             unset($storedData['image_candidates']);
-            $db->query(
+            $this->q($db, 
                 "INSERT INTO product_ai_imports
                  (product_id, sku, ai_service, ai_model, ai_method, ai_identified, confidence,
                   ai_response, image_url, input_tokens, output_tokens, cache_read_tokens,
@@ -3011,7 +3028,7 @@ class ProductController extends Controller
                     throw new \Exception("Row {$rowNum}: SKU is required");
                 }
 
-                $existing = $db->query("SELECT id FROM products WHERE sku = ?", [$sku])->fetch();
+                $existing = $this->q($db, "SELECT id FROM products WHERE sku = ?", [$sku])->fetch();
 
                 if ($existing) {
                     if (!$updateExisting) {
@@ -3021,7 +3038,7 @@ class ProductController extends Controller
                         if ($aiService === null) {
                             [$aiService, $aiServiceName] = $this->resolveAiService();
                         }
-                        $existingProduct = $db->query("SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
+                        $existingProduct = $this->q($db, "SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
                         $aiResult = $aiService->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
                             'brand' => $row['brand'] ?? '',
                             'category' => $row['category'] ?? '',
@@ -3056,7 +3073,7 @@ class ProductController extends Controller
                         $this->saveAiProductAttributes($db, (int) $existing['id'], $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
                     }
                     if ($aiData && !empty($aiData['image_url'])) {
-                        $hasImage = (int) $db->query("SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$existing['id']])->fetchColumn();
+                        $hasImage = (int) $this->q($db, "SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$existing['id']])->fetchColumn();
                         if ($hasImage === 0) {
                             try { $this->importProductImage($db, (int) $existing['id'], $aiData['image_url']); }
                             catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
@@ -3198,7 +3215,7 @@ class ProductController extends Controller
         try {
             $type = $options['ai_generate'] ? 'ai_import' : 'import';
             $filename = $options['ai_generate'] ? "AI Import ({$result['ai_service']})" : 'CSV Import';
-            $db->query(
+            $this->q($db, 
                 "INSERT INTO product_import_logs (type, filename, status, total_products, created_products, updated_products, failed_products, errors, created_at, completed_at)
                  VALUES (?, ?, 'completed', ?, ?, ?, ?, ?, NOW(), NOW())",
                 [
@@ -3396,7 +3413,7 @@ class ProductController extends Controller
     public function importHistoryDetail(int $id): void
     {
         $db = Database::getInstance();
-        $log = $db->query("SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
+        $log = $this->q($db, "SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
         if (!$log) {
             http_response_code(404);
             echo 'Import log not found';
@@ -3404,7 +3421,7 @@ class ProductController extends Controller
         }
         $aiRows = [];
         try {
-            $aiRows = $db->query(
+            $aiRows = $this->q($db, 
                 "SELECT pai.*, p.name AS product_name, p.status AS product_status
                  FROM product_ai_imports pai
                  LEFT JOIN products p ON p.id = pai.product_id
@@ -3482,7 +3499,7 @@ class ProductController extends Controller
     public function exportFailedRows(int $id): void
     {
         $db = Database::getInstance();
-        $log = $db->query("SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
+        $log = $this->q($db, "SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
         if (!$log || empty($log['errors'])) {
             http_response_code(404);
             echo 'No failed rows for this import';

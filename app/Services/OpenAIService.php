@@ -1118,15 +1118,51 @@ class OpenAIService
 
         switch (strtolower($brand)) {
             case 'gigabyte':
-                // Gigabyte: model number maps directly to URL
-                // GV-N4070EAGLE OC-12GD → /Graphics-Card/GV-N4070EAGLE-OC-12GD/sp
+                // Gigabyte product pages are at /Graphics-Card/{exact-sku}
+                // with no /sp suffix - that suffix is for the Specifications
+                // subpage and 404s when the parent page doesn't exist (which
+                // is most products). Confirmed via screenshot: the live URL
+                // for GV-N5080AERO-OC-16GD is exactly
+                // https://www.gigabyte.com/Graphics-Card/GV-N5080AERO-OC-16GD
                 $model = str_replace(' ', '-', $cleanSku);
-                return "https://www.gigabyte.com/Graphics-Card/{$model}/sp";
+                return "https://www.gigabyte.com/Graphics-Card/{$model}";
 
             case 'asus':
-                // ASUS: product slug uses the SKU line name
-                // DUAL-RTX3050-O6G → try asus.com search
-                return null; // ASUS URLs are too complex to construct - use search fallback
+                // ASUS splits between rog.asus.com (ROG / TUF / Strix lines)
+                // and asus.com (PRIME / DUAL / ProArt). Detect from the SKU
+                // prefix or product name. Example slugs confirmed via the
+                // user's screenshots:
+                //   rog.asus.com/graphics-cards/graphics-cards/rog-strix/rog-strix-rtx5070ti-o16g-gaming/
+                //   asus.com/motherboards-components/graphics-cards/prime/prime-rtx5080-o16g/
+                $haystack = strtolower($sku . ' ' . $productName);
+                $slugRaw = strtolower($cleanSku);
+                $slug = preg_replace('/[^a-z0-9]+/', '-', $slugRaw);
+                $slug = trim($slug, '-');
+                if ($slug === '') {
+                    return null;
+                }
+                if (str_contains($haystack, 'rog') || str_contains($haystack, 'strix') || str_contains($haystack, 'tuf')) {
+                    $line = str_contains($haystack, 'strix') ? 'rog-strix'
+                        : (str_contains($haystack, 'tuf') ? 'tuf-gaming' : 'rog');
+                    // ROG slugs usually already start with the line name.
+                    if (!str_starts_with($slug, $line . '-')) {
+                        $slug = $line . '-' . $slug;
+                    }
+                    return "https://rog.asus.com/graphics-cards/graphics-cards/{$line}/{$slug}/";
+                }
+                if (str_contains($haystack, 'prime')) {
+                    if (!str_starts_with($slug, 'prime-')) {
+                        $slug = 'prime-' . $slug;
+                    }
+                    return "https://www.asus.com/motherboards-components/graphics-cards/prime/{$slug}/";
+                }
+                if (str_contains($haystack, 'dual')) {
+                    if (!str_starts_with($slug, 'dual-')) {
+                        $slug = 'dual-' . $slug;
+                    }
+                    return "https://www.asus.com/motherboards-components/graphics-cards/dual/{$slug}/";
+                }
+                return null;
 
             case 'msi':
                 // MSI uses marketing names, not SKUs - construct from product name
@@ -1354,21 +1390,42 @@ class OpenAIService
      */
     private function fetchPage(string $url): ?string
     {
+        // Modern Chrome 124 also sends Sec-Fetch-* and Sec-Ch-Ua-* headers;
+        // many CDNs (Cloudflare in particular) treat their absence as a
+        // bot signal and either 403 or serve a JS-challenge page. Setting
+        // them gets the request past most basic bot heuristics. We also
+        // send a plausible same-origin Referer derived from the URL host
+        // since Gigabyte/ASUS edge configs often reject direct hits with
+        // no Referer.
+        $host = parse_url($url, PHP_URL_HOST) ?: '';
+        $referer = $host !== '' ? 'https://' . $host . '/' : '';
+
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 15,
-            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_2TLS,
             CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            CURLOPT_HTTPHEADER => [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            CURLOPT_HTTPHEADER => array_filter([
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language: en-US,en;q=0.9',
-                'Accept-Encoding: gzip, deflate',
+                'Accept-Encoding: gzip, deflate, br',
                 'Cache-Control: no-cache',
-            ],
+                'Pragma: no-cache',
+                'Sec-Ch-Ua: "Google Chrome";v="124", "Chromium";v="124", "Not-A.Brand";v="99"',
+                'Sec-Ch-Ua-Mobile: ?0',
+                'Sec-Ch-Ua-Platform: "Windows"',
+                'Sec-Fetch-Dest: document',
+                'Sec-Fetch-Mode: navigate',
+                'Sec-Fetch-Site: none',
+                'Sec-Fetch-User: ?1',
+                'Upgrade-Insecure-Requests: 1',
+                $referer !== '' ? 'Referer: ' . $referer : null,
+            ]),
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_ENCODING => '',
             CURLOPT_COOKIEFILE => '',
@@ -1522,13 +1579,62 @@ class OpenAIService
             foreach ($m[1] as $u) $push($u);
         }
 
-        // 2. Plain <img src="..."> tags. Bias toward URLs that contain the
-        //    brand name (often manufacturer CDNs include the brand) by
-        //    inserting them first when we find them.
+        // 2. JSON-LD <script type="application/ld+json"> ImageObject blocks.
+        //    Both ASUS and Gigabyte (and almost every product-page CMS) ship
+        //    a JSON-LD Product object whose "image" field is the full
+        //    gallery in a clean array. This is the most reliable source
+        //    because it's the structured-data contract the site advertises
+        //    to Google/Bing.
+        if (preg_match_all('#<script[^>]+type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>#is', $html, $m)) {
+            foreach ($m[1] as $blob) {
+                $decoded = json_decode(trim($blob), true);
+                if (!is_array($decoded)) continue;
+                // Sometimes the blob is an array of objects, sometimes wrapped
+                // in @graph. Flatten both shapes.
+                $candidates = isset($decoded['@graph']) && is_array($decoded['@graph'])
+                    ? $decoded['@graph']
+                    : [$decoded];
+                foreach ($candidates as $obj) {
+                    if (!is_array($obj)) continue;
+                    if (empty($obj['image'])) continue;
+                    $imgField = $obj['image'];
+                    if (is_string($imgField)) {
+                        $push($imgField);
+                    } elseif (is_array($imgField)) {
+                        foreach ($imgField as $entry) {
+                            if (is_string($entry)) {
+                                $push($entry);
+                            } elseif (is_array($entry) && !empty($entry['url'])) {
+                                $push((string) $entry['url']);
+                            } elseif (is_array($entry) && !empty($entry['contentUrl'])) {
+                                $push((string) $entry['contentUrl']);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Plain <img src="..."> tags + srcset extraction. Bias toward
+        //    URLs that contain the brand name (often manufacturer CDNs do)
+        //    so the gallery's main product shot tends to land before stock
+        //    "you might also like" photos at the bottom of the page.
         $brandKey = strtolower(trim($brand));
         $imgUrls = [];
         if (preg_match_all('#<img\b[^>]+(?:data-src|data-original|src)\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
             foreach ($m[1] as $u) $imgUrls[] = $u;
+        }
+        // srcset='URL1 1x, URL2 2x' - take the highest resolution variant.
+        if (preg_match_all('#srcset\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $set) {
+                // Just split on commas, take each URL part before the size descriptor.
+                foreach (explode(',', $set) as $part) {
+                    $part = trim($part);
+                    if ($part === '') continue;
+                    $u = explode(' ', $part)[0] ?? '';
+                    if ($u !== '') $imgUrls[] = $u;
+                }
+            }
         }
         // Stable sort: brand-matching URLs go first.
         usort($imgUrls, function ($a, $b) use ($brandKey) {

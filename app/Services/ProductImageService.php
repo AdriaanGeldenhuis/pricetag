@@ -1491,24 +1491,44 @@ class ProductImageService
      */
     private function isValidImageUrl(string $url): bool
     {
+        $lower = strtolower($url);
+
         // Skip search engine thumbnails
-        if (str_contains($url, 'encrypted-tbn')) return false;
-        if (str_contains($url, 'gstatic.com')) return false;
-        if (str_contains($url, 'google.com')) return false;
-        if (str_contains($url, 'googleapis.com')) return false;
-        if (str_contains($url, 'bing.com')) return false;
-        if (str_contains($url, 'bing.net')) return false;
-        if (str_contains($url, 'duckduckgo.com')) return false;
+        if (str_contains($lower, 'encrypted-tbn')) return false;
+        if (str_contains($lower, 'gstatic.com')) return false;
+        if (str_contains($lower, 'google.com')) return false;
+        if (str_contains($lower, 'googleapis.com')) return false;
+        if (str_contains($lower, 'bing.com')) return false;
+        if (str_contains($lower, 'bing.net')) return false;
+        if (str_contains($lower, 'duckduckgo.com')) return false;
+
+        // Skip stock-photo / royalty-free agencies. The last import
+        // attached an Alamy food-photography image to a Gigabyte GPU
+        // because Bing/Google image search for "GV-N5080AERO" - a SKU
+        // too new to have real product photos indexed - returned
+        // alamy.com results matching the query loosely. Stock-photo
+        // sites are NEVER going to host genuine product photos for our
+        // catalogue, so they're a hard reject.
+        $stockHosts = [
+            'alamy.com', 'alamy.de', 'alamyimages.fr', 'gettyimages.',
+            'shutterstock.com', 'istockphoto.com', 'depositphotos.com',
+            'dreamstime.com', 'adobe.com/stock', '123rf.com',
+            'unsplash.com', 'pexels.com', 'pixabay.com',
+            'freepik.com', 'stock.adobe.', 'fotosearch.com',
+        ];
+        foreach ($stockHosts as $h) {
+            if (str_contains($lower, $h)) return false;
+        }
 
         // Skip tiny icons/favicons
-        if (str_contains($url, 'favicon')) return false;
-        if (str_contains($url, 'logo') && !str_contains($url, 'product')) return false;
+        if (str_contains($lower, 'favicon')) return false;
+        if (str_contains($lower, 'logo') && !str_contains($lower, 'product')) return false;
 
         // Skip tracking pixels and ads
-        if (str_contains($url, 'pixel')) return false;
-        if (str_contains($url, 'tracking')) return false;
-        if (str_contains($url, '1x1')) return false;
-        if (str_contains($url, 'spacer')) return false;
+        if (str_contains($lower, 'pixel')) return false;
+        if (str_contains($lower, 'tracking')) return false;
+        if (str_contains($lower, '1x1')) return false;
+        if (str_contains($lower, 'spacer')) return false;
 
         // Must be a proper image URL
         if (!preg_match('/\.(jpg|jpeg|png|webp)(\?|$)/i', $url)) return false;

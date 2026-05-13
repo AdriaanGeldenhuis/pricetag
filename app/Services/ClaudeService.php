@@ -71,8 +71,14 @@ class ClaudeService
         }
 
         $isBulkImport = !empty($context['bulk_import']);
-        $maxTokens = $isBulkImport ? 16000 : 16000;
-        $timeout = $isBulkImport ? 120 : 180;
+        // Output budget: the JSON spec asks for ~17 fields including a
+        // 150-300 word description. 8K is plenty in practice; thinking is
+        // adaptive so the model only spends what it needs.
+        $maxTokens = 8000;
+        // Safety-net wall-clock. The real liveness guard is CURLOPT_LOW_SPEED_TIME
+        // inside callMessages (aborts if no bytes for 60s). This just stops a
+        // pathological run from leaking forever.
+        $timeout = 600;
 
         $systemBlocks = $this->buildSystemBlocks();
         $userPrompt = $this->buildUserPrompt($sku, $shortDescription, $context);
@@ -273,9 +279,15 @@ PROMPT;
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($body),
             CURLOPT_RETURNTRANSFER => true,
+            // No wall-clock cap on the total request: a single SKU with
+            // adaptive thinking + several web_search roundtrips + a large
+            // JSON output can legitimately run for several minutes.
+            // CURLOPT_LOW_SPEED_LIMIT/_TIME below catches a genuinely-dead
+            // connection (no bytes for 60s) while letting healthy slow
+            // requests complete. We still set a high ceiling via $timeout
+            // as a last-resort safety net (default ~10 min from the caller).
             CURLOPT_TIMEOUT => $timeout,
-            // Anthropic's stream emits keep-alives every ~15s. If we go this
-            // long without bytes the connection is genuinely dead.
+            CURLOPT_CONNECTTIMEOUT => 30,
             CURLOPT_LOW_SPEED_LIMIT => 1,
             CURLOPT_LOW_SPEED_TIME => 60,
             CURLOPT_HTTPHEADER => [

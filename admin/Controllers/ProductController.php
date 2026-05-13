@@ -2486,18 +2486,25 @@ class ProductController extends Controller
             return "ai={$serviceName}, no_call";
         }
         $method = $aiResult['method'] ?? 'unknown';
+        $usage = $aiResult['usage'] ?? [];
+        $tokenSummary = '';
+        if (!empty($usage)) {
+            $in = (int) ($usage['input_tokens'] ?? 0);
+            $out = (int) ($usage['output_tokens'] ?? 0);
+            $tokenSummary = " [tokens in/out: {$in}/{$out}]";
+        }
         if ($method === 'fallback') {
             $reason = (string) ($aiResult['fallback_reason'] ?? 'unknown');
-            return "ai={$serviceName}, fallback: " . substr($reason, 0, 120);
+            return "ai={$serviceName}, fallback: " . substr($reason, 0, 120) . $tokenSummary;
         }
         $data = $aiResult['data'] ?? [];
         if (empty($data['ai_identified'])) {
-            return "ai={$serviceName}, model returned ai_identified=false";
+            return "ai={$serviceName}, model returned ai_identified=false" . $tokenSummary;
         }
         if (empty($data['name'])) {
-            return "ai={$serviceName}, model returned empty name";
+            return "ai={$serviceName}, model returned empty name" . $tokenSummary;
         }
-        return "ai={$serviceName}, name rejected by validator";
+        return "ai={$serviceName}, name rejected by validator" . $tokenSummary;
     }
 
     /**
@@ -3042,6 +3049,14 @@ class ProductController extends Controller
      */
     private function runImportLoop(\PDO $db, array $data, array $options, ?callable $heartbeat = null): array
     {
+        // A row with AI enabled can spend several minutes inside Anthropic
+        // (web_search + adaptive thinking + structured output). Don't let
+        // PHP's max_execution_time guillotine the worker mid-row.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+        @ignore_user_abort(true);
+
         $updateExisting = (bool) $options['update_existing'];
         $createNew = (bool) $options['create_new'];
         $skipErrors = (bool) $options['skip_errors'];

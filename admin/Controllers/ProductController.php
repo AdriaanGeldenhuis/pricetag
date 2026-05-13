@@ -3189,7 +3189,18 @@ class ProductController extends Controller
                             'price' => $row['price'] ?? $existingProduct['price'] ?? 0,
                             'existingName' => trim($row['name'] ?? $existingProduct['name'] ?? ''),
                             'existingDescription' => $row['description'] ?? $existingProduct['description'] ?? '',
-                            'bulk_import' => true,
+                            // Intentionally not passing bulk_import=true.
+                            // That flag skips fetchManufacturerData() inside
+                            // OpenAIService, which is what supplies the real
+                            // product context (DuckDuckGo search + product
+                            // page scrape). Without it the AI has only the
+                            // SKU + supplier line to work with and returns
+                            // empty description/specs/attributes. That's
+                            // what made every gpt-4o-mini / gpt-5-mini row
+                            // come back with 20% of the content the
+                            // per-product button produces (the button never
+                            // passed bulk_import=true). +10-30s/row cost
+                            // - use the queued import for batches >5 rows.
                         ]);
                         if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
                             $aiData = $aiResult['data'];
@@ -3266,7 +3277,8 @@ class ProductController extends Controller
                             'price' => $row['price'] ?? 0,
                             'existingName' => $name,
                             'existingDescription' => $row['description'] ?? '',
-                            'bulk_import' => true,
+                            // bulk_import=true intentionally NOT passed - see
+                            // the matching block above for the rationale.
                         ]);
                         if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
                             $aiData = $aiResult['data'];
@@ -3530,7 +3542,9 @@ class ProductController extends Controller
                 'category' => $row['category'] ?? '',
                 'price' => $row['price'] ?? 0,
                 'existingName' => $row['name'] ?? '',
-                'bulk_import' => true,
+                // bulk_import=true intentionally NOT passed - the dry-run
+                // exists to preview what a real import row will produce,
+                // and the real import path no longer sets it either.
             ]);
             $data = $aiResult['data'] ?? [];
             $cost = !empty($row['cost_price']) ? (float) $row['cost_price'] : null;

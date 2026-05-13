@@ -2638,6 +2638,78 @@ class ProductController extends Controller
     }
 
     /**
+     * Compress a ProductImageService::getDebugLog() trail into a single
+     * line the operator can read inline in the import errors table.
+     * Example: "fetch bing.com=HTTP 200(45KB) | search bing=0 urls 'q1' | fetch ddg=HTTP 0(curl_error) | search ddg=0 urls 'q1' | download cdn.dell.com=non_image_content_type(text/html)"
+     */
+    private function summarizeImagesDebug(array $entries): string
+    {
+        $parts = [];
+        foreach ($entries as $e) {
+            $kind = (string) ($e['kind'] ?? '');
+            if ($kind === 'fetch') {
+                $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
+                if ($e['outcome'] === 'ok') {
+                    $bytes = (int) ($e['bytes'] ?? 0);
+                    $parts[] = "fetch {$host}=HTTP 200 (" . round($bytes / 1024) . 'KB)';
+                } else {
+                    $http = (int) ($e['http_code'] ?? 0);
+                    $err = (string) ($e['error'] ?? '');
+                    $parts[] = "fetch {$host}=HTTP {$http}" . ($err ? "({$err})" : '');
+                }
+            } elseif ($kind === 'search') {
+                $engine = (string) ($e['engine'] ?? '');
+                $found = (int) ($e['urls_found'] ?? 0);
+                $q = (string) ($e['query'] ?? '');
+                $parts[] = "search {$engine}={$found} urls '{$q}'";
+            } elseif ($kind === 'download') {
+                $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
+                if ($e['outcome'] === 'saved') {
+                    $parts[] = "download {$host}=saved (" . (string) ($e['dims'] ?? '?') . ')';
+                } else {
+                    $reason = (string) ($e['reason'] ?? '?');
+                    $extra = '';
+                    if (!empty($e['content_type'])) {
+                        $extra = '(' . (string) $e['content_type'] . ')';
+                    } elseif (!empty($e['http_code'])) {
+                        $extra = '(HTTP ' . (string) $e['http_code'] . ')';
+                    } elseif (!empty($e['dims'])) {
+                        $extra = '(' . (string) $e['dims'] . ')';
+                    }
+                    $parts[] = "download {$host}={$reason}{$extra}";
+                }
+            } elseif ($kind === 'fallback_search_start') {
+                $needed = (int) ($e['needed'] ?? 0);
+                $parts[] = "fallback_start needed={$needed}";
+            } elseif ($kind === 'exception') {
+                $parts[] = 'exception: ' . substr((string) ($e['reason'] ?? ''), 0, 80);
+            }
+        }
+        $line = implode(' | ', $parts);
+        if (strlen($line) > 800) {
+            $line = substr($line, 0, 800) . '... [truncated]';
+        }
+        return $line !== '' ? $line : 'no debug entries';
+    }
+
+    /**
+     * Append the full trail to storage/logs/ai-image-import.log so a
+     * support session can pull the full byte-level history per SKU
+     * without scrolling the import errors UI.
+     */
+    private function logImageDebug(string $sku, int $imagesSaved, array $entries): void
+    {
+        $line = sprintf(
+            "[%s] sku=%s saved=%d entries=%s\n",
+            date('Y-m-d H:i:s'),
+            $sku,
+            $imagesSaved,
+            json_encode($entries, JSON_UNESCAPED_SLASHES)
+        );
+        @error_log($line, 3, STORAGE_PATH . '/logs/ai-image-import.log');
+    }
+
+    /**
      * Map of "category name (lowercased)" -> id and "category id (int)" -> id,
      * so a CSV row can refer to a category by either form.
      */
@@ -3274,6 +3346,13 @@ class ProductController extends Controller
                         if ($missing !== '') {
                             $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
+                        $imagesDebug = $applyResult['images_debug'] ?? [];
+                        if (!empty($imagesDebug)) {
+                            $this->logImageDebug($sku, $imagesSaved, $imagesDebug);
+                            if ($imagesSaved === 0) {
+                                $errors[] = "Row {$rowNum}: image trail for {$sku}: " . $this->summarizeImagesDebug($imagesDebug);
+                            }
+                        }
                     }
                     if ($aiGenerate && $aiResult !== null) {
                         $this->logAiImport($db, (int) $existing['id'], $sku, $aiServiceName, $aiResult);
@@ -3383,6 +3462,13 @@ class ProductController extends Controller
                         $missing = $this->describeMissingAiFields($aiData, $imagesSaved);
                         if ($missing !== '') {
                             $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
+                        }
+                        $imagesDebug = $applyResult['images_debug'] ?? [];
+                        if (!empty($imagesDebug)) {
+                            $this->logImageDebug($sku, $imagesSaved, $imagesDebug);
+                            if ($imagesSaved === 0) {
+                                $errors[] = "Row {$rowNum}: image trail for {$sku}: " . $this->summarizeImagesDebug($imagesDebug);
+                            }
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {

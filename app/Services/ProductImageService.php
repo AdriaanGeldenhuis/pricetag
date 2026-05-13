@@ -63,11 +63,37 @@ class ProductImageService
     private PDO $db;
 
     /**
+     * Per-call diagnostic trail of search + download attempts. Reset by
+     * applyAiDataToProduct via clearDebugLog() before each row so the
+     * importer can surface the exact reason every candidate URL was
+     * accepted or rejected.
+     *
+     * @var array<int,array<string,mixed>>
+     */
+    private array $debugLog = [];
+
+    /**
      * Constructor
      */
     public function __construct()
     {
         $this->db = Database::getInstance();
+    }
+
+    public function clearDebugLog(): void
+    {
+        $this->debugLog = [];
+    }
+
+    public function getDebugLog(): array
+    {
+        return $this->debugLog;
+    }
+
+    private function recordDebug(array $entry): void
+    {
+        $entry['ts'] = date('H:i:s');
+        $this->debugLog[] = $entry;
     }
 
     // =========================================================================
@@ -1021,6 +1047,12 @@ class ProductImageService
 
         // Build search queries - try different variations to get diverse images
         $searchQueries = $this->buildImageSearchQueries($name, $brand, $sku);
+        $this->recordDebug([
+            'kind' => 'fallback_search_start',
+            'product_id' => $productId,
+            'needed' => $needed,
+            'queries' => $searchQueries,
+        ]);
 
         // Search for real product images with retry logic
         $downloaded = 0;
@@ -1185,6 +1217,10 @@ class ProductImageService
         if (!empty($urls)) {
             error_log("ProductImageService: Bing found " . count($urls) . " images for '{$query}'");
         }
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'bing',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
 
         return $urls;
     }
@@ -1241,6 +1277,10 @@ class ProductImageService
         if (!empty($urls)) {
             error_log("ProductImageService: DuckDuckGo found " . count($urls) . " images for '{$query}'");
         }
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'ddg',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
 
         return $urls;
     }
@@ -1280,6 +1320,10 @@ class ProductImageService
             }
         }
 
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'google',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
         return $urls;
     }
 
@@ -1334,9 +1378,19 @@ class ProductImageService
 
         if ($error || $httpCode !== 200 || !$response) {
             error_log("ProductImageService: Fetch failed for '{$url}' (HTTP {$httpCode}): {$error}");
+            $this->recordDebug([
+                'kind' => 'fetch', 'url' => $url,
+                'outcome' => 'failed', 'http_code' => $httpCode,
+                'error' => $error !== '' ? $error : ($response === false ? 'no_response' : 'unknown'),
+            ]);
             return null;
         }
 
+        $this->recordDebug([
+            'kind' => 'fetch', 'url' => $url,
+            'outcome' => 'ok', 'http_code' => $httpCode,
+            'bytes' => strlen((string) $response),
+        ]);
         return $response;
     }
 
@@ -1395,10 +1449,15 @@ class ProductImageService
      */
     private function downloadAndSaveImage(int $productId, string $url, string $altText = '', bool $isPrimary = false): array
     {
+        $shortUrl = strlen($url) > 120 ? substr($url, 0, 117) . '...' : $url;
         try {
             $reason = isUnsafePublicUrl($url);
             if ($reason !== null) {
                 error_log("ProductImageService: refusing to fetch {$url}: {$reason}");
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'unsafe_url: ' . $reason,
+                ]);
                 return ['success' => false, 'error' => 'Unsafe URL: ' . $reason];
             }
 
@@ -1436,9 +1495,21 @@ class ProductImageService
             curl_close($ch);
 
             if ($aborted) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'oversize',
+                    'http_code' => $httpCode, 'bytes' => strlen($imageData),
+                ]);
                 return ['success' => false, 'error' => 'Image exceeded max size (' . self::MAX_DOWNLOAD_BYTES . ' bytes)'];
             }
             if ($httpCode !== 200 || strlen($imageData) < 1000) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected',
+                    'reason' => $httpCode !== 200 ? 'http_' . $httpCode : 'too_small_' . strlen($imageData) . 'B',
+                    'http_code' => $httpCode, 'bytes' => strlen($imageData),
+                    'content_type' => $contentType,
+                ]);
                 return ['success' => false, 'error' => 'Download failed (HTTP ' . $httpCode . ')'];
             }
             // Re-check the post-redirect URL: a same-origin URL we accepted
@@ -1447,6 +1518,11 @@ class ProductImageService
                 $reason = isUnsafePublicUrl($effectiveUrl);
                 if ($reason !== null) {
                     error_log("ProductImageService: redirect landed on unsafe URL {$effectiveUrl}: {$reason}");
+                    $this->recordDebug([
+                        'kind' => 'download', 'url' => $shortUrl,
+                        'outcome' => 'rejected', 'reason' => 'unsafe_redirect: ' . $reason,
+                        'redirect_to' => $effectiveUrl,
+                    ]);
                     return ['success' => false, 'error' => 'Unsafe redirect target'];
                 }
             }
@@ -1454,6 +1530,11 @@ class ProductImageService
             // separately by getimagesize() on the bytes, but the header
             // gives us a cheap early reject for HTML/JSON/etc.
             if ($contentType !== '' && stripos($contentType, 'image/') !== 0) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'non_image_content_type',
+                    'content_type' => $contentType, 'bytes' => strlen($imageData),
+                ]);
                 return ['success' => false, 'error' => 'Not an image (Content-Type: ' . $contentType . ')'];
             }
 
@@ -1464,12 +1545,22 @@ class ProductImageService
             $imageInfo = @getimagesize($tmpFile);
             if (!$imageInfo) {
                 @unlink($tmpFile);
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'getimagesize_failed',
+                    'bytes' => strlen($imageData), 'content_type' => $contentType,
+                ]);
                 return ['success' => false, 'error' => 'Not a valid image'];
             }
 
             // Check minimum dimensions (skip tiny images)
             if ($imageInfo[0] < 200 || $imageInfo[1] < 200) {
                 @unlink($tmpFile);
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'too_small_dims',
+                    'dims' => $imageInfo[0] . 'x' . $imageInfo[1],
+                ]);
                 return ['success' => false, 'error' => 'Image too small'];
             }
 
@@ -1487,6 +1578,11 @@ class ProductImageService
             @unlink($tmpFile);
 
             if (!$processed) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'processImage_failed',
+                    'dims' => $imageInfo[0] . 'x' . $imageInfo[1],
+                ]);
                 return ['success' => false, 'error' => 'Image processing failed'];
             }
 
@@ -1506,6 +1602,12 @@ class ProductImageService
             );
             $stmt->execute([$productId, $relativePath, $altText, $isPrimary ? 1 : 0, $sortOrder]);
 
+            $this->recordDebug([
+                'kind' => 'download', 'url' => $shortUrl,
+                'outcome' => 'saved', 'path' => $relativePath,
+                'dims' => $imageInfo[0] . 'x' . $imageInfo[1],
+                'bytes' => strlen($imageData), 'content_type' => $contentType,
+            ]);
             return ['success' => true, 'path' => $relativePath];
 
         } catch (\Throwable $e) {
@@ -1513,6 +1615,10 @@ class ProductImageService
             if (isset($tmpFile) && file_exists($tmpFile)) {
                 @unlink($tmpFile);
             }
+            $this->recordDebug([
+                'kind' => 'download', 'url' => $shortUrl,
+                'outcome' => 'rejected', 'reason' => 'exception: ' . $e->getMessage(),
+            ]);
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }

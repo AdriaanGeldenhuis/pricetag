@@ -1352,6 +1352,7 @@ class ProductService
      *     category_assigned: ?int      category_id if AI category was matched, else null
      *     brand_assigned:    ?string   brand name if applied, else null
      *     images_generated:  int       count of new images downloaded (0 unless generate_images opt was on)
+     *     images_debug:      array     ProductImageService trail of fetch/search/download attempts (always present)
      *     error:             ?string   present only when success=false
      * }
      */
@@ -1368,7 +1369,7 @@ class ProductService
                 'applied_fields' => [], 'skipped_fields' => [],
                 'specs_saved' => 0, 'attributes_saved' => 0,
                 'category_assigned' => null, 'brand_assigned' => null,
-                'images_generated' => 0,
+                'images_generated' => 0, 'images_debug' => [],
             ];
         }
 
@@ -1511,7 +1512,7 @@ class ProductService
                 'applied_fields' => [], 'skipped_fields' => [],
                 'specs_saved' => 0, 'attributes_saved' => 0,
                 'category_assigned' => null, 'brand_assigned' => null,
-                'images_generated' => 0,
+                'images_generated' => 0, 'images_debug' => [],
             ];
         }
 
@@ -1527,10 +1528,12 @@ class ProductService
         // Image generation runs OUTSIDE the transaction because it talks
         // to remote services. Errors are logged but don't fail the call.
         $imagesGenerated = 0;
+        $imagesDebug = [];
         if ($generateImages) {
             ob_start();
             try {
                 $imageService = new ProductImageService();
+                $imageService->clearDebugLog();
 
                 // If the AI service returned image URLs (Claude with web_search
                 // finds the real manufacturer image), download those first.
@@ -1575,10 +1578,18 @@ class ProductService
                     ]);
                     $imagesGenerated += (int) ($imageResult['generated'] ?? 0);
                 }
+                $imagesDebug = $imageService->getDebugLog();
             } catch (\Throwable $e) {
                 logMessage('error', 'AI image generation failed', [
                     'product_id' => $productId, 'error' => $e->getMessage(),
                 ]);
+                if (isset($imageService)) {
+                    $imagesDebug = $imageService->getDebugLog();
+                }
+                $imagesDebug[] = [
+                    'kind' => 'exception', 'reason' => $e->getMessage(),
+                    'ts' => date('H:i:s'),
+                ];
             }
             ob_end_clean();
         }
@@ -1592,6 +1603,7 @@ class ProductService
             'category_assigned' => $categoryAssigned,
             'brand_assigned' => $brandAssigned,
             'images_generated' => $imagesGenerated,
+            'images_debug' => $imagesDebug,
         ];
     }
 

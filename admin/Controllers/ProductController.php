@@ -2611,9 +2611,9 @@ class ProductController extends Controller
         $isClaude = str_starts_with($serviceName, 'claude');
         if ($isImagesOnly) {
             if ($isClaude) {
-                return 'Claude returned image URLs but downloading failed - try the Media tab to upload manually, or rerun with a different model.';
+                return 'Claude returned image URLs but downloading failed - see the image trail line for the rejection reason, upload manually via the Media tab if needed.';
             }
-            return 'OpenAI cannot search the web for image URLs - switch the model to one of the Claude options (Haiku 4.5 is fastest) to get manufacturer images automatically, or upload via the Media tab.';
+            return 'OpenAI could not locate a manufacturer or spec-site page for this SKU (no <img> tags to harvest) - upload via the Media tab, or try a Claude model which can web_search for images directly.';
         }
         return 'Re-run on the edit page (AI: Make Production Ready) or try a different model.';
     }
@@ -2635,6 +2635,105 @@ class ProductController extends Controller
             'default_category_id' => !empty($source['default_category_id']) ? (int) $source['default_category_id'] : null,
             'ai_model' => $this->sanitizeImportModel($source['ai_model'] ?? null),
         ];
+    }
+
+    /**
+     * Compress a ProductImageService::getDebugLog() trail into a single
+     * line the operator can read inline in the import errors table.
+     * Example: "fetch bing.com=HTTP 200(45KB) | search bing=0 urls 'q1' | fetch ddg=HTTP 0(curl_error) | search ddg=0 urls 'q1' | download cdn.dell.com=non_image_content_type(text/html)"
+     */
+    private function summarizeImagesDebug(array $entries): string
+    {
+        $parts = [];
+        foreach ($entries as $e) {
+            $kind = (string) ($e['kind'] ?? '');
+            if ($kind === 'manufacturer_url') {
+                $url = (string) ($e['url'] ?? '');
+                $outcome = (string) ($e['outcome'] ?? '');
+                $parts[] = "manu_url=" . ($url !== '' ? $url : $outcome);
+            } elseif ($kind === 'manufacturer_skipped') {
+                $parts[] = 'manu_skipped=' . (string) ($e['reason'] ?? '');
+            } elseif ($kind === 'manufacturer_exception') {
+                $parts[] = 'manu_exception: ' . substr((string) ($e['reason'] ?? ''), 0, 80);
+            } elseif ($kind === 'page_fetch') {
+                $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
+                $outcome = (string) ($e['outcome'] ?? '');
+                $bytes = (int) ($e['bytes'] ?? 0);
+                $bytesStr = $bytes ? '(' . round($bytes / 1024) . 'KB)' : '';
+                $parts[] = "page_fetch {$host}={$outcome}{$bytesStr}";
+            } elseif ($kind === 'ddg_search') {
+                $outcome = (string) ($e['outcome'] ?? '');
+                $bytes = (int) ($e['bytes'] ?? 0);
+                $bytesStr = $bytes ? '(' . round($bytes / 1024) . 'KB)' : '';
+                $parts[] = "ddg_search={$outcome}{$bytesStr}";
+            } elseif ($kind === 'ddg_results') {
+                $parts[] = 'ddg_results=' . (int) ($e['count'] ?? 0) . ' urls';
+            } elseif ($kind === 'no_page_found') {
+                $parts[] = 'no_page_found';
+            } elseif ($kind === 'harvest') {
+                $count = (int) ($e['count'] ?? 0);
+                $host = (string) parse_url((string) ($e['page_url'] ?? ''), PHP_URL_HOST);
+                $parts[] = "harvest {$host}={$count} urls";
+            } elseif ($kind === 'fetch') {
+                $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
+                if ($e['outcome'] === 'ok') {
+                    $bytes = (int) ($e['bytes'] ?? 0);
+                    $parts[] = "fetch {$host}=HTTP 200 (" . round($bytes / 1024) . 'KB)';
+                } else {
+                    $http = (int) ($e['http_code'] ?? 0);
+                    $err = (string) ($e['error'] ?? '');
+                    $parts[] = "fetch {$host}=HTTP {$http}" . ($err ? "({$err})" : '');
+                }
+            } elseif ($kind === 'search') {
+                $engine = (string) ($e['engine'] ?? '');
+                $found = (int) ($e['urls_found'] ?? 0);
+                $q = (string) ($e['query'] ?? '');
+                $parts[] = "search {$engine}={$found} urls '{$q}'";
+            } elseif ($kind === 'download') {
+                $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
+                if ($e['outcome'] === 'saved') {
+                    $parts[] = "download {$host}=saved (" . (string) ($e['dims'] ?? '?') . ')';
+                } else {
+                    $reason = (string) ($e['reason'] ?? '?');
+                    $extra = '';
+                    if (!empty($e['content_type'])) {
+                        $extra = '(' . (string) $e['content_type'] . ')';
+                    } elseif (!empty($e['http_code'])) {
+                        $extra = '(HTTP ' . (string) $e['http_code'] . ')';
+                    } elseif (!empty($e['dims'])) {
+                        $extra = '(' . (string) $e['dims'] . ')';
+                    }
+                    $parts[] = "download {$host}={$reason}{$extra}";
+                }
+            } elseif ($kind === 'fallback_search_start') {
+                $needed = (int) ($e['needed'] ?? 0);
+                $parts[] = "fallback_start needed={$needed}";
+            } elseif ($kind === 'exception') {
+                $parts[] = 'exception: ' . substr((string) ($e['reason'] ?? ''), 0, 80);
+            }
+        }
+        $line = implode(' | ', $parts);
+        if (strlen($line) > 800) {
+            $line = substr($line, 0, 800) . '... [truncated]';
+        }
+        return $line !== '' ? $line : 'no debug entries';
+    }
+
+    /**
+     * Append the full trail to storage/logs/ai-image-import.log so a
+     * support session can pull the full byte-level history per SKU
+     * without scrolling the import errors UI.
+     */
+    private function logImageDebug(string $sku, int $imagesSaved, array $entries): void
+    {
+        $line = sprintf(
+            "[%s] sku=%s saved=%d entries=%s\n",
+            date('Y-m-d H:i:s'),
+            $sku,
+            $imagesSaved,
+            json_encode($entries, JSON_UNESCAPED_SLASHES)
+        );
+        @error_log($line, 3, STORAGE_PATH . '/logs/ai-image-import.log');
     }
 
     /**
@@ -3274,6 +3373,19 @@ class ProductController extends Controller
                         if ($missing !== '') {
                             $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
+                        $aiServiceImageDebug = method_exists($aiService, 'getImageDebugLog')
+                            ? $aiService->getImageDebugLog()
+                            : [];
+                        $imagesDebug = array_merge(
+                            $aiServiceImageDebug,
+                            $applyResult['images_debug'] ?? []
+                        );
+                        if (!empty($imagesDebug)) {
+                            $this->logImageDebug($sku, $imagesSaved, $imagesDebug);
+                            if ($imagesSaved === 0) {
+                                $errors[] = "Row {$rowNum}: image trail for {$sku}: " . $this->summarizeImagesDebug($imagesDebug);
+                            }
+                        }
                     }
                     if ($aiGenerate && $aiResult !== null) {
                         $this->logAiImport($db, (int) $existing['id'], $sku, $aiServiceName, $aiResult);
@@ -3383,6 +3495,19 @@ class ProductController extends Controller
                         $missing = $this->describeMissingAiFields($aiData, $imagesSaved);
                         if ($missing !== '') {
                             $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
+                        }
+                        $aiServiceImageDebug = method_exists($aiService, 'getImageDebugLog')
+                            ? $aiService->getImageDebugLog()
+                            : [];
+                        $imagesDebug = array_merge(
+                            $aiServiceImageDebug,
+                            $applyResult['images_debug'] ?? []
+                        );
+                        if (!empty($imagesDebug)) {
+                            $this->logImageDebug($sku, $imagesSaved, $imagesDebug);
+                            if ($imagesSaved === 0) {
+                                $errors[] = "Row {$rowNum}: image trail for {$sku}: " . $this->summarizeImagesDebug($imagesDebug);
+                            }
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {

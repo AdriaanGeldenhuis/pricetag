@@ -14,6 +14,51 @@ class OpenAIService
     private string $model;
     private string $baseUrl = 'https://api.openai.com/v1';
 
+    /**
+     * Product image URLs harvested from the manufacturer page that
+     * fetchManufacturerData() landed on. Reset on every call to
+     * generateCompleteProduct() so each SKU gets its own list.
+     *
+     * @var string[]
+     */
+    private array $lastImageCandidates = [];
+
+    /**
+     * URL of the page searchAndFetchProductPage() ultimately fetched.
+     * Used to resolve relative <img src="..."> paths into absolute URLs.
+     */
+    private string $lastFetchedPageUrl = '';
+
+    /**
+     * Per-call trail of the manufacturer-page lookup that runs ahead of
+     * the AI call. Mirrors ProductImageService::$debugLog so the importer
+     * can stitch them together and surface "AI saw page X, page returned
+     * HTTP Y, harvested N image URLs" alongside the downstream download
+     * trail. Reset at the top of generateCompleteProduct().
+     *
+     * @var array<int,array<string,mixed>>
+     */
+    private array $imageDebugLog = [];
+
+    /**
+     * HTTP code + curl error from the most recent fetchPage() call. Set
+     * by fetchPage() and read by the page_fetch debug recorders so the
+     * trail can say "fetch_failed HTTP 404" instead of just "fetch_failed".
+     */
+    private int $lastFetchHttpCode = 0;
+    private string $lastFetchCurlError = '';
+
+    public function getImageDebugLog(): array
+    {
+        return $this->imageDebugLog;
+    }
+
+    private function recordImageDebug(array $entry): void
+    {
+        $entry['ts'] = date('H:i:s');
+        $this->imageDebugLog[] = $entry;
+    }
+
     public function __construct()
     {
         $this->apiKey = env('OPENAI_API_KEY', '');
@@ -918,6 +963,25 @@ class OpenAIService
         // Strategy 2: Try to fetch a full product page for more detailed specs
         $pageData = $this->searchAndFetchProductPage($sku, $brand, $productName);
         if ($pageData) {
+            // Harvest <img> URLs from the same page we're about to strip.
+            // extractProductText() throws all tags away, so we need to read
+            // image hints first. Stored on a class property so
+            // generateCompleteProduct can fold them into image_url +
+            // image_candidates without changing this method's signature.
+            if ($this->lastFetchedPageUrl !== '') {
+                $imgs = $this->extractImageUrlsFromHtml($pageData, $this->lastFetchedPageUrl, $brand);
+                $this->recordImageDebug([
+                    'kind' => 'harvest',
+                    'page_url' => $this->lastFetchedPageUrl,
+                    'count' => count($imgs),
+                    'first' => $imgs[0] ?? '',
+                ]);
+                if (!empty($imgs)) {
+                    $this->lastImageCandidates = $imgs;
+                    error_log('AI COMPLETE: harvested ' . count($imgs) . ' product image URL(s) from ' . $this->lastFetchedPageUrl);
+                }
+            }
+
             $pageText = $this->extractProductText($pageData);
             if ($pageText && strlen($pageText) > 200) {
                 // Combine search snippets with full page data
@@ -1054,15 +1118,51 @@ class OpenAIService
 
         switch (strtolower($brand)) {
             case 'gigabyte':
-                // Gigabyte: model number maps directly to URL
-                // GV-N4070EAGLE OC-12GD → /Graphics-Card/GV-N4070EAGLE-OC-12GD/sp
+                // Gigabyte product pages are at /Graphics-Card/{exact-sku}
+                // with no /sp suffix - that suffix is for the Specifications
+                // subpage and 404s when the parent page doesn't exist (which
+                // is most products). Confirmed via screenshot: the live URL
+                // for GV-N5080AERO-OC-16GD is exactly
+                // https://www.gigabyte.com/Graphics-Card/GV-N5080AERO-OC-16GD
                 $model = str_replace(' ', '-', $cleanSku);
-                return "https://www.gigabyte.com/Graphics-Card/{$model}/sp";
+                return "https://www.gigabyte.com/Graphics-Card/{$model}";
 
             case 'asus':
-                // ASUS: product slug uses the SKU line name
-                // DUAL-RTX3050-O6G → try asus.com search
-                return null; // ASUS URLs are too complex to construct - use search fallback
+                // ASUS splits between rog.asus.com (ROG / TUF / Strix lines)
+                // and asus.com (PRIME / DUAL / ProArt). Detect from the SKU
+                // prefix or product name. Example slugs confirmed via the
+                // user's screenshots:
+                //   rog.asus.com/graphics-cards/graphics-cards/rog-strix/rog-strix-rtx5070ti-o16g-gaming/
+                //   asus.com/motherboards-components/graphics-cards/prime/prime-rtx5080-o16g/
+                $haystack = strtolower($sku . ' ' . $productName);
+                $slugRaw = strtolower($cleanSku);
+                $slug = preg_replace('/[^a-z0-9]+/', '-', $slugRaw);
+                $slug = trim($slug, '-');
+                if ($slug === '') {
+                    return null;
+                }
+                if (str_contains($haystack, 'rog') || str_contains($haystack, 'strix') || str_contains($haystack, 'tuf')) {
+                    $line = str_contains($haystack, 'strix') ? 'rog-strix'
+                        : (str_contains($haystack, 'tuf') ? 'tuf-gaming' : 'rog');
+                    // ROG slugs usually already start with the line name.
+                    if (!str_starts_with($slug, $line . '-')) {
+                        $slug = $line . '-' . $slug;
+                    }
+                    return "https://rog.asus.com/graphics-cards/graphics-cards/{$line}/{$slug}/";
+                }
+                if (str_contains($haystack, 'prime')) {
+                    if (!str_starts_with($slug, 'prime-')) {
+                        $slug = 'prime-' . $slug;
+                    }
+                    return "https://www.asus.com/motherboards-components/graphics-cards/prime/{$slug}/";
+                }
+                if (str_contains($haystack, 'dual')) {
+                    if (!str_starts_with($slug, 'dual-')) {
+                        $slug = 'dual-' . $slug;
+                    }
+                    return "https://www.asus.com/motherboards-components/graphics-cards/dual/{$slug}/";
+                }
+                return null;
 
             case 'msi':
                 // MSI uses marketing names, not SKUs - construct from product name
@@ -1105,11 +1205,32 @@ class OpenAIService
      */
     private function searchAndFetchProductPage(string $sku, string $brand, string $productName): ?string
     {
+        $this->lastFetchedPageUrl = '';
+
         // Strategy A: Try direct manufacturer URL first (fastest, no DDG needed)
         $directUrl = $this->buildManufacturerUrl($sku, $brand, $productName);
+        $this->recordImageDebug([
+            'kind' => 'manufacturer_url',
+            'brand' => $brand,
+            'sku' => $sku,
+            'url' => $directUrl ?? '',
+            'outcome' => $directUrl ? 'built' : 'no_pattern_for_brand',
+        ]);
         if ($directUrl) {
             $page = $this->fetchPage($directUrl);
-            if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+            $bytes = is_string($page) ? strlen($page) : 0;
+            $bot = $page ? $this->isBotCheckPage($page) : false;
+            $outcome = !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : ''))
+                : ($bot ? 'bot_check'
+                : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok'));
+            $this->recordImageDebug([
+                'kind' => 'page_fetch',
+                'url' => $directUrl,
+                'outcome' => $outcome,
+                'bytes' => $bytes,
+            ]);
+            if ($page && $bytes > 1000 && !$bot) {
+                $this->lastFetchedPageUrl = $directUrl;
                 return $page;
             }
         }
@@ -1122,7 +1243,15 @@ class OpenAIService
         $searchUrl = "https://html.duckduckgo.com/html/?q={$searchQuery}";
 
         $html = $this->fetchPage($searchUrl);
-        if (empty($html) || $this->isBotCheckPage($html)) {
+        $bytes = is_string($html) ? strlen($html) : 0;
+        $bot = $html ? $this->isBotCheckPage($html) : false;
+        $this->recordImageDebug([
+            'kind' => 'ddg_search',
+            'url' => $searchUrl,
+            'outcome' => !$html ? 'fetch_failed' : ($bot ? 'bot_check' : 'ok'),
+            'bytes' => $bytes,
+        ]);
+        if (empty($html) || $bot) {
             return null;
         }
 
@@ -1152,13 +1281,29 @@ class OpenAIService
                 }
             }
         }
+        $this->recordImageDebug([
+            'kind' => 'ddg_results',
+            'count' => count($resultUrls),
+            'first' => $resultUrls[0] ?? '',
+        ]);
 
         // Try manufacturer site first
         if ($manufacturerDomain) {
             foreach ($resultUrls as $url) {
                 if (stripos($url, $manufacturerDomain) !== false) {
                     $page = $this->fetchPage($url);
-                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) return $page;
+                    $bytes = is_string($page) ? strlen($page) : 0;
+                    $bot = $page ? $this->isBotCheckPage($page) : false;
+                    $this->recordImageDebug([
+                        'kind' => 'page_fetch',
+                        'url' => $url,
+                        'outcome' => !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : '')) : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                        'bytes' => $bytes,
+                    ]);
+                    if ($page && $bytes > 1000 && !$bot) {
+                        $this->lastFetchedPageUrl = $url;
+                        return $page;
+                    }
                 }
             }
         }
@@ -1168,12 +1313,76 @@ class OpenAIService
             foreach ($trustedSpecSites as $specSite) {
                 if (stripos($url, $specSite) !== false) {
                     $page = $this->fetchPage($url);
-                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) return $page;
+                    $bytes = is_string($page) ? strlen($page) : 0;
+                    $bot = $page ? $this->isBotCheckPage($page) : false;
+                    $this->recordImageDebug([
+                        'kind' => 'page_fetch',
+                        'url' => $url,
+                        'outcome' => !$page ? ('fetch_failed_http_' . $this->lastFetchHttpCode . ($this->lastFetchCurlError !== '' ? '_' . preg_replace('/\s+/', '_', $this->lastFetchCurlError) : '')) : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                        'bytes' => $bytes,
+                    ]);
+                    if ($page && $bytes > 1000 && !$bot) {
+                        $this->lastFetchedPageUrl = $url;
+                        return $page;
+                    }
                 }
             }
         }
 
+        // The generic-DDG widening loop that used to live here is REMOVED.
+        // Even with a URL-slug relevance gate it kept attaching wrong
+        // og:images to product rows (Dulux paint to a Gigabyte GPU, a
+        // street-scene to another). The replacement is in
+        // ProductImageService::searchProductImages, which now scrapes
+        // Takealot, Wootware, and Evetech search-result pages directly -
+        // those return image URLs from their media CDNs which are by
+        // definition product photos, not og:image banners. So the
+        // applyAiDataToProduct fallback path now handles SA-retailer
+        // image discovery without OpenAIService having to do it.
+        $this->recordImageDebug(['kind' => 'no_page_found']);
         return null;
+    }
+
+    /**
+     * True when $resultUrl looks like it's about the SKU we're looking
+     * up. Used to reject random DDG results that happened to surface
+     * for a generic query. Checks (in order of decreasing strictness):
+     *   1. URL contains the full cleaned SKU
+     *   2. URL contains the SKU with brand-prefix and separators stripped
+     *   3. URL contains a GPU-family model fragment (RTX 5080, RX 9070, ...)
+     */
+    private function urlMatchesProduct(string $resultUrl, string $brand, string $sku, string $productName): bool
+    {
+        $haystack = preg_replace('/[^a-z0-9]/i', '', strtolower($resultUrl));
+        if ($haystack === '') return false;
+
+        $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
+        $skuNorm = preg_replace('/[^a-z0-9]/i', '', strtolower($cleanSku));
+        if (strlen($skuNorm) >= 5 && strpos($haystack, $skuNorm) !== false) {
+            return true;
+        }
+
+        // SKU with brand prefix stripped (e.g. "GV-N506TWF2MAX OC-8GD" -> "N506TWF2MAXOC8GD")
+        $stripped = preg_replace('/^' . preg_quote($brand, '/') . '[\s\-]+/i', '', $cleanSku);
+        $strippedNorm = preg_replace('/[^a-z0-9]/i', '', strtolower($stripped));
+        if (strlen($strippedNorm) >= 6 && strpos($haystack, $strippedNorm) !== false) {
+            return true;
+        }
+
+        // GPU/CPU model family + number (RTX 5080, GTX 1660, RX 7900 XT,
+        // Radeon 7900, Ryzen 9 7950X, etc.). Pulled from product name OR
+        // SKU since some SKUs only have a part code with no model in it.
+        $modelHaystack = $sku . ' ' . $productName;
+        if (preg_match_all('/(?:RTX|GTX|RX|Radeon|Ryzen|Core\s*i\d|GeForce)\s*[\s\-]*([A-Z]?\d{3,5})(?:\s*(?:Ti|XT|Super|XTX))?/i', $modelHaystack, $matches)) {
+            foreach ($matches[0] as $modelHit) {
+                $modelNorm = preg_replace('/[^a-z0-9]/i', '', strtolower($modelHit));
+                if (strlen($modelNorm) >= 5 && strpos($haystack, $modelNorm) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1181,21 +1390,42 @@ class OpenAIService
      */
     private function fetchPage(string $url): ?string
     {
+        // Modern Chrome 124 also sends Sec-Fetch-* and Sec-Ch-Ua-* headers;
+        // many CDNs (Cloudflare in particular) treat their absence as a
+        // bot signal and either 403 or serve a JS-challenge page. Setting
+        // them gets the request past most basic bot heuristics. We also
+        // send a plausible same-origin Referer derived from the URL host
+        // since Gigabyte/ASUS edge configs often reject direct hits with
+        // no Referer.
+        $host = parse_url($url, PHP_URL_HOST) ?: '';
+        $referer = $host !== '' ? 'https://' . $host . '/' : '';
+
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 15,
-            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_2TLS,
             CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            CURLOPT_HTTPHEADER => [
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            CURLOPT_HTTPHEADER => array_filter([
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language: en-US,en;q=0.9',
-                'Accept-Encoding: gzip, deflate',
+                'Accept-Encoding: gzip, deflate, br',
                 'Cache-Control: no-cache',
-            ],
+                'Pragma: no-cache',
+                'Sec-Ch-Ua: "Google Chrome";v="124", "Chromium";v="124", "Not-A.Brand";v="99"',
+                'Sec-Ch-Ua-Mobile: ?0',
+                'Sec-Ch-Ua-Platform: "Windows"',
+                'Sec-Fetch-Dest: document',
+                'Sec-Fetch-Mode: navigate',
+                'Sec-Fetch-Site: none',
+                'Sec-Fetch-User: ?1',
+                'Upgrade-Insecure-Requests: 1',
+                $referer !== '' ? 'Referer: ' . $referer : null,
+            ]),
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_ENCODING => '',
             CURLOPT_COOKIEFILE => '',
@@ -1203,7 +1433,11 @@ class OpenAIService
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
         curl_close($ch);
+
+        $this->lastFetchHttpCode = (int) $httpCode;
+        $this->lastFetchCurlError = (string) $curlErr;
 
         if ($httpCode !== 200 || empty($response)) {
             return null;
@@ -1261,6 +1495,163 @@ class OpenAIService
     }
 
     /**
+     * Pull likely product image URLs out of a manufacturer or spec page's
+     * HTML. Order matters: og:image (set by sites to be the social-share
+     * preview - almost always the hero product photo on product pages)
+     * first, then twitter:image, link rel=image_src, then real <img src=...>
+     * tags inside the document. Relative paths get resolved against the
+     * page's URL. Returns up to 6 absolute http(s) URLs in priority order;
+     * the downstream applyAiDataToProduct call enforces SSRF, dim, and
+     * Content-Type checks per URL so we don't need to be too aggressive
+     * here. Junk like favicons / sprites / data: URIs is filtered out.
+     *
+     * @return string[]
+     */
+    private function extractImageUrlsFromHtml(string $html, string $baseUrl, string $brand): array
+    {
+        $urls = [];
+
+        $push = function (?string $candidate) use (&$urls, $baseUrl) {
+            if ($candidate === null) return;
+            $candidate = trim(html_entity_decode($candidate, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($candidate === '') return;
+            if (stripos($candidate, 'data:') === 0) return; // inline base64
+            // Resolve protocol-relative + relative URLs against the page URL.
+            if (str_starts_with($candidate, '//')) {
+                $scheme = parse_url($baseUrl, PHP_URL_SCHEME) ?: 'https';
+                $candidate = $scheme . ':' . $candidate;
+            } elseif ($candidate[0] === '/' || !preg_match('#^https?://#i', $candidate)) {
+                $parts = parse_url($baseUrl);
+                if (!$parts || empty($parts['scheme']) || empty($parts['host'])) return;
+                if ($candidate[0] === '/') {
+                    $candidate = $parts['scheme'] . '://' . $parts['host'] . $candidate;
+                } else {
+                    $pageDir = isset($parts['path']) ? rtrim(dirname($parts['path']), '/') . '/' : '/';
+                    $candidate = $parts['scheme'] . '://' . $parts['host'] . $pageDir . $candidate;
+                }
+            }
+            if (!preg_match('#^https?://#i', $candidate)) return;
+            // Strip obvious junk by URL substring. The downstream download
+            // path also rejects images <200x200 and non-image Content-Type,
+            // so this is just a cheap pre-filter.
+            $lower = strtolower($candidate);
+            $skipPatterns = [
+                'favicon', '/sprite', 'data:image',
+                '1x1.', 'pixel.gif', 'spacer.', 'blank.gif',
+                'social-', 'icon-', '/icons/', '/flags/',
+                'placeholder', 'loading.gif', 'loader.gif',
+                // Banner/header/site-branding hints. These are what made
+                // the previous run attach a Christmas-garland og:image
+                // and a European-street-scene og:image to two GPU rows -
+                // the random pages had og:image=their site banner and we
+                // accepted it. Reject anything whose URL path strongly
+                // hints at "site banner" rather than "product photo".
+                'banner', 'hero-image', 'header.jpg', 'header.png',
+                'masthead', 'site-logo', '/branding/', '/wallpaper',
+                'background.', 'cover.', 'avatar', 'profile-',
+                // Stock-photo / festive themes - any of these in a path
+                // is a strong signal it isn't this SKU's product image.
+                'christmas', 'holiday', 'winter', 'summer-sale',
+                'lifestyle', 'stock-photo',
+            ];
+            foreach ($skipPatterns as $sp) {
+                if (str_contains($lower, $sp)) return;
+            }
+            // Must look like an image extension (allow query string or hash after).
+            if (!preg_match('~\.(?:jpe?g|png|webp|avif|gif)(?:\?|#|$)~i', $candidate)) return;
+            if (!in_array($candidate, $urls, true)) {
+                $urls[] = $candidate;
+            }
+        };
+
+        // 1. og:image / twitter:image / link rel=image_src - these are the
+        //    site's declared product hero image.
+        if (preg_match_all('#<meta[^>]+property\s*=\s*["\']og:image(?::secure_url)?["\'][^>]+content\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+        if (preg_match_all('#<meta[^>]+content\s*=\s*["\']([^"\']+)["\'][^>]+property\s*=\s*["\']og:image(?::secure_url)?["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+        if (preg_match_all('#<meta[^>]+name\s*=\s*["\']twitter:image[^"\']*["\'][^>]+content\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+        if (preg_match_all('#<link[^>]+rel\s*=\s*["\']image_src["\'][^>]+href\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+
+        // 2. JSON-LD <script type="application/ld+json"> ImageObject blocks.
+        //    Both ASUS and Gigabyte (and almost every product-page CMS) ship
+        //    a JSON-LD Product object whose "image" field is the full
+        //    gallery in a clean array. This is the most reliable source
+        //    because it's the structured-data contract the site advertises
+        //    to Google/Bing.
+        if (preg_match_all('#<script[^>]+type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>#is', $html, $m)) {
+            foreach ($m[1] as $blob) {
+                $decoded = json_decode(trim($blob), true);
+                if (!is_array($decoded)) continue;
+                // Sometimes the blob is an array of objects, sometimes wrapped
+                // in @graph. Flatten both shapes.
+                $candidates = isset($decoded['@graph']) && is_array($decoded['@graph'])
+                    ? $decoded['@graph']
+                    : [$decoded];
+                foreach ($candidates as $obj) {
+                    if (!is_array($obj)) continue;
+                    if (empty($obj['image'])) continue;
+                    $imgField = $obj['image'];
+                    if (is_string($imgField)) {
+                        $push($imgField);
+                    } elseif (is_array($imgField)) {
+                        foreach ($imgField as $entry) {
+                            if (is_string($entry)) {
+                                $push($entry);
+                            } elseif (is_array($entry) && !empty($entry['url'])) {
+                                $push((string) $entry['url']);
+                            } elseif (is_array($entry) && !empty($entry['contentUrl'])) {
+                                $push((string) $entry['contentUrl']);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Plain <img src="..."> tags + srcset extraction. Bias toward
+        //    URLs that contain the brand name (often manufacturer CDNs do)
+        //    so the gallery's main product shot tends to land before stock
+        //    "you might also like" photos at the bottom of the page.
+        $brandKey = strtolower(trim($brand));
+        $imgUrls = [];
+        if (preg_match_all('#<img\b[^>]+(?:data-src|data-original|src)\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $imgUrls[] = $u;
+        }
+        // srcset='URL1 1x, URL2 2x' - take the highest resolution variant.
+        if (preg_match_all('#srcset\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $set) {
+                // Just split on commas, take each URL part before the size descriptor.
+                foreach (explode(',', $set) as $part) {
+                    $part = trim($part);
+                    if ($part === '') continue;
+                    $u = explode(' ', $part)[0] ?? '';
+                    if ($u !== '') $imgUrls[] = $u;
+                }
+            }
+        }
+        // Stable sort: brand-matching URLs go first.
+        usort($imgUrls, function ($a, $b) use ($brandKey) {
+            if ($brandKey === '') return 0;
+            $aHas = stripos($a, $brandKey) !== false ? 1 : 0;
+            $bHas = stripos($b, $brandKey) !== false ? 1 : 0;
+            return $bHas - $aHas;
+        });
+        foreach ($imgUrls as $u) {
+            $push($u);
+            if (count($urls) >= 6) break;
+        }
+
+        return array_slice($urls, 0, 6);
+    }
+
+    /**
      * Generate a complete, production-ready product from SKU and/or short description.
      *
      * This is THE main method for all AI product generation. Every button and
@@ -1274,6 +1665,12 @@ class OpenAIService
      */
     public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
     {
+        // Reset per-call state. Set by fetchManufacturerData() below if the
+        // manufacturer/spec-site page yields any product image URLs.
+        $this->lastImageCandidates = [];
+        $this->lastFetchedPageUrl = '';
+        $this->imageDebugLog = [];
+
         // Clean SKU - remove regional suffixes (needed for name validation below)
         $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
 
@@ -1407,7 +1804,14 @@ class OpenAIService
                 }
             } catch (\Throwable $e) {
                 error_log("AI COMPLETE: Manufacturer lookup failed for {$sku}: " . $e->getMessage());
+                $this->recordImageDebug(['kind' => 'manufacturer_exception', 'reason' => $e->getMessage()]);
             }
+        } else {
+            $this->recordImageDebug([
+                'kind' => 'manufacturer_skipped',
+                'reason' => $isBulkImport ? 'bulk_import_flag' : 'no_brand',
+                'brand' => $verifiedBrand,
+            ]);
         }
 
         // STEP 2: Ask AI to write content FOR the identified product
@@ -1737,6 +2141,19 @@ class OpenAIService
             $data['name'] = preg_replace('/\s+/', ' ', trim($data['name']));
 
             error_log("AI COMPLETE: Final product name='{$data['name']}', brand='{$data['brand']}', category='{$data['suggested_category']}'");
+
+            // Attach any image URLs harvested from the manufacturer page
+            // we scraped earlier in this call. applyAiDataToProduct already
+            // knows how to consume image_url + image_candidates - the same
+            // path Claude uses - so OpenAI rows now hit that path too,
+            // skipping the Bing/DDG scrape which currently returns 0 URLs
+            // (their HTML structure changed and the regex parsers no
+            // longer match). The downstream downloader enforces SSRF,
+            // size, and Content-Type checks per URL.
+            if (!empty($this->lastImageCandidates)) {
+                $data['image_url'] = $this->lastImageCandidates[0];
+                $data['image_candidates'] = $this->lastImageCandidates;
+            }
 
             // 'method' indicator lets callers (and the admin UI) tell the
             // difference between a real AI response, a pattern-match

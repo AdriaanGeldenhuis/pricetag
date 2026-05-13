@@ -63,11 +63,37 @@ class ProductImageService
     private PDO $db;
 
     /**
+     * Per-call diagnostic trail of search + download attempts. Reset by
+     * applyAiDataToProduct via clearDebugLog() before each row so the
+     * importer can surface the exact reason every candidate URL was
+     * accepted or rejected.
+     *
+     * @var array<int,array<string,mixed>>
+     */
+    private array $debugLog = [];
+
+    /**
      * Constructor
      */
     public function __construct()
     {
         $this->db = Database::getInstance();
+    }
+
+    public function clearDebugLog(): void
+    {
+        $this->debugLog = [];
+    }
+
+    public function getDebugLog(): array
+    {
+        return $this->debugLog;
+    }
+
+    private function recordDebug(array $entry): void
+    {
+        $entry['ts'] = date('H:i:s');
+        $this->debugLog[] = $entry;
     }
 
     // =========================================================================
@@ -1021,6 +1047,12 @@ class ProductImageService
 
         // Build search queries - try different variations to get diverse images
         $searchQueries = $this->buildImageSearchQueries($name, $brand, $sku);
+        $this->recordDebug([
+            'kind' => 'fallback_search_start',
+            'product_id' => $productId,
+            'needed' => $needed,
+            'queries' => $searchQueries,
+        ]);
 
         // Search for real product images with retry logic
         $downloaded = 0;
@@ -1116,8 +1148,23 @@ class ProductImageService
     {
         $urls = [];
 
+        // SA retailers FIRST. The user sells in South Africa and these
+        // three carry virtually every PC component they import. Their
+        // search-results pages list each product with its image on a
+        // media CDN and the HTML structure has been stable for years,
+        // unlike Bing/Google image-search which rewrites their JSON
+        // shape every few months. Search-engine scraping below is kept
+        // only as a last-resort fallback for SKUs not stocked locally.
+        $urls = $this->searchTakealot($query, $count);
+
+        if (count($urls) < $count) {
+            $urls = array_merge($urls, $this->searchWootware($query, $count - count($urls)));
+        }
+
         // Strategy 1: Bing Images (most reliable for scraping)
-        $urls = $this->searchBingImages($query, $count, $altAgent);
+        if (count($urls) < $count) {
+            $urls = array_merge($urls, $this->searchBingImages($query, $count - count($urls), $altAgent));
+        }
 
         // Strategy 2: DuckDuckGo image search
         if (count($urls) < $count) {
@@ -1135,6 +1182,75 @@ class ProductImageService
     }
 
     /**
+     * Search Takealot for a SKU and harvest product cover images from the
+     * results page. Takealot's search-results HTML lists each product with
+     * an <img> on media.takealot.com - that CDN URL pattern has been
+     * stable for years. We grab the first $count cover images on the page
+     * which by Takealot's grid layout are the top relevance matches.
+     */
+    private function searchTakealot(string $query, int $count = 5): array
+    {
+        $urls = [];
+        $searchUrl = 'https://www.takealot.com/all?qsearch=' . urlencode($query);
+        $html = $this->fetchUrl($searchUrl);
+        if (!$html) {
+            $this->recordDebug(['kind' => 'search', 'engine' => 'takealot', 'query' => $query, 'urls_found' => 0]);
+            return [];
+        }
+
+        // Pattern matches every Takealot cover CDN URL regardless of suffix
+        // variant: covers_images/{hash}/cover_zoom.jpg, covers/{hash}/...,
+        // covers_tablets/..., and so on.
+        if (preg_match_all('#https://media\.takealot\.com/covers[^"\'\s<>]+\.(?:jpe?g|png|webp)#i', $html, $matches)) {
+            foreach ($matches[0] as $u) {
+                if (!in_array($u, $urls, true)) {
+                    $urls[] = $u;
+                    if (count($urls) >= $count) break;
+                }
+            }
+        }
+
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'takealot',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
+        return $urls;
+    }
+
+    /**
+     * Search Wootware (SA tech retailer) for the SKU and harvest product
+     * thumbnails. Wootware's search results live at the OpenCart route
+     * /index.php?route=product/search&search=... and product images are
+     * served from /image/cache/data/.
+     */
+    private function searchWootware(string $query, int $count = 5): array
+    {
+        $urls = [];
+        $searchUrl = 'https://www.wootware.co.za/index.php?route=product/search&search=' . urlencode($query);
+        $html = $this->fetchUrl($searchUrl);
+        if (!$html) {
+            $this->recordDebug(['kind' => 'search', 'engine' => 'wootware', 'query' => $query, 'urls_found' => 0]);
+            return [];
+        }
+
+        // Wootware product images use the OpenCart cache path.
+        if (preg_match_all('#https?://(?:www\.)?wootware\.co\.za/image/cache/[^"\'\s<>]+\.(?:jpe?g|png|webp)#i', $html, $matches)) {
+            foreach ($matches[0] as $u) {
+                if (!in_array($u, $urls, true)) {
+                    $urls[] = $u;
+                    if (count($urls) >= $count) break;
+                }
+            }
+        }
+
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'wootware',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
+        return $urls;
+    }
+
+    /**
      * Search Bing Images - more reliable than Google for HTML scraping
      */
     private function searchBingImages(string $query, int $count = 5, bool $altAgent = false): array
@@ -1145,36 +1261,36 @@ class ProductImageService
         $html = $this->fetchUrl($searchUrl, $altAgent);
         if (!$html) return [];
 
-        // Bing embeds image URLs in data attributes: murl="https://..."
-        if (preg_match_all('/murl[&"]:\s*[&"]?(https?:\/\/[^"&]+\.(?:jpg|jpeg|png|webp)(?:\?[^"&]*)?)/i', $html, $matches)) {
-            foreach ($matches[1] as $url) {
-                $url = html_entity_decode($url, ENT_QUOTES);
-                $url = str_replace('&amp;', '&', $url);
-                if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                    $urls[] = $url;
+        // Bing wraps every image result in an <a class="iusc" m="{JSON}">
+        // tag whose JSON-encoded m attribute has the full image metadata.
+        // The JSON's " characters get HTML-entity-encoded to &quot; when
+        // serialised into the attribute, so the previous regex (which
+        // tried to match `murl"` or `murl&` directly without entity
+        // decoding) silently produced zero hits once Bing started always
+        // encoding. Extract the whole m attribute, decode entities, then
+        // JSON-decode to pull murl reliably.
+        if (preg_match_all('#<a[^>]*\bclass\s*=\s*["\'][^"\']*\biusc\b[^"\']*["\'][^>]*\bm\s*=\s*"([^"]+)"#i', $html, $matches)) {
+            foreach ($matches[1] as $attr) {
+                $decoded = html_entity_decode($attr, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $data = json_decode($decoded, true);
+                if (!is_array($data)) continue;
+                $candidate = (string) ($data['murl'] ?? '');
+                if ($candidate === '') continue;
+                if (!$this->isValidImageUrl($candidate)) continue;
+                if (!in_array($candidate, $urls, true)) {
+                    $urls[] = $candidate;
                     if (count($urls) >= $count) break;
                 }
             }
         }
 
-        // Fallback: look for imgurl in href parameters
+        // Older direct murl match (kept in case Bing serves an unencoded
+        // variant on some routes). No-op when the iusc path above worked.
         if (count($urls) < $count) {
-            if (preg_match_all('/imgurl:(https?[^&"]+)/i', $html, $matches)) {
+            if (preg_match_all('/"murl"\s*:\s*"(https?:\\\\?\/\\\\?\/[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*)?)"/i', $html, $matches)) {
                 foreach ($matches[1] as $url) {
-                    $url = urldecode($url);
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                        $urls[] = $url;
-                        if (count($urls) >= $count) break;
-                    }
-                }
-            }
-        }
-
-        // Fallback: data-src or src with real image URLs
-        if (count($urls) < $count) {
-            if (preg_match_all('/(?:data-src|src)="(https?:\/\/(?!www\.bing|tse\d)[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i', $html, $matches)) {
-                foreach ($matches[1] as $url) {
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                    $url = str_replace(['\\/', '\\\\/'], '/', $url);
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls, true)) {
                         $urls[] = $url;
                         if (count($urls) >= $count) break;
                     }
@@ -1185,6 +1301,10 @@ class ProductImageService
         if (!empty($urls)) {
             error_log("ProductImageService: Bing found " . count($urls) . " images for '{$query}'");
         }
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'bing',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
 
         return $urls;
     }
@@ -1241,6 +1361,10 @@ class ProductImageService
         if (!empty($urls)) {
             error_log("ProductImageService: DuckDuckGo found " . count($urls) . " images for '{$query}'");
         }
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'ddg',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
 
         return $urls;
     }
@@ -1256,30 +1380,42 @@ class ProductImageService
         $html = $this->fetchUrl($searchUrl, $altAgent);
         if (!$html) return [];
 
-        // Method 1: Full-size image URLs in Google's JSON data
-        if (preg_match_all('/\["(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)(?:\?[^"]*)?)",\s*\d+,\s*\d+\]/i', $html, $matches)) {
-            foreach ($matches[1] as $url) {
-                $url = str_replace(['\u003d', '\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
-                if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
-                    $urls[] = $url;
-                    if (count($urls) >= $count) break;
-                }
-            }
-        }
-
-        // Method 2: Generic image URLs in script tags
-        if (count($urls) < $count) {
-            if (preg_match_all('/"(https?:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/', $html, $matches)) {
+        // Google's image search has cycled through several JS data shapes -
+        // current version embeds the result list inside AF_initDataCallback
+        // with the original image URL prefixed by "ou":"...". Try the
+        // specific patterns first, then back off to permissive matchers
+        // so the search still returns something when Google changes shape.
+        $patterns = [
+            // 1. "ou":"https://example.com/image.jpg" - current dominant key
+            '#"ou"\s*:\s*"(https?:(?:\\\\/\\\\/|//)[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)"#i',
+            // 2. data-iurl / data-src previews on the results page
+            '#\bdata-(?:iurl|src)="(https?://[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)"#i',
+            // 3. Generic "imageUrl" / "url" / "image" / "src" JSON keys
+            '#"(?:imageUrl|url|image|src)"\s*:\s*"(https?:(?:\\\\/\\\\/|//)[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)"#i',
+            // 4. Old array form ["URL", w, h]
+            '#\["(https?://[^"]+?\.(?:jpe?g|png|webp|gif|avif)(?:\?[^"]*?)?)",\s*\d+,\s*\d+\]#i',
+        ];
+        foreach ($patterns as $pat) {
+            if (count($urls) >= $count) break;
+            if (preg_match_all($pat, $html, $matches)) {
                 foreach ($matches[1] as $url) {
-                    $url = str_replace(['\\u003d', '\\u0026', '\\/', '\\/'], ['=', '&', '/', '/'], $url);
-                    if ($this->isValidImageUrl($url) && !in_array($url, $urls)) {
+                    // Decode JS string escapes Google sprinkles into the blob.
+                    $url = str_replace(
+                        ['\u003d', '\u0026', '\u002F', '\\/'],
+                        ['=', '&', '/', '/'],
+                        $url
+                    );
+                    if ($this->isValidImageUrl($url) && !in_array($url, $urls, true)) {
                         $urls[] = $url;
                         if (count($urls) >= $count) break;
                     }
                 }
             }
         }
-
+        $this->recordDebug([
+            'kind' => 'search', 'engine' => 'google',
+            'query' => $query, 'urls_found' => count($urls),
+        ]);
         return $urls;
     }
 
@@ -1334,9 +1470,19 @@ class ProductImageService
 
         if ($error || $httpCode !== 200 || !$response) {
             error_log("ProductImageService: Fetch failed for '{$url}' (HTTP {$httpCode}): {$error}");
+            $this->recordDebug([
+                'kind' => 'fetch', 'url' => $url,
+                'outcome' => 'failed', 'http_code' => $httpCode,
+                'error' => $error !== '' ? $error : ($response === false ? 'no_response' : 'unknown'),
+            ]);
             return null;
         }
 
+        $this->recordDebug([
+            'kind' => 'fetch', 'url' => $url,
+            'outcome' => 'ok', 'http_code' => $httpCode,
+            'bytes' => strlen((string) $response),
+        ]);
         return $response;
     }
 
@@ -1345,24 +1491,44 @@ class ProductImageService
      */
     private function isValidImageUrl(string $url): bool
     {
+        $lower = strtolower($url);
+
         // Skip search engine thumbnails
-        if (str_contains($url, 'encrypted-tbn')) return false;
-        if (str_contains($url, 'gstatic.com')) return false;
-        if (str_contains($url, 'google.com')) return false;
-        if (str_contains($url, 'googleapis.com')) return false;
-        if (str_contains($url, 'bing.com')) return false;
-        if (str_contains($url, 'bing.net')) return false;
-        if (str_contains($url, 'duckduckgo.com')) return false;
+        if (str_contains($lower, 'encrypted-tbn')) return false;
+        if (str_contains($lower, 'gstatic.com')) return false;
+        if (str_contains($lower, 'google.com')) return false;
+        if (str_contains($lower, 'googleapis.com')) return false;
+        if (str_contains($lower, 'bing.com')) return false;
+        if (str_contains($lower, 'bing.net')) return false;
+        if (str_contains($lower, 'duckduckgo.com')) return false;
+
+        // Skip stock-photo / royalty-free agencies. The last import
+        // attached an Alamy food-photography image to a Gigabyte GPU
+        // because Bing/Google image search for "GV-N5080AERO" - a SKU
+        // too new to have real product photos indexed - returned
+        // alamy.com results matching the query loosely. Stock-photo
+        // sites are NEVER going to host genuine product photos for our
+        // catalogue, so they're a hard reject.
+        $stockHosts = [
+            'alamy.com', 'alamy.de', 'alamyimages.fr', 'gettyimages.',
+            'shutterstock.com', 'istockphoto.com', 'depositphotos.com',
+            'dreamstime.com', 'adobe.com/stock', '123rf.com',
+            'unsplash.com', 'pexels.com', 'pixabay.com',
+            'freepik.com', 'stock.adobe.', 'fotosearch.com',
+        ];
+        foreach ($stockHosts as $h) {
+            if (str_contains($lower, $h)) return false;
+        }
 
         // Skip tiny icons/favicons
-        if (str_contains($url, 'favicon')) return false;
-        if (str_contains($url, 'logo') && !str_contains($url, 'product')) return false;
+        if (str_contains($lower, 'favicon')) return false;
+        if (str_contains($lower, 'logo') && !str_contains($lower, 'product')) return false;
 
         // Skip tracking pixels and ads
-        if (str_contains($url, 'pixel')) return false;
-        if (str_contains($url, 'tracking')) return false;
-        if (str_contains($url, '1x1')) return false;
-        if (str_contains($url, 'spacer')) return false;
+        if (str_contains($lower, 'pixel')) return false;
+        if (str_contains($lower, 'tracking')) return false;
+        if (str_contains($lower, '1x1')) return false;
+        if (str_contains($lower, 'spacer')) return false;
 
         // Must be a proper image URL
         if (!preg_match('/\.(jpg|jpeg|png|webp)(\?|$)/i', $url)) return false;
@@ -1395,10 +1561,15 @@ class ProductImageService
      */
     private function downloadAndSaveImage(int $productId, string $url, string $altText = '', bool $isPrimary = false): array
     {
+        $shortUrl = strlen($url) > 120 ? substr($url, 0, 117) . '...' : $url;
         try {
             $reason = isUnsafePublicUrl($url);
             if ($reason !== null) {
                 error_log("ProductImageService: refusing to fetch {$url}: {$reason}");
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'unsafe_url: ' . $reason,
+                ]);
                 return ['success' => false, 'error' => 'Unsafe URL: ' . $reason];
             }
 
@@ -1436,9 +1607,21 @@ class ProductImageService
             curl_close($ch);
 
             if ($aborted) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'oversize',
+                    'http_code' => $httpCode, 'bytes' => strlen($imageData),
+                ]);
                 return ['success' => false, 'error' => 'Image exceeded max size (' . self::MAX_DOWNLOAD_BYTES . ' bytes)'];
             }
             if ($httpCode !== 200 || strlen($imageData) < 1000) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected',
+                    'reason' => $httpCode !== 200 ? 'http_' . $httpCode : 'too_small_' . strlen($imageData) . 'B',
+                    'http_code' => $httpCode, 'bytes' => strlen($imageData),
+                    'content_type' => $contentType,
+                ]);
                 return ['success' => false, 'error' => 'Download failed (HTTP ' . $httpCode . ')'];
             }
             // Re-check the post-redirect URL: a same-origin URL we accepted
@@ -1447,6 +1630,11 @@ class ProductImageService
                 $reason = isUnsafePublicUrl($effectiveUrl);
                 if ($reason !== null) {
                     error_log("ProductImageService: redirect landed on unsafe URL {$effectiveUrl}: {$reason}");
+                    $this->recordDebug([
+                        'kind' => 'download', 'url' => $shortUrl,
+                        'outcome' => 'rejected', 'reason' => 'unsafe_redirect: ' . $reason,
+                        'redirect_to' => $effectiveUrl,
+                    ]);
                     return ['success' => false, 'error' => 'Unsafe redirect target'];
                 }
             }
@@ -1454,6 +1642,11 @@ class ProductImageService
             // separately by getimagesize() on the bytes, but the header
             // gives us a cheap early reject for HTML/JSON/etc.
             if ($contentType !== '' && stripos($contentType, 'image/') !== 0) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'non_image_content_type',
+                    'content_type' => $contentType, 'bytes' => strlen($imageData),
+                ]);
                 return ['success' => false, 'error' => 'Not an image (Content-Type: ' . $contentType . ')'];
             }
 
@@ -1464,12 +1657,22 @@ class ProductImageService
             $imageInfo = @getimagesize($tmpFile);
             if (!$imageInfo) {
                 @unlink($tmpFile);
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'getimagesize_failed',
+                    'bytes' => strlen($imageData), 'content_type' => $contentType,
+                ]);
                 return ['success' => false, 'error' => 'Not a valid image'];
             }
 
             // Check minimum dimensions (skip tiny images)
             if ($imageInfo[0] < 200 || $imageInfo[1] < 200) {
                 @unlink($tmpFile);
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'too_small_dims',
+                    'dims' => $imageInfo[0] . 'x' . $imageInfo[1],
+                ]);
                 return ['success' => false, 'error' => 'Image too small'];
             }
 
@@ -1487,6 +1690,11 @@ class ProductImageService
             @unlink($tmpFile);
 
             if (!$processed) {
+                $this->recordDebug([
+                    'kind' => 'download', 'url' => $shortUrl,
+                    'outcome' => 'rejected', 'reason' => 'processImage_failed',
+                    'dims' => $imageInfo[0] . 'x' . $imageInfo[1],
+                ]);
                 return ['success' => false, 'error' => 'Image processing failed'];
             }
 
@@ -1506,6 +1714,12 @@ class ProductImageService
             );
             $stmt->execute([$productId, $relativePath, $altText, $isPrimary ? 1 : 0, $sortOrder]);
 
+            $this->recordDebug([
+                'kind' => 'download', 'url' => $shortUrl,
+                'outcome' => 'saved', 'path' => $relativePath,
+                'dims' => $imageInfo[0] . 'x' . $imageInfo[1],
+                'bytes' => strlen($imageData), 'content_type' => $contentType,
+            ]);
             return ['success' => true, 'path' => $relativePath];
 
         } catch (\Throwable $e) {
@@ -1513,6 +1727,10 @@ class ProductImageService
             if (isset($tmpFile) && file_exists($tmpFile)) {
                 @unlink($tmpFile);
             }
+            $this->recordDebug([
+                'kind' => 'download', 'url' => $shortUrl,
+                'outcome' => 'rejected', 'reason' => 'exception: ' . $e->getMessage(),
+            ]);
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }

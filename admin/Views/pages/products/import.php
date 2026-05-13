@@ -444,6 +444,82 @@
 .template-link svg {
     width: 16px;
     height: 16px;
+    flex-shrink: 0;
+}
+
+.template-link-ai {
+    background: linear-gradient(135deg, #2563eb, #1e40af);
+    border-color: transparent;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0.75rem 1.25rem;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+.template-link-ai:hover { color: #fff; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35); }
+.template-link-ai svg { width: 22px; height: 22px; }
+.template-link-ai span { display: flex; flex-direction: column; align-items: flex-start; text-align: left; line-height: 1.2; }
+.template-link-ai small { font-size: 0.7rem; opacity: 0.85; font-weight: 400; margin-top: 2px; }
+.template-link-ai.active { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35); }
+
+.ai-settings {
+    margin-top: 1rem; padding: 1.25rem;
+    background: rgba(139, 92, 246, 0.06);
+    border: 1px solid rgba(139, 92, 246, 0.25);
+    border-radius: 8px;
+}
+.ai-settings-header h4 { margin: 0 0 0.25rem; font-size: 1rem; }
+.ai-settings-header p { margin: 0 0 1rem; font-size: 0.8125rem; opacity: 0.75; }
+.ai-settings-header code { background: rgba(0,0,0,0.2); padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.78rem; }
+.ai-settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+.ai-settings-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.ai-settings-field label { font-size: 0.8125rem; font-weight: 600; }
+.ai-settings-field input, .ai-settings-field select {
+    padding: 0.5rem 0.75rem;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    color: inherit;
+    font-size: 0.875rem;
+}
+.ai-settings-field small { font-size: 0.72rem; opacity: 0.6; }
+.ai-settings-note {
+    margin-top: 1rem; padding: 0.75rem 1rem;
+    background: rgba(245, 158, 11, 0.08);
+    border-left: 3px solid #f59e0b;
+    border-radius: 6px; font-size: 0.8125rem;
+}
+.ai-fills-badge {
+    background: rgba(37, 99, 235, 0.18);
+    color: #93c5fd;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: 0.4rem;
+}
+.ai-required-badge {
+    background: rgba(139, 92, 246, 0.2);
+    color: #c4b5fd;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-left: 0.4rem;
+}
+.dry-run-result h4 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+.dry-run-result h4 span { font-weight: 400; font-size: 0.75rem; opacity: 0.65; margin-left: 0.5rem; }
+.dry-run-result pre {
+    margin: 0; padding: 0.75rem;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    font-size: 0.72rem; line-height: 1.4;
+    max-height: 400px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
 }
 
 /* Responsive */
@@ -517,7 +593,16 @@
             </div>
 
             <div class="template-links">
-                <a href="<?= url('/admin/products/template') ?>" class="template-link">
+                <button type="button" id="aiGenerateBtn" class="template-link template-link-ai" title="Import using only SKU + Vendor + Cost + Category - AI fills the rest">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                    </svg>
+                    <span>
+                        <strong>AI Generate from SKU</strong>
+                        <small>Only SKU, Vendor, Cost &amp; Category needed - AI builds the rest</small>
+                    </span>
+                </button>
+                <a href="<?= url('/admin/products/import/template') ?>" class="template-link">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -583,8 +668,8 @@
                             <span class="target-field-name">SKU <span class="required">*</span></span>
                             <div class="target-field-value" data-drop="sku"></div>
                         </div>
-                        <div class="target-field" data-field="name">
-                            <span class="target-field-name">Name <span class="required">*</span></span>
+                        <div class="target-field" data-field="name" id="targetName">
+                            <span class="target-field-name">Name <span class="required" id="nameRequiredBadge">*</span><span class="ai-fills-badge" id="nameAiBadge" style="display:none;">AI fills this</span></span>
                             <div class="target-field-value" data-drop="name"></div>
                             <button type="button" class="ai-generate-btn" data-ai-field="name" title="AI Generate">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -624,16 +709,16 @@
                             <span class="target-field-name">Compare Price</span>
                             <div class="target-field-value" data-drop="compare_price"></div>
                         </div>
-                        <div class="target-field" data-field="cost_price">
-                            <span class="target-field-name">Cost Price</span>
+                        <div class="target-field" data-field="cost_price" id="targetCostPrice">
+                            <span class="target-field-name">Cost Price (Excl VAT)<span class="ai-required-badge" id="costPriceRequiredBadge" style="display:none;">AI mode</span></span>
                             <div class="target-field-value" data-drop="cost_price"></div>
                         </div>
                         <div class="target-field" data-field="stock">
                             <span class="target-field-name">Stock Quantity</span>
                             <div class="target-field-value" data-drop="stock"></div>
                         </div>
-                        <div class="target-field" data-field="category">
-                            <span class="target-field-name">Category</span>
+                        <div class="target-field" data-field="category" id="targetCategory">
+                            <span class="target-field-name">Category<span class="ai-required-badge" id="categoryRequiredBadge" style="display:none;">AI mode</span></span>
                             <div class="target-field-value" data-drop="category"></div>
                         </div>
                         <div class="target-field" data-field="brand">
@@ -704,6 +789,57 @@
                 </label>
             </div>
 
+            <!-- AI Pricing & Vendor Settings (visible only when AI mode is on) -->
+            <div class="ai-settings" id="aiSettings" style="display:none;">
+                <div class="ai-settings-header">
+                    <h4>AI Import Settings</h4>
+                    <p>Sell price = <code>Cost (excl VAT) &times; (1 + Margin%) &times; (1 + VAT%)</code></p>
+                </div>
+                <div class="ai-settings-grid">
+                    <div class="ai-settings-field">
+                        <label for="marginPercent">Profit Margin %</label>
+                        <input type="number" id="marginPercent" min="0" max="500" step="0.01" value="25" placeholder="25">
+                        <small>Applied to cost (excl VAT) before adding VAT</small>
+                    </div>
+                    <div class="ai-settings-field">
+                        <label for="vatRate">VAT Rate %</label>
+                        <input type="number" id="vatRate" min="0" max="100" step="0.01" value="<?= e((string) ($taxRate ?? 15)) ?>">
+                        <small>From store settings - editable per import</small>
+                    </div>
+                    <div class="ai-settings-field">
+                        <label for="defaultVendor">Default Vendor</label>
+                        <select id="defaultVendor">
+                            <option value="">- Use vendor from row -</option>
+                            <?php foreach (($vendors ?? []) as $_v): ?>
+                                <option value="<?= e((string) $_v['id']) ?>"><?= e($_v['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small>Used when row has no vendor column</small>
+                    </div>
+                    <div class="ai-settings-field">
+                        <label for="defaultCategory">Default Category</label>
+                        <select id="defaultCategory">
+                            <option value="">- Use category from row -</option>
+                            <?php foreach (($categories ?? []) as $_c): ?>
+                                <option value="<?= e((string) $_c['id']) ?>"><?= e($_c['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small>Used when row has no category column</small>
+                    </div>
+                </div>
+                <div class="ai-settings-note">
+                    <strong>Unknown SKU behavior:</strong> If AI cannot identify the product, it will still be created with SKU + cost + vendor + category - status will be <em>draft</em> (not visible to customers) so you can review later.
+                </div>
+                <button type="button" class="btn btn-secondary" id="dryRunBtn" style="margin-top:1rem;" disabled>
+                    Test First Row (AI dry-run)
+                </button>
+                <div class="dry-run-result" id="dryRunResult" style="display:none;margin-top:1rem;">
+                    <h4>Dry-run result <span id="dryRunStatus"></span></h4>
+                    <pre id="dryRunOutput"></pre>
+                    <img id="dryRunImage" alt="" style="display:none;max-width:200px;border:1px solid var(--admin-border);border-radius:4px;margin-top:0.5rem;">
+                </div>
+            </div>
+
             <div class="preview-container" id="previewContainer">
                 <p class="text-muted text-center py-8">Upload a file and map columns to see preview</p>
             </div>
@@ -768,6 +904,41 @@
             </div>
         </div>
     </div>
+
+    <?php if (!empty($history)): ?>
+    <!-- Recent Imports -->
+    <div class="card" style="margin-top: 2rem;">
+        <div class="card-header"><h3 class="card-title">Recent Imports</h3></div>
+        <div class="card-body" style="padding: 0;">
+            <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                        <th style="text-align:left;padding:0.75rem 1rem;font-size:0.8rem;opacity:0.75;">When</th>
+                        <th style="text-align:left;padding:0.75rem 1rem;font-size:0.8rem;opacity:0.75;">Source</th>
+                        <th style="text-align:right;padding:0.75rem 1rem;font-size:0.8rem;opacity:0.75;">Created</th>
+                        <th style="text-align:right;padding:0.75rem 1rem;font-size:0.8rem;opacity:0.75;">Updated</th>
+                        <th style="text-align:right;padding:0.75rem 1rem;font-size:0.8rem;opacity:0.75;">Failed</th>
+                        <th style="padding:0.75rem 1rem;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($history as $_h): ?>
+                        <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:0.6rem 1rem;font-size:0.8rem;opacity:0.75;"><?= e($_h['created_at']) ?></td>
+                            <td style="padding:0.6rem 1rem;"><?= e($_h['filename'] ?? '-') ?></td>
+                            <td style="padding:0.6rem 1rem;text-align:right;"><?= (int) ($_h['created_products'] ?? 0) ?></td>
+                            <td style="padding:0.6rem 1rem;text-align:right;"><?= (int) ($_h['updated_products'] ?? 0) ?></td>
+                            <td style="padding:0.6rem 1rem;text-align:right;"><?= (int) ($_h['failed_products'] ?? 0) ?></td>
+                            <td style="padding:0.6rem 1rem;text-align:right;">
+                                <a href="<?= url('/admin/products/import/history/' . (int) $_h['id']) ?>" class="btn btn-sm btn-outline">View</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Export Section -->
     <div class="export-section">
@@ -1032,6 +1203,8 @@ document.addEventListener('DOMContentLoaded', function() {
         step3.classList.remove('disabled');
         step2.classList.add('completed');
         startImportBtn.disabled = false;
+        const dryRunBtn = document.getElementById('dryRunBtn');
+        if (dryRunBtn) dryRunBtn.disabled = !document.getElementById('aiGenerate').checked;
         updatePreview();
     }
 
@@ -1039,6 +1212,8 @@ document.addEventListener('DOMContentLoaded', function() {
         step3.classList.add('disabled');
         step2.classList.remove('completed');
         startImportBtn.disabled = true;
+        const dryRunBtn = document.getElementById('dryRunBtn');
+        if (dryRunBtn) dryRunBtn.disabled = true;
         previewContainer.innerHTML = '<p class="text-muted text-center py-8">Upload a file and map columns to see preview</p>';
     }
 
@@ -1233,9 +1408,84 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // AI Generate checkbox - re-check required mappings when toggled
-    document.getElementById('aiGenerate').addEventListener('change', () => {
+    function setAiMode(on) {
+        const aiCheckbox = document.getElementById('aiGenerate');
+        const aiSettings = document.getElementById('aiSettings');
+        const aiBtn = document.getElementById('aiGenerateBtn');
+        const dryRunBtn = document.getElementById('dryRunBtn');
+        const nameRequired = document.getElementById('nameRequiredBadge');
+        const nameAi = document.getElementById('nameAiBadge');
+        const costBadge = document.getElementById('costPriceRequiredBadge');
+        const catBadge = document.getElementById('categoryRequiredBadge');
+
+        aiCheckbox.checked = on;
+        aiSettings.style.display = on ? 'block' : 'none';
+        if (aiBtn) aiBtn.classList.toggle('active', on);
+        if (dryRunBtn) dryRunBtn.disabled = !on || typeof parsedData === 'undefined' || !parsedData;
+        if (nameRequired) nameRequired.style.display = on ? 'none' : 'inline';
+        if (nameAi) nameAi.style.display = on ? 'inline-block' : 'none';
+        if (costBadge) costBadge.style.display = on ? 'inline-block' : 'none';
+        if (catBadge) catBadge.style.display = on ? 'inline-block' : 'none';
         checkMappingComplete();
-    });
+    }
+
+    document.getElementById('aiGenerate').addEventListener('change', e => setAiMode(e.target.checked));
+    if (document.getElementById('aiGenerateBtn')) {
+        document.getElementById('aiGenerateBtn').addEventListener('click', () => {
+            setAiMode(!document.getElementById('aiGenerate').checked);
+            const step3 = document.getElementById('step3');
+            if (step3) step3.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+
+    // Dry-run: run AI on first row and show the result without saving anything
+    if (document.getElementById('dryRunBtn')) {
+        document.getElementById('dryRunBtn').addEventListener('click', async () => {
+            if (typeof parsedData === 'undefined' || !parsedData || !parsedData.length) return;
+            const btn = document.getElementById('dryRunBtn');
+            const result = document.getElementById('dryRunResult');
+            const status = document.getElementById('dryRunStatus');
+            const out = document.getElementById('dryRunOutput');
+            const img = document.getElementById('dryRunImage');
+
+            const original = btn.textContent;
+            btn.disabled = true; btn.textContent = 'Testing first row...';
+            result.style.display = 'block';
+            status.textContent = '(running...)';
+            out.textContent = '';
+            img.style.display = 'none';
+
+            const row = {};
+            Object.keys(columnMapping || {}).forEach(field => {
+                row[field] = parsedData[0][columnMapping[field]] || '';
+            });
+
+            const fd = new FormData();
+            fd.append('_token', '<?= csrf_token() ?>');
+            fd.append('row', JSON.stringify(row));
+            fd.append('margin_percent', document.getElementById('marginPercent').value || '0');
+            fd.append('vat_rate', document.getElementById('vatRate').value || '0');
+
+            try {
+                const res = await fetch('<?= url('/admin/products/import/dry-run') ?>', { method: 'POST', body: fd });
+                const json = await res.json();
+                status.textContent = json.success
+                    ? '(' + (json.ai_service || 'ai') + ', method: ' + (json.method || '?') + ')'
+                    : '(FAILED: ' + (json.error || json.fallback_reason || 'unknown') + ')';
+                out.textContent = JSON.stringify(json, null, 2);
+                if (json.preview && json.preview.image_url) {
+                    img.src = json.preview.image_url;
+                    img.style.display = 'block';
+                }
+            } catch (e) {
+                status.textContent = '(network error)';
+                out.textContent = e.message;
+            } finally {
+                btn.textContent = original;
+                btn.disabled = false;
+            }
+        });
+    }
 
     // AI Generate buttons
     document.querySelectorAll('.ai-generate-btn').forEach(btn => {
@@ -1303,7 +1553,11 @@ document.addEventListener('DOMContentLoaded', function() {
             createNew: document.getElementById('createNew').checked,
             skipErrors: document.getElementById('skipErrors').checked,
             aiGenerate: document.getElementById('aiGenerate').checked,
-            aiFields: aiFields
+            aiFields: aiFields,
+            marginPercent: document.getElementById('marginPercent') ? document.getElementById('marginPercent').value || '0' : '0',
+            vatRate: document.getElementById('vatRate') ? document.getElementById('vatRate').value || '0' : '0',
+            defaultVendorId: document.getElementById('defaultVendor') ? document.getElementById('defaultVendor').value || '' : '',
+            defaultCategoryId: document.getElementById('defaultCategory') ? document.getElementById('defaultCategory').value || '' : '',
         };
 
         // Map data using column mapping
@@ -1314,6 +1568,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             return mapped;
         });
+
+        // Large AI imports run in the background queue so the user can close the tab
+        if (options.aiGenerate && mappedData.length > 50) {
+            return runQueuedImport(mappedData, options);
+        }
 
         const batchSize = options.aiGenerate ? 1 : 10; // 1 product at a time for AI (each call ~5-15s)
         const batches = [];
@@ -1337,6 +1596,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('skip_errors', options.skipErrors ? '1' : '0');
                 formData.append('ai_generate', options.aiGenerate ? '1' : '0');
                 formData.append('ai_fields', JSON.stringify(options.aiFields));
+                formData.append('margin_percent', options.marginPercent);
+                formData.append('vat_rate', options.vatRate);
+                formData.append('default_vendor_id', options.defaultVendorId);
+                formData.append('default_category_id', options.defaultCategoryId);
                 formData.append('_token', '<?= csrf_token() ?>');
 
                 const response = await fetch('<?= url('/admin/products/import/process') ?>', {
@@ -1443,5 +1706,87 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('importResults').style.display = 'block';
         document.getElementById('importResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
+
+    // Background queue path: large AI imports hand off to a background job
+    // so the user can close the tab. Polls every 3s for progress.
+    async function runQueuedImport(mappedData, options) {
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressCount = document.getElementById('progressCount');
+        progressText.textContent = 'Queueing import...';
+
+        const fd = new FormData();
+        fd.append('_token', '<?= csrf_token() ?>');
+        fd.append('data', JSON.stringify(mappedData));
+        fd.append('update_existing', options.updateExisting ? '1' : '0');
+        fd.append('create_new', options.createNew ? '1' : '0');
+        fd.append('skip_errors', '1');
+        fd.append('ai_generate', '1');
+        fd.append('margin_percent', options.marginPercent);
+        fd.append('vat_rate', options.vatRate);
+        fd.append('default_vendor_id', options.defaultVendorId);
+        fd.append('default_category_id', options.defaultCategoryId);
+
+        try {
+            const res = await fetch('<?= url('/admin/products/import/enqueue') ?>', { method: 'POST', body: fd });
+            const json = await res.json();
+            if (!json.success) {
+                progressText.textContent = 'Failed to queue: ' + (json.error || 'unknown');
+                document.getElementById('startImportBtn').disabled = false;
+                return;
+            }
+            progressText.textContent = 'Import queued (job #' + json.job_id + '). Running in background...';
+            progressCount.textContent = '0 / ' + json.total_rows;
+            pollJobStatus(json.job_id);
+        } catch (e) {
+            progressText.textContent = 'Failed to queue: ' + e.message;
+            document.getElementById('startImportBtn').disabled = false;
+        }
+    }
+
+    async function pollJobStatus(jobId) {
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressCount = document.getElementById('progressCount');
+        const tick = async () => {
+            try {
+                const res = await fetch('<?= url('/admin/products/import/jobs') ?>/' + jobId);
+                const json = await res.json();
+                if (!json.success) {
+                    progressText.textContent = 'Status check failed: ' + (json.error || 'unknown');
+                    return;
+                }
+                const job = json.job;
+                progressBar.style.width = job.progress_pct + '%';
+                progressText.textContent = 'Job #' + job.id + ' - ' + job.status;
+                progressCount.textContent = job.processed_rows + ' / ' + job.total_rows;
+                if (job.status === 'completed') {
+                    progressText.textContent = 'Import completed!';
+                    progressBar.style.width = '100%';
+                    const errorsField = (job.errors && job.errors.length) ? job.errors : [];
+                    if (typeof showResults === 'function') {
+                        showResults({ created: job.created, updated: job.updated, errors: errorsField, import_log_id: job.import_log_id });
+                    } else {
+                        document.getElementById('resultsCreated').textContent = job.created;
+                        document.getElementById('resultsUpdated').textContent = job.updated;
+                        document.getElementById('importResults').style.display = 'block';
+                    }
+                    return;
+                }
+                if (job.status === 'failed' || job.status === 'cancelled') {
+                    progressText.textContent = job.status === 'failed'
+                        ? 'Import failed: ' + (job.error_message || 'unknown')
+                        : 'Import cancelled';
+                    document.getElementById('startImportBtn').disabled = false;
+                    return;
+                }
+                setTimeout(tick, 3000);
+            } catch (e) {
+                progressText.textContent = 'Status check error: ' + e.message;
+                setTimeout(tick, 5000);
+            }
+        };
+        tick();
+    }
 });
 </script>

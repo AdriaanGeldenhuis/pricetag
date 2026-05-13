@@ -13,6 +13,8 @@ use App\Core\Database;
 use App\Models\Product;
 use App\Models\Category;
 use App\Services\OpenAIService;
+use App\Services\ClaudeService;
+use App\Services\ImportJobService;
 use App\Services\ProductImageService;
 use App\Services\ProductService;
 
@@ -1691,13 +1693,43 @@ class ProductController extends Controller
      */
     public function importForm(): void
     {
+        $db = Database::getInstance();
         $categories = Category::getTree();
+
+        // Vendors for the AI-mode default-vendor selector
+        $vendors = [];
+        try {
+            $vendors = $db->query("SELECT id, name FROM vendors WHERE status IN ('active','pending') ORDER BY name")->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            // vendors table may be missing on some installs
+        }
+
+        // Tax rate from store settings (default 15% for South African VAT)
+        $taxRate = 15.0;
+        try {
+            if (function_exists('getSetting')) {
+                $taxRate = (float) getSetting('tax_rate', 'store', '15');
+            }
+        } catch (\Throwable $e) {
+            // fallback to 15
+        }
+
+        // Recent imports for the new "Recent Imports" history list
+        $history = [];
+        try {
+            $history = $db->query("SELECT * FROM product_import_logs ORDER BY created_at DESC LIMIT 10")->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            // table may not exist yet
+        }
 
         $this->layout('admin');
         $this->view('pages/products/import', [
             'page_title' => 'Import / Export Products',
             'active_page' => 'products',
             'categories' => $categories,
+            'vendors' => $vendors,
+            'taxRate' => $taxRate,
+            'history' => $history,
         ]);
     }
 
@@ -2038,281 +2070,67 @@ class ProductController extends Controller
     }
 
     /**
-     * Process AJAX import (for drag & drop column mapping)
+     * Process AJAX import (drag & drop column mapping). Thin wrapper around
+     * runImportLoop() so the same code path handles synchronous imports here
+     * and queued background imports via processImportJob().
+     *
+     * Large AI imports (>50 rows) are queued via importEnqueue() instead so
+     * the user can close the browser tab.
      */
     public function importProcess(): void
     {
-        // Ensure JSON response
+        set_time_limit(600);
+        if (function_exists('apache_setenv')) {
+            @apache_setenv('no-gzip', '1');
+        }
+        @ini_set('zlib.output_compression', '0');
+
         header('Content-Type: application/json');
 
+        if (!$this->validateCsrf()) {
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+            exit;
+        }
+
+        $data = json_decode($_POST['data'] ?? '[]', true);
+        if (empty($data)) {
+            echo json_encode(['success' => false, 'error' => 'No data provided']);
+            exit;
+        }
+
+        // Normalize South African price format on the way in: "R1 392.78"
+        // and "1,392.78" both become "1392.78" before runImportLoop sees them.
+        foreach ($data as &$_row) {
+            foreach (['price', 'compare_price', 'cost_price'] as $_field) {
+                if (isset($_row[$_field]) && is_string($_row[$_field]) && $_row[$_field] !== '') {
+                    $v = preg_replace('/^R\s*/i', '', $_row[$_field]);
+                    $v = str_replace([' ', ','], ['', ''], $v);
+                    $_row[$_field] = $v;
+                }
+            }
+        }
+        unset($_row);
+
+        $options = $this->extractImportOptions($_POST);
+        $db = Database::getInstance();
+
         try {
-            if (!$this->validateCsrf()) {
-                echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
-                exit;
-            }
-
-            $data = json_decode($_POST['data'] ?? '[]', true);
-            if (empty($data)) {
-                echo json_encode(['success' => false, 'error' => 'No data provided']);
-                exit;
-            }
-
-            $updateExisting = ($_POST['update_existing'] ?? '1') === '1';
-            $createNew = ($_POST['create_new'] ?? '1') === '1';
-            $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
-            $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
-            $aiFields = json_decode($_POST['ai_fields'] ?? '[]', true);
-
-            // Debug: Log import settings
-            error_log("Import started - AI Generate: " . ($aiGenerate ? 'YES' : 'NO') . ", Products: " . count($data));
-
-            $db = Database::getInstance();
-        $created = 0;
-        $updated = 0;
-        $errors = [];
-
-        // Get vendor lookup
-        $stmt = $db->query("SELECT id, name FROM vendors");
-        $vendorLookup = [];
-        while ($row = $stmt->fetch()) {
-            $vendorLookup[strtolower($row['name'])] = $row['id'];
-        }
-
-        // Get category lookup
-        $stmt = $db->query("SELECT id, name FROM categories");
-        $categoryLookup = [];
-        while ($row = $stmt->fetch()) {
-            $categoryLookup[strtolower($row['name'])] = $row['id'];
-        }
-
-        foreach ($data as $idx => $row) {
-            try {
-                $sku = trim($row['sku'] ?? '');
-                $name = trim($row['name'] ?? '');
-
-                // Parse price - handle South African format with space as thousands separator
-                // e.g., "1 392.78" or "R1 392.78" or "1,392.78"
-                $priceStr = $row['price'] ?? '0';
-                $priceStr = preg_replace('/^R\s*/i', '', $priceStr);
-                $priceStr = str_replace([' ', ','], ['', ''], $priceStr);
-                $price = (float) $priceStr;
-
-                $costPriceStr = $row['cost_price'] ?? '';
-                if (!empty($costPriceStr)) {
-                    $costPriceStr = preg_replace('/^R\s*/i', '', $costPriceStr);
-                    $costPriceStr = str_replace([' ', ','], ['', ''], $costPriceStr);
-                }
-
-                $shortDesc = trim($row['short_description'] ?? $row['short_descriptions'] ?? '');
-
-                if (empty($sku)) {
-                    if (!$skipErrors) {
-                        $errors[] = "Row " . ($idx + 1) . ": Missing SKU";
-                    }
-                    continue;
-                }
-
-                $stmt = $db->prepare("SELECT id FROM products WHERE sku = ?");
-                $stmt->execute([$sku]);
-                $existingId = $stmt->fetchColumn();
-
-                if ($existingId && !$updateExisting) {
-                    continue;
-                }
-                if (!$existingId && !$createNew) {
-                    continue;
-                }
-
-                $vendorId = null;
-                if (!empty($row['vendor'])) {
-                    $vendorId = $vendorLookup[strtolower(trim($row['vendor']))] ?? null;
-                    if ($vendorId === null) {
-                        error_log("Import row " . ($idx + 1) . ": vendor '" . trim($row['vendor']) . "' not found, leaving null");
-                    }
-                }
-
-                // CSV-only product data. AI-derived fields (description,
-                // meta_*, dimensions, specs, etc.) are NOT merged here --
-                // they go through ProductService::applyAiDataToProduct
-                // below, which sanitizes, clamps, and writes them inside
-                // a transaction. This keeps CSV-side concerns (vendor,
-                // price, stock) and AI-side concerns separated.
-                $productData = [
-                    'sku' => $sku,
-                    'name' => $name ?: $sku,
-                    'slug' => '',
-                    'description' => $row['description'] ?? '',
-                    'short_description' => $shortDesc,
-                    'price' => $price,
-                    'compare_price' => !empty($row['compare_price'])
-                        ? (float) str_replace([' ', ',', 'R'], '', $row['compare_price'])
-                        : null,
-                    'cost_price' => !empty($costPriceStr) ? (float) $costPriceStr : null,
-                    'stock_quantity' => (int) ($row['stock'] ?? 0),
-                    'weight' => !empty($row['weight']) ? (float) $row['weight'] : null,
-                    'vendor_id' => $vendorId,
-                    'status' => $row['status'] ?? 'active',
-                ];
-
-                $brandValue = $row['brand'] ?? null;
-                $aiCompleteData = null;
-                $productService = ProductService::getInstance();
-
-                if ($aiGenerate) {
-                    $openai = $openai ?? new OpenAIService();
-
-                    static $aiCallCount = 0;
-                    if ($aiCallCount > 0 && $aiCallCount % 10 === 0) {
-                        usleep(2000000);
-                    }
-                    $aiCallCount++;
-
-                    $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
-                        'brand' => $brandValue,
-                        'category' => $row['category'] ?? '',
-                        'price' => $price,
-                        'existingName' => $name,
-                        'existingDescription' => $productData['description'],
-                        'bulk_import' => true,
-                    ]);
-
-                    if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
-                        $aiCompleteData = $aiResult['data'];
-                        error_log("AI Import for SKU {$sku}: name=" . ($aiCompleteData['name'] ?? 'N/A'));
-
-                        // Seed the AI-name and short-description onto the
-                        // initial INSERT/UPDATE so the row is never empty
-                        // for a moment. applyAiDataToProduct() will
-                        // re-sanitize and apply remaining AI fields.
-                        if (!empty($aiCompleteData['name']) && strcasecmp($aiCompleteData['name'], $sku) !== 0) {
-                            $productData['name'] = substr(strip_tags((string) $aiCompleteData['name']), 0, 255);
-                        }
-                        if (!empty($aiCompleteData['short_description'])) {
-                            $productData['short_description'] = substr(
-                                strip_tags((string) $aiCompleteData['short_description']),
-                                0,
-                                500
-                            );
-                        }
-                    }
-                }
-
-                // Generate a unique slug from the finalised name. Reuses
-                // ProductService::generateUniqueSlug so the collision check
-                // sits in one place.
-                $productData['slug'] = $productService->generateUniqueSlug(
-                    $productData['name'],
-                    $existingId ? (int) $existingId : null
-                );
-
-                if ($existingId) {
-                    $setClauses = [];
-                    $params = [];
-                    foreach ($productData as $col => $val) {
-                        if ($col !== 'sku') {
-                            $setClauses[] = "`$col` = ?";
-                            $params[] = $val;
-                        }
-                    }
-                    $params[] = $existingId;
-                    $stmt = $db->prepare("UPDATE products SET " . implode(', ', $setClauses) . " WHERE id = ?");
-                    $stmt->execute($params);
-                    $productId = (int) $existingId;
-                    $updated++;
-                } else {
-                    $columns = array_keys($productData);
-                    $placeholders = array_fill(0, count($columns), '?');
-                    $stmt = $db->prepare(
-                        "INSERT INTO products (" . implode(', ', array_map(fn($c) => "`$c`", $columns)) . ")
-                         VALUES (" . implode(', ', $placeholders) . ")"
-                    );
-                    $stmt->execute(array_values($productData));
-                    $productId = (int) $db->lastInsertId();
-                    $created++;
-                }
-
-                // CSV-side category mapping: exact (case-insensitive) match
-                // against an existing category. Skip silently if not found
-                // (the AI category fallback inside applyAiDataToProduct will
-                // try a fuzzy match next).
-                if (!empty($row['category'])) {
-                    $catId = $categoryLookup[strtolower(trim($row['category']))] ?? null;
-                    if ($catId) {
-                        $stmt = $db->prepare("SELECT COUNT(*) FROM product_categories WHERE product_id = ?");
-                        $stmt->execute([$productId]);
-                        if ((int) $stmt->fetchColumn() === 0) {
-                            $stmt = $db->prepare(
-                                "INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)"
-                            );
-                            $stmt->execute([$productId, $catId]);
-                        }
-                    } else {
-                        error_log("Import row " . ($idx + 1) . ": category '" . trim($row['category']) . "' not found in DB, will let AI try fuzzy match");
-                    }
-                }
-
-                // CSV image: download FIRST so it gets the primary slot
-                // before AI image search fills out the remaining 3.
-                if (!empty($row['image']) && filter_var($row['image'], FILTER_VALIDATE_URL)) {
-                    try {
-                        $imageService = $imageService ?? new ProductImageService();
-                        ob_start();
-                        $imageService->downloadAndSaveImagePublic(
-                            $productId,
-                            $row['image'],
-                            $productData['name'],
-                            true
-                        );
-                        ob_end_clean();
-                    } catch (\Throwable $e) {
-                        if (!empty(ob_get_status())) { ob_end_clean(); }
-                        error_log("Import row " . ($idx + 1) . ": CSV image download failed: " . $e->getMessage());
-                    }
-                }
-
-                // CSV brand attribute: if the row gave us a brand, set it.
-                // The shared service does the same when AI suggests one.
-                if (!empty($brandValue)) {
-                    $productService->setBrandAttribute($productId, trim((string) $brandValue));
-                }
-
-                // Hand off all AI-derived enrichment to the shared method.
-                // force=true: in the import context the admin opted in to AI,
-                // so AI text overrides CSV text where present. CSV fields
-                // already on the row (price, stock, vendor) are untouched
-                // by the service because they're not in the AI payload.
-                if ($aiGenerate && !empty($aiCompleteData)) {
-                    $apply = $productService->applyAiDataToProduct(
-                        $productId,
-                        $aiCompleteData,
-                        ['force' => true, 'generate_images' => true]
-                    );
-                    if (!$apply['success']) {
-                        $errors[] = "Row " . ($idx + 1) . " (SKU {$sku}): " . ($apply['error'] ?? 'AI apply failed');
-                    }
-                }
-            } catch (\Throwable $e) {
-                $errors[] = "Row " . ($idx + 1) . ": " . $e->getMessage();
-                if (!$skipErrors) {
-                    break;
-                }
-            }
-        }
-
+            $result = $this->runImportLoop($db, $data, $options);
+            $this->writeImportLog($db, $result, $options);
             echo json_encode([
                 'success' => true,
-                'created' => $created,
-                'updated' => $updated,
-                'errors' => $errors
+                'created' => $result['created'],
+                'updated' => $result['updated'],
+                'failed' => $result['failed'],
+                'ai_service' => $result['ai_service'],
+                'errors' => $result['errors'],
             ]);
-        } catch (\Throwable $e) {
-            echo json_encode([
-                'success' => false,
-                'error' => 'Server error: ' . $e->getMessage()
-            ]);
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
         exit;
     }
+
 
     /**
      * Generate product name using AI (simple template)
@@ -2619,5 +2437,1074 @@ class ProductController extends Controller
     {
         $this->data['_layout'] = $layout;
         return $this;
+    }
+
+    // ============================================================================
+    // AI Import Pipeline (Phases 1-4)
+    // ============================================================================
+
+    /**
+     * Pick the AI service for bulk imports. Claude (with web search) when
+     * ANTHROPIC_API_KEY is configured, otherwise fall back to OpenAI so
+     * existing installs keep working without an env change.
+     */
+    private function resolveAiService(): array
+    {
+        $claude = new ClaudeService();
+        if ($claude->hasApiKey()) {
+            return [$claude, 'claude'];
+        }
+        return [new OpenAIService(), 'openai'];
+    }
+
+    /**
+     * Pull import option flags out of $_POST or a queued job payload with
+     * the same defaults applied either way.
+     */
+    private function extractImportOptions(array $source): array
+    {
+        return [
+            'update_existing' => (($source['update_existing'] ?? '1') === '1' || ($source['update_existing'] ?? null) === true),
+            'create_new' => (($source['create_new'] ?? '1') === '1' || ($source['create_new'] ?? null) === true),
+            'skip_errors' => (($source['skip_errors'] ?? '0') === '1' || ($source['skip_errors'] ?? null) === true),
+            'ai_generate' => (($source['ai_generate'] ?? '0') === '1' || ($source['ai_generate'] ?? null) === true),
+            'margin_percent' => max(0.0, (float) ($source['margin_percent'] ?? 0)),
+            'vat_rate' => max(0.0, (float) ($source['vat_rate'] ?? 0)),
+            'default_vendor_id' => !empty($source['default_vendor_id']) ? (int) $source['default_vendor_id'] : null,
+            'default_category_id' => !empty($source['default_category_id']) ? (int) $source['default_category_id'] : null,
+        ];
+    }
+
+    /**
+     * Map of "category name (lowercased)" -> id and "category id (int)" -> id,
+     * so a CSV row can refer to a category by either form.
+     */
+    private function getCategoryMap(\PDO $db): array
+    {
+        $map = [];
+        $rows = $db->query("SELECT id, name FROM categories")->fetchAll() ?: [];
+        foreach ($rows as $r) {
+            $map[strtolower(trim($r['name']))] = (int) $r['id'];
+            $map[(int) $r['id']] = (int) $r['id'];
+        }
+        return $map;
+    }
+
+    private function createCategoryIfNotExists(\PDO $db, string $name, array &$categoryMap): ?int
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return null;
+        }
+        $slug = preg_replace('/[^a-z0-9]+/i', '-', strtolower($name));
+        $slug = trim($slug, '-');
+        try {
+            $db->query(
+                "INSERT INTO categories (name, slug, is_active, created_at) VALUES (?, ?, 1, NOW())",
+                [$name, $slug]
+            );
+            $id = (int) $db->lastInsertId();
+            $categoryMap[strtolower($name)] = $id;
+            $categoryMap[$id] = $id;
+            return $id;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function generateSlug(string $name, ?int $excludeId = null): string
+    {
+        $base = preg_replace('/[^a-z0-9]+/i', '-', strtolower(trim($name)));
+        $base = trim($base, '-');
+        if ($base === '') {
+            $base = 'product-' . time();
+        }
+        $db = Database::getInstance();
+        $slug = $base;
+        $i = 2;
+        while (true) {
+            $stmt = $db->prepare("SELECT id FROM products WHERE slug = ? AND id != ? LIMIT 1");
+            $stmt->execute([$slug, $excludeId ?: 0]);
+            if (!$stmt->fetchColumn()) {
+                return $slug;
+            }
+            $slug = $base . '-' . $i;
+            $i++;
+        }
+    }
+
+    private function generateAttributeSlug(string $value): string
+    {
+        $slug = preg_replace('/[^a-z0-9]+/i', '-', strtolower(trim($value)));
+        return trim($slug, '-');
+    }
+
+    /**
+     * Canonicalize brand names so "HP" / "HP Inc." / "Hewlett-Packard" don't
+     * end up as three separate brand entries in storefront filters.
+     */
+    private function normalizeBrand(string $brand): string
+    {
+        $brand = trim($brand);
+        if ($brand === '') {
+            return '';
+        }
+        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '', $brand));
+        $canonical = [
+            'hp' => 'HP', 'hpinc' => 'HP', 'hewlettpackard' => 'HP', 'hpe' => 'HPE',
+            'dell' => 'Dell', 'delltechnologies' => 'Dell',
+            'asus' => 'ASUS', 'asustek' => 'ASUS',
+            'lenovo' => 'Lenovo',
+            'apple' => 'Apple', 'appleinc' => 'Apple',
+            'samsung' => 'Samsung', 'samsungelectronics' => 'Samsung',
+            'lg' => 'LG', 'lgelectronics' => 'LG',
+            'sony' => 'Sony',
+            'intel' => 'Intel',
+            'amd' => 'AMD', 'advancedmicrodevices' => 'AMD',
+            'nvidia' => 'NVIDIA',
+            'msi' => 'MSI',
+            'gigabyte' => 'Gigabyte', 'asrock' => 'ASRock',
+            'corsair' => 'Corsair', 'kingston' => 'Kingston',
+            'westerndigital' => 'Western Digital', 'wd' => 'Western Digital',
+            'sandisk' => 'SanDisk', 'seagate' => 'Seagate', 'crucial' => 'Crucial',
+            'tplink' => 'TP-Link', 'mikrotik' => 'MikroTik', 'cisco' => 'Cisco',
+            'logitech' => 'Logitech', 'razer' => 'Razer', 'acer' => 'Acer',
+            'benq' => 'BenQ', 'epson' => 'Epson', 'canon' => 'Canon', 'brother' => 'Brother',
+            'huawei' => 'Huawei', 'xiaomi' => 'Xiaomi', 'redmi' => 'Xiaomi',
+            'pinnacle' => 'Pinnacle',
+        ];
+        return $canonical[$slug] ?? $brand;
+    }
+
+    /**
+     * product_images has both `path` (schema.sql) and `image_url` (legacy)
+     * referenced in different places. Detect which exists per request.
+     */
+    private static ?string $productImagesColumn = null;
+    private function productImagesUrlColumn(\PDO $db): string
+    {
+        if (self::$productImagesColumn !== null) {
+            return self::$productImagesColumn;
+        }
+        try {
+            $cols = $db->query("SHOW COLUMNS FROM product_images")->fetchAll();
+            $names = array_column($cols, 'Field');
+            self::$productImagesColumn = in_array('image_url', $names, true) ? 'image_url' : 'path';
+        } catch (\Throwable $e) {
+            self::$productImagesColumn = 'image_url';
+        }
+        return self::$productImagesColumn;
+    }
+
+    /**
+     * Download a product image, validate it's a real image (mime + dimensions),
+     * resize to 1500px max edge, save to /uploads/products/.
+     */
+    private function importProductImage(\PDO $db, int $productId, string $imageUrl): void
+    {
+        if (!filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            return;
+        }
+        try {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 15,
+                    'user_agent' => 'Mozilla/5.0 (compatible; PricetagBot/1.0)',
+                    'follow_location' => 1,
+                    'max_redirects' => 3,
+                ]
+            ]);
+            $imageData = @file_get_contents($imageUrl, false, $context);
+            if (!$imageData || strlen($imageData) < 200) {
+                return;
+            }
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_buffer($finfo, $imageData);
+            finfo_close($finfo);
+            $extMap = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
+            $ext = $extMap[$mimeType] ?? null;
+            if (!$ext) {
+                return;
+            }
+            $dimensions = @getimagesizefromstring($imageData);
+            if ($dimensions === false) {
+                return;
+            }
+            [$w, $h] = $dimensions;
+            if ($w < 200 || $h < 200) {
+                error_log("Product {$productId}: skipping tiny image {$w}x{$h} from {$imageUrl}");
+                return;
+            }
+            $maxEdge = 1500;
+            if (max($w, $h) > $maxEdge && function_exists('imagecreatefromstring')) {
+                $imageData = $this->resizeImage($imageData, $w, $h, $maxEdge, $ext) ?? $imageData;
+            }
+            $uploadDir = PUBLIC_PATH . '/uploads/products/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            $filename = $productId . '_' . time() . '_import.' . $ext;
+            file_put_contents($uploadDir . $filename, $imageData);
+            $urlColumn = $this->productImagesUrlColumn($db);
+            $hasImage = (int) $db->query("SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$productId])->fetchColumn();
+            $db->query(
+                "INSERT INTO product_images (product_id, `{$urlColumn}`, is_primary, sort_order, created_at) VALUES (?, ?, ?, 0, NOW())",
+                [$productId, '/uploads/products/' . $filename, $hasImage ? 0 : 1]
+            );
+        } catch (\Exception $e) {
+            // image errors should not break the import
+        }
+    }
+
+    private function resizeImage(string $data, int $width, int $height, int $maxEdge, string $ext): ?string
+    {
+        $src = @imagecreatefromstring($data);
+        if (!$src) {
+            return null;
+        }
+        $ratio = $maxEdge / max($width, $height);
+        $newW = (int) round($width * $ratio);
+        $newH = (int) round($height * $ratio);
+        $dst = imagecreatetruecolor($newW, $newH);
+        if (in_array($ext, ['png', 'webp', 'gif'], true)) {
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+            imagefilledrectangle($dst, 0, 0, $newW, $newH, $transparent);
+        }
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $newW, $newH, $width, $height);
+        imagedestroy($src);
+        ob_start();
+        switch ($ext) {
+            case 'jpg': imagejpeg($dst, null, 85); break;
+            case 'png': imagepng($dst, null, 7); break;
+            case 'webp':
+                if (function_exists('imagewebp')) { imagewebp($dst, null, 85); }
+                else { imagedestroy($dst); ob_end_clean(); return null; }
+                break;
+            case 'gif': imagegif($dst); break;
+            default: imagedestroy($dst); ob_end_clean(); return null;
+        }
+        $out = ob_get_clean();
+        imagedestroy($dst);
+        return $out !== false ? $out : null;
+    }
+
+    /**
+     * Save AI-generated specs to product_specifications. Distinct from
+     * saveProductSpecifications() which reads from $_POST on the edit form.
+     */
+    private function saveAiProductSpecifications(\PDO $db, int $productId, array $specs): void
+    {
+        if (empty($specs)) {
+            return;
+        }
+        try {
+            $hasExisting = (int) $db->query("SELECT COUNT(*) FROM product_specifications WHERE product_id = ?", [$productId])->fetchColumn();
+            if ($hasExisting > 0) {
+                return;
+            }
+            $sortOrder = 0;
+            foreach ($specs as $s) {
+                $sn = trim((string) ($s['name'] ?? ''));
+                $sv = trim((string) ($s['value'] ?? ''));
+                if ($sn === '' || $sv === '') {
+                    continue;
+                }
+                $db->query(
+                    "INSERT INTO product_specifications (product_id, spec_name, spec_value, sort_order, created_at) VALUES (?, ?, ?, ?, NOW())",
+                    [$productId, substr($sn, 0, 100), substr($sv, 0, 500), $sortOrder]
+                );
+                $sortOrder++;
+            }
+        } catch (\Throwable $e) {
+            error_log("saveAiProductSpecifications: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save AI-generated attributes to product_attributes / attributes /
+     * attribute_values. Distinct from saveProductAttributes() which reads
+     * from $_POST on the edit form. Brand values get normalized.
+     */
+    private function saveAiProductAttributes(\PDO $db, int $productId, array $attributes, string $category): void
+    {
+        if (empty($attributes)) {
+            return;
+        }
+        try {
+            $hasExisting = (int) $db->query("SELECT COUNT(*) FROM product_attributes WHERE product_id = ?", [$productId])->fetchColumn();
+            if ($hasExisting > 0) {
+                return;
+            }
+            foreach ($attributes as $attrName => $attrValue) {
+                $attrName = trim((string) $attrName);
+                $attrValue = trim((string) $attrValue);
+                if ($attrName === '' || $attrValue === '') {
+                    continue;
+                }
+                if (strcasecmp($attrName, 'brand') === 0 || strcasecmp($attrName, 'manufacturer') === 0) {
+                    $attrValue = $this->normalizeBrand($attrValue);
+                }
+                $attrSlug = $this->generateAttributeSlug($attrName);
+                $row = $db->query("SELECT id FROM attributes WHERE slug = ?", [$attrSlug])->fetch();
+                if (!$row) {
+                    $db->query(
+                        "INSERT INTO attributes (name, slug, type, is_filterable, is_visible, created_at) VALUES (?, ?, 'select', 1, 1, NOW())",
+                        [$attrName, $attrSlug]
+                    );
+                    $attributeId = (int) $db->lastInsertId();
+                } else {
+                    $attributeId = (int) $row['id'];
+                }
+                $valueSlug = $this->generateAttributeSlug($attrValue);
+                $vrow = $db->query("SELECT id FROM attribute_values WHERE attribute_id = ? AND slug = ?", [$attributeId, $valueSlug])->fetch();
+                if (!$vrow) {
+                    $db->query(
+                        "INSERT INTO attribute_values (attribute_id, value, slug, created_at) VALUES (?, ?, ?, NOW())",
+                        [$attributeId, substr($attrValue, 0, 255), $valueSlug]
+                    );
+                    $valueId = (int) $db->lastInsertId();
+                } else {
+                    $valueId = (int) $vrow['id'];
+                }
+                $db->query(
+                    "INSERT INTO product_attributes (product_id, attribute_id, attribute_value_id) VALUES (?, ?, ?)",
+                    [$productId, $attributeId, $valueId]
+                );
+            }
+        } catch (\Throwable $e) {
+            error_log("saveAiProductAttributes: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Insert a new product from a CSV row (with AI augmentations already
+     * merged in). Uses the same field set as the live form's create() path
+     * but driven by row data rather than $_POST.
+     */
+    private function createProductFromImport(\PDO $db, array $row, array $categoryMap): int
+    {
+        $name = trim((string) $row['name']);
+        $sku = trim((string) $row['sku']);
+        $slug = $this->generateSlug($name);
+
+        $categoryId = null;
+        if (!empty($row['category'])) {
+            $catKey = is_numeric($row['category']) ? (int) $row['category'] : strtolower(trim((string) $row['category']));
+            $categoryId = $categoryMap[$catKey] ?? null;
+        }
+
+        $vendorId = null;
+        if (!empty($row['vendor_id'])) {
+            $vendorId = (int) $row['vendor_id'];
+        } elseif (!empty($row['vendor'])) {
+            $v = trim((string) $row['vendor']);
+            if (is_numeric($v)) {
+                $vendorId = (int) $v;
+            } else {
+                $stmt = $db->query("SELECT id FROM vendors WHERE name = ? LIMIT 1", [$v]);
+                $found = $stmt ? $stmt->fetch() : null;
+                $vendorId = $found ? (int) $found['id'] : null;
+            }
+        }
+
+        $status = 'active';
+        if (isset($row['status'])) {
+            if (is_string($row['status']) && !is_numeric($row['status'])) {
+                $status = in_array($row['status'], ['active', 'inactive', 'draft', 'out_of_stock'], true) ? $row['status'] : 'draft';
+            } else {
+                $status = ((int) $row['status']) === 0 ? 'draft' : 'active';
+            }
+        }
+
+        $db->query(
+            "INSERT INTO products
+             (name, slug, sku, description, short_description, price, compare_price, cost_price,
+              category_id, vendor_id, stock_quantity, low_stock_threshold, weight, length, width, height,
+              meta_title, meta_description, meta_keywords, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+            [
+                $name, $slug, $sku,
+                $row['description'] ?? '',
+                $row['short_description'] ?? '',
+                !empty($row['price']) ? (float) $row['price'] : 0,
+                !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
+                !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
+                $categoryId, $vendorId,
+                !empty($row['stock']) ? (int) $row['stock'] : 0,
+                10,
+                !empty($row['weight']) ? (float) $row['weight'] : null,
+                !empty($row['length']) ? (float) $row['length'] : null,
+                !empty($row['width']) ? (float) $row['width'] : null,
+                !empty($row['height']) ? (float) $row['height'] : null,
+                $row['meta_title'] ?? null,
+                $row['meta_description'] ?? null,
+                $row['meta_keywords'] ?? null,
+                $status,
+            ]
+        );
+        return (int) $db->lastInsertId();
+    }
+
+    private function updateProductFromImport(\PDO $db, int $productId, array $row, array $categoryMap): void
+    {
+        $updates = [];
+        $params = [];
+        $fieldMap = [
+            'name' => 'name', 'description' => 'description', 'short_description' => 'short_description',
+            'price' => 'price', 'compare_price' => 'compare_price', 'cost_price' => 'cost_price',
+            'stock' => 'stock_quantity', 'weight' => 'weight', 'length' => 'length',
+            'width' => 'width', 'height' => 'height',
+            'meta_title' => 'meta_title', 'meta_description' => 'meta_description', 'meta_keywords' => 'meta_keywords',
+            'status' => 'status',
+        ];
+        foreach ($fieldMap as $csvField => $dbField) {
+            if (isset($row[$csvField]) && $row[$csvField] !== '') {
+                $value = $row[$csvField];
+                if (in_array($dbField, ['price', 'compare_price', 'cost_price', 'weight', 'length', 'width', 'height'], true)) {
+                    $value = (float) $value;
+                } elseif ($dbField === 'status') {
+                    if (is_string($value) && !is_numeric($value)) {
+                        $value = in_array($value, ['active', 'inactive', 'draft', 'out_of_stock'], true) ? $value : 'draft';
+                    } else {
+                        $value = ((int) $value) === 0 ? 'draft' : 'active';
+                    }
+                } elseif ($dbField === 'stock_quantity') {
+                    $value = (int) $value;
+                }
+                $updates[] = "{$dbField} = ?";
+                $params[] = $value;
+            }
+        }
+        if (!empty($row['category'])) {
+            $catKey = is_numeric($row['category']) ? (int) $row['category'] : strtolower(trim((string) $row['category']));
+            $categoryId = $categoryMap[$catKey] ?? null;
+            if ($categoryId) {
+                $updates[] = "category_id = ?";
+                $params[] = $categoryId;
+            }
+        }
+        $vendorId = null;
+        if (!empty($row['vendor_id'])) {
+            $vendorId = (int) $row['vendor_id'];
+        } elseif (!empty($row['vendor'])) {
+            $v = trim((string) $row['vendor']);
+            if (is_numeric($v)) {
+                $vendorId = (int) $v;
+            } else {
+                $stmt = $db->query("SELECT id FROM vendors WHERE name = ? LIMIT 1", [$v]);
+                $found = $stmt ? $stmt->fetch() : null;
+                $vendorId = $found ? (int) $found['id'] : null;
+            }
+        }
+        if ($vendorId) {
+            $updates[] = "vendor_id = ?";
+            $params[] = $vendorId;
+        }
+        if (!empty($row['name'])) {
+            $slug = $this->generateSlug((string) $row['name'], $productId);
+            $updates[] = "slug = ?";
+            $params[] = $slug;
+        }
+        if (!empty($updates)) {
+            $updates[] = "updated_at = NOW()";
+            $params[] = $productId;
+            $db->query("UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?", $params);
+        }
+    }
+
+    /**
+     * Record one AI import attempt - kept separate from the row insert so
+     * we can audit what the model returned vs. what was saved. Silently
+     * no-ops if migration 018 hasn't been applied.
+     */
+    private function logAiImport(\PDO $db, ?int $productId, string $sku, string $aiService, array $aiResult): void
+    {
+        try {
+            $data = $aiResult['data'] ?? [];
+            $usage = $aiResult['usage'] ?? [];
+            $method = $aiResult['method'] ?? 'unknown';
+            $identified = !empty($data['ai_identified']);
+            $confidence = $identified ? 'high' : ($method === 'fallback' ? 'unknown' : 'low');
+            $storedData = $data;
+            unset($storedData['image_candidates']);
+            $db->query(
+                "INSERT INTO product_ai_imports
+                 (product_id, sku, ai_service, ai_model, ai_method, ai_identified, confidence,
+                  ai_response, image_url, input_tokens, output_tokens, cache_read_tokens,
+                  estimated_cost_usd, fallback_reason, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+                [
+                    $productId, $sku, $aiService,
+                    $usage['model'] ?? '',
+                    $method,
+                    $identified ? 1 : 0,
+                    $confidence,
+                    !empty($storedData) ? json_encode($storedData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null,
+                    !empty($data['image_url']) ? substr((string) $data['image_url'], 0, 1024) : null,
+                    (int) ($usage['input_tokens'] ?? 0),
+                    (int) ($usage['output_tokens'] ?? 0),
+                    (int) ($usage['cache_read_input_tokens'] ?? 0),
+                    $this->estimateAiCost($usage),
+                    $aiResult['fallback_reason'] ?? null,
+                ]
+            );
+        } catch (\Throwable $e) {
+            error_log("logAiImport skipped: " . $e->getMessage());
+        }
+    }
+
+    private function estimateAiCost(array $usage): float
+    {
+        if (empty($usage['model'])) {
+            return 0.0;
+        }
+        $rates = [
+            'claude-sonnet-4-6' => [3.00, 15.00, 0.30],
+            'claude-haiku-4-5'  => [1.00,  5.00, 0.10],
+            'claude-opus-4-7'   => [5.00, 25.00, 0.50],
+            'gpt-4o-mini'       => [0.15,  0.60, 0.00],
+            'gpt-4o'            => [2.50, 10.00, 0.00],
+        ][$usage['model']] ?? [3.00, 15.00, 0.30];
+        $cost = (
+            ($usage['input_tokens'] ?? 0) * $rates[0]
+            + ($usage['output_tokens'] ?? 0) * $rates[1]
+            + ($usage['cache_read_input_tokens'] ?? 0) * $rates[2]
+        ) / 1_000_000;
+        return round($cost, 6);
+    }
+
+    /**
+     * The core per-row loop used by both the sync import endpoint and the
+     * background queue worker. $heartbeat is invoked every 5 rows with the
+     * current progress so the queued path can publish status updates.
+     */
+    private function runImportLoop(\PDO $db, array $data, array $options, ?callable $heartbeat = null): array
+    {
+        $updateExisting = (bool) $options['update_existing'];
+        $createNew = (bool) $options['create_new'];
+        $skipErrors = (bool) $options['skip_errors'];
+        $aiGenerate = (bool) $options['ai_generate'];
+        $marginPercent = (float) $options['margin_percent'];
+        $vatRate = (float) $options['vat_rate'];
+        $defaultVendorId = $options['default_vendor_id'];
+        $defaultCategoryId = $options['default_category_id'];
+
+        $created = 0; $updated = 0; $failed = 0;
+        $errors = [];
+        $categoryMap = $this->getCategoryMap($db);
+        $aiService = null; $aiServiceName = 'none';
+
+        foreach ($data as $index => $row) {
+            $rowNum = $index + 1;
+            $aiResult = null;
+            $aiData = null;
+            try {
+                $sku = trim((string) ($row['sku'] ?? ''));
+                if ($sku === '') {
+                    if ($skipErrors) {
+                        $errors[] = "Row {$rowNum}: SKU is required";
+                        $failed++;
+                        continue;
+                    }
+                    throw new \Exception("Row {$rowNum}: SKU is required");
+                }
+
+                $existing = $db->query("SELECT id FROM products WHERE sku = ?", [$sku])->fetch();
+
+                if ($existing) {
+                    if (!$updateExisting) {
+                        continue;
+                    }
+                    if ($aiGenerate) {
+                        if ($aiService === null) {
+                            [$aiService, $aiServiceName] = $this->resolveAiService();
+                        }
+                        $existingProduct = $db->query("SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
+                        $aiResult = $aiService->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
+                            'brand' => $row['brand'] ?? '',
+                            'category' => $row['category'] ?? '',
+                            'price' => $row['price'] ?? $existingProduct['price'] ?? 0,
+                            'existingName' => trim($row['name'] ?? $existingProduct['name'] ?? ''),
+                            'existingDescription' => $row['description'] ?? $existingProduct['description'] ?? '',
+                            'bulk_import' => true,
+                        ]);
+                        if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                            $aiData = $aiResult['data'];
+                            if (!empty($aiData['name']) && $aiData['name'] !== $sku && empty($row['name'])) {
+                                $row['name'] = $aiData['name'];
+                            }
+                            foreach (['description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'] as $f) {
+                                if (empty($existingProduct[$f]) && !empty($aiData[$f])) {
+                                    $row[$f] = $f === 'meta_title' || $f === 'meta_keywords' ? substr($aiData[$f], 0, 255) : $aiData[$f];
+                                }
+                            }
+                            foreach (['weight', 'length', 'width', 'height'] as $f) {
+                                if (!empty($aiData[$f]) && empty($existingProduct[$f])) {
+                                    $row[$f] = (float) $aiData[$f];
+                                }
+                            }
+                            if (empty($existingProduct['category_id']) && !empty($aiData['suggested_category'])) {
+                                $row['category'] = $aiData['suggested_category'];
+                            }
+                        }
+                    }
+                    $this->updateProductFromImport($db, (int) $existing['id'], $row, $categoryMap);
+                    if ($aiData) {
+                        $this->saveAiProductSpecifications($db, (int) $existing['id'], $aiData['specifications'] ?? []);
+                        $this->saveAiProductAttributes($db, (int) $existing['id'], $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
+                    }
+                    if ($aiData && !empty($aiData['image_url'])) {
+                        $hasImage = (int) $db->query("SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$existing['id']])->fetchColumn();
+                        if ($hasImage === 0) {
+                            try { $this->importProductImage($db, (int) $existing['id'], $aiData['image_url']); }
+                            catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
+                        }
+                    }
+                    if ($aiGenerate && $aiResult !== null) {
+                        $this->logAiImport($db, (int) $existing['id'], $sku, $aiServiceName, $aiResult);
+                    }
+                    $updated++;
+                } else {
+                    if (!$createNew) {
+                        continue;
+                    }
+                    $name = trim((string) ($row['name'] ?? ''));
+                    $shortDesc = trim((string) ($row['short_description'] ?? ''));
+
+                    if ($aiGenerate) {
+                        if (empty($row['vendor']) && $defaultVendorId) {
+                            $row['vendor_id'] = $defaultVendorId;
+                        }
+                        if (empty($row['category']) && $defaultCategoryId) {
+                            $row['category'] = (string) $defaultCategoryId;
+                        }
+                    }
+                    if ($aiGenerate && empty($row['price']) && !empty($row['cost_price'])) {
+                        $cost = (float) $row['cost_price'];
+                        $row['price'] = round($cost * (1 + $marginPercent / 100) * (1 + $vatRate / 100), 2);
+                    }
+
+                    $aiIdentified = false;
+                    if ($aiGenerate) {
+                        if ($aiService === null) {
+                            [$aiService, $aiServiceName] = $this->resolveAiService();
+                        }
+                        $aiResult = $aiService->generateCompleteProduct($sku, $shortDesc, [
+                            'brand' => $row['brand'] ?? '',
+                            'category' => $row['category'] ?? '',
+                            'price' => $row['price'] ?? 0,
+                            'existingName' => $name,
+                            'existingDescription' => $row['description'] ?? '',
+                            'bulk_import' => true,
+                        ]);
+                        if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
+                            $aiData = $aiResult['data'];
+                            if (!empty($aiData['name']) && $aiData['name'] !== $sku) {
+                                $name = $aiData['name'];
+                                $aiIdentified = true;
+                            }
+                            foreach (['description', 'short_description', 'meta_title', 'meta_description', 'meta_keywords'] as $f) {
+                                if (!empty($aiData[$f])) {
+                                    $row[$f] = $f === 'meta_title' || $f === 'meta_keywords' ? substr($aiData[$f], 0, 255) : $aiData[$f];
+                                }
+                            }
+                            foreach (['weight', 'length', 'width', 'height'] as $f) {
+                                if (!empty($aiData[$f]) && empty($row[$f])) {
+                                    $row[$f] = (float) $aiData[$f];
+                                }
+                            }
+                            if (empty($row['category']) && !empty($aiData['suggested_category'])) {
+                                $row['category'] = $aiData['suggested_category'];
+                                $catKey = strtolower(trim($aiData['suggested_category']));
+                                if (!isset($categoryMap[$catKey])) {
+                                    $this->createCategoryIfNotExists($db, $aiData['suggested_category'], $categoryMap);
+                                }
+                            }
+                            if (!empty($aiData['is_new'])) {
+                                $row['is_new'] = 1;
+                            }
+                        }
+                    }
+
+                    if (empty($name)) {
+                        if ($aiGenerate) {
+                            $name = $sku;
+                            $row['name'] = $sku;
+                            $row['status'] = 'draft';
+                            $errors[] = "Row {$rowNum}: AI could not identify SKU {$sku} - created as draft for manual review";
+                        } else {
+                            if ($skipErrors) {
+                                $errors[] = "Row {$rowNum}: Name is required for new products";
+                                $failed++;
+                                continue;
+                            }
+                            throw new \Exception("Row {$rowNum}: Name is required for new products");
+                        }
+                    } else {
+                        $row['name'] = $name;
+                    }
+
+                    $productId = $this->createProductFromImport($db, $row, $categoryMap);
+
+                    if ($aiData && $aiIdentified && $productId) {
+                        $this->saveAiProductSpecifications($db, $productId, $aiData['specifications'] ?? []);
+                        $this->saveAiProductAttributes($db, $productId, $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
+                    }
+                    if ($aiData && $aiIdentified && $productId && !empty($aiData['image_url'])) {
+                        try { $this->importProductImage($db, $productId, $aiData['image_url']); }
+                        catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
+                    }
+                    if ($aiGenerate && $aiResult !== null) {
+                        $this->logAiImport($db, $productId ?: null, $sku, $aiServiceName, $aiResult);
+                    }
+                    $created++;
+                }
+            } catch (\Exception $e) {
+                if ($skipErrors) {
+                    $errors[] = $e->getMessage();
+                    $failed++;
+                    continue;
+                }
+                throw $e;
+            }
+
+            if ($heartbeat !== null && (($index + 1) % 5 === 0)) {
+                $heartbeat([
+                    'processed' => $created + $updated + $failed,
+                    'created' => $created, 'updated' => $updated, 'failed' => $failed,
+                    'errors' => $errors,
+                ]);
+            }
+        }
+
+        if ($heartbeat !== null) {
+            $heartbeat([
+                'processed' => $created + $updated + $failed,
+                'created' => $created, 'updated' => $updated, 'failed' => $failed,
+                'errors' => $errors,
+            ]);
+        }
+
+        return [
+            'created' => $created, 'updated' => $updated, 'failed' => $failed,
+            'errors' => $errors, 'ai_service' => $aiServiceName,
+        ];
+    }
+
+    private function writeImportLog(\PDO $db, array $result, array $options): ?int
+    {
+        try {
+            $type = $options['ai_generate'] ? 'ai_import' : 'import';
+            $filename = $options['ai_generate'] ? "AI Import ({$result['ai_service']})" : 'CSV Import';
+            $db->query(
+                "INSERT INTO product_import_logs (type, filename, status, total_products, created_products, updated_products, failed_products, errors, created_at, completed_at)
+                 VALUES (?, ?, 'completed', ?, ?, ?, ?, ?, NOW(), NOW())",
+                [
+                    $type, $filename,
+                    $result['created'] + $result['updated'] + $result['failed'],
+                    $result['created'], $result['updated'], $result['failed'],
+                    !empty($result['errors']) ? json_encode(array_slice($result['errors'], 0, 100)) : null,
+                ]
+            );
+            return (int) $db->lastInsertId();
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Background-queue entry point. Called by Scheduler when a queued
+     * import is picked up. Delegates to runImportLoop with a heartbeat.
+     */
+    public function processImportJob(array $job, ImportJobService $jobService): array
+    {
+        @set_time_limit(0);
+        $jobId = (int) $job['id'];
+        $payload = $job['payload'] ?? [];
+        $data = $payload['data'] ?? [];
+        $options = $this->extractImportOptions($payload);
+        $db = Database::getInstance();
+        try {
+            $result = $this->runImportLoop($db, $data, $options, function ($progress) use ($jobService, $jobId) {
+                $jobService->heartbeat($jobId, $progress);
+            });
+            $logId = $this->writeImportLog($db, $result, $options);
+            $jobService->complete($jobId, [
+                'processed' => $result['created'] + $result['updated'] + $result['failed'],
+                'created' => $result['created'], 'updated' => $result['updated'], 'failed' => $result['failed'],
+                'errors' => $result['errors'],
+            ], $logId);
+            return $result;
+        } catch (\Throwable $e) {
+            $jobService->fail($jobId, $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Queue a bulk import to run in the background. Returns job_id so the
+     * client can poll importJobStatus().
+     */
+    public function importEnqueue(): void
+    {
+        header('Content-Type: application/json');
+        if (!$this->validateCsrf()) {
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+            exit;
+        }
+        $data = json_decode($_POST['data'] ?? '[]', true);
+        if (empty($data) || !is_array($data)) {
+            echo json_encode(['success' => false, 'error' => 'No data provided']);
+            exit;
+        }
+        $options = $this->extractImportOptions($_POST);
+        $payload = array_merge($options, ['data' => $data]);
+        try {
+            $jobService = new ImportJobService();
+            $userId = $_SESSION['admin_user_id'] ?? $_SESSION['user_id'] ?? null;
+            $jobId = $jobService->enqueue($payload, $userId ? (int) $userId : null);
+            echo json_encode([
+                'success' => true,
+                'job_id' => $jobId,
+                'total_rows' => count($data),
+                'message' => 'Import queued. You can close this tab - it will keep running in the background.',
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function importJobStatus(int $id): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $job = (new ImportJobService())->get($id);
+            if (!$job) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'error' => 'Job not found']);
+                exit;
+            }
+            $progressPct = $job['total_rows'] > 0
+                ? min(100, (int) round(($job['processed_rows'] / $job['total_rows']) * 100))
+                : 0;
+            echo json_encode([
+                'success' => true,
+                'job' => [
+                    'id' => (int) $job['id'],
+                    'status' => $job['status'],
+                    'total_rows' => (int) $job['total_rows'],
+                    'processed_rows' => (int) $job['processed_rows'],
+                    'created' => (int) $job['created_products'],
+                    'updated' => (int) $job['updated_products'],
+                    'failed' => (int) $job['failed_products'],
+                    'progress_pct' => $progressPct,
+                    'errors' => $job['errors'],
+                    'import_log_id' => $job['import_log_id'] ? (int) $job['import_log_id'] : null,
+                    'ai_service' => $job['ai_service'],
+                    'error_message' => $job['error_message'],
+                    'created_at' => $job['created_at'],
+                    'started_at' => $job['started_at'],
+                    'completed_at' => $job['completed_at'],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Dry-run: run AI on a single row and return the parsed result without
+     * saving anything. Lets the user verify the AI output for one product
+     * before kicking off a full bulk import.
+     */
+    public function importDryRun(): void
+    {
+        set_time_limit(120);
+        header('Content-Type: application/json');
+        if (!$this->validateCsrf()) {
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+            exit;
+        }
+        $row = json_decode($_POST['row'] ?? '{}', true);
+        if (!is_array($row)) {
+            $row = [];
+        }
+        $marginPercent = max(0.0, (float) ($_POST['margin_percent'] ?? 0));
+        $vatRate = max(0.0, (float) ($_POST['vat_rate'] ?? 0));
+        $sku = trim((string) ($row['sku'] ?? ''));
+        if ($sku === '') {
+            echo json_encode(['success' => false, 'error' => 'SKU is required for dry-run']);
+            exit;
+        }
+        try {
+            [$aiService, $aiServiceName] = $this->resolveAiService();
+            $aiResult = $aiService->generateCompleteProduct($sku, trim((string) ($row['short_description'] ?? '')), [
+                'brand' => $row['brand'] ?? '',
+                'category' => $row['category'] ?? '',
+                'price' => $row['price'] ?? 0,
+                'existingName' => $row['name'] ?? '',
+                'bulk_import' => true,
+            ]);
+            $data = $aiResult['data'] ?? [];
+            $cost = !empty($row['cost_price']) ? (float) $row['cost_price'] : null;
+            $calculatedPrice = $cost !== null
+                ? round($cost * (1 + $marginPercent / 100) * (1 + $vatRate / 100), 2)
+                : null;
+            echo json_encode([
+                'success' => !empty($aiResult['success']),
+                'ai_service' => $aiServiceName,
+                'method' => $aiResult['method'] ?? 'unknown',
+                'fallback_reason' => $aiResult['fallback_reason'] ?? null,
+                'ai_identified' => !empty($data['ai_identified']),
+                'preview' => [
+                    'name' => $data['name'] ?? '',
+                    'brand' => $this->normalizeBrand((string) ($data['brand'] ?? '')),
+                    'suggested_category' => $data['suggested_category'] ?? '',
+                    'short_description' => $data['short_description'] ?? '',
+                    'description' => $data['description'] ?? '',
+                    'image_url' => $data['image_url'] ?? '',
+                    'image_candidates' => array_slice($data['image_candidates'] ?? [], 0, 4),
+                    'specifications' => array_slice($data['specifications'] ?? [], 0, 12),
+                    'attributes' => $data['attributes'] ?? [],
+                    'weight' => $data['weight'] ?? null,
+                    'dimensions' => trim(($data['length'] ?? '') . ' x ' . ($data['width'] ?? '') . ' x ' . ($data['height'] ?? ''), ' x'),
+                    'is_new' => !empty($data['is_new']),
+                ],
+                'pricing' => [
+                    'cost_excl_vat' => $cost,
+                    'margin_percent' => $marginPercent,
+                    'vat_rate' => $vatRate,
+                    'calculated_sell_price_incl_vat' => $calculatedPrice,
+                ],
+                'usage' => $aiResult['usage'] ?? null,
+            ], JSON_UNESCAPED_SLASHES);
+            exit;
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+    }
+
+    /**
+     * Detail page for one import log entry. Shows the summary plus every
+     * AI call from product_ai_imports.
+     */
+    public function importHistoryDetail(int $id): void
+    {
+        $db = Database::getInstance();
+        $log = $db->query("SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
+        if (!$log) {
+            http_response_code(404);
+            echo 'Import log not found';
+            exit;
+        }
+        $aiRows = [];
+        try {
+            $aiRows = $db->query(
+                "SELECT pai.*, p.name AS product_name, p.status AS product_status
+                 FROM product_ai_imports pai
+                 LEFT JOIN products p ON p.id = pai.product_id
+                 WHERE pai.created_at >= ? AND pai.created_at <= COALESCE(?, NOW())
+                 ORDER BY pai.created_at ASC",
+                [$log['created_at'], $log['completed_at'] ?? null]
+            )->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            // product_ai_imports table not yet migrated
+        }
+        if (!empty($log['errors'])) {
+            $log['errors'] = json_decode($log['errors'], true) ?: [];
+        } else {
+            $log['errors'] = [];
+        }
+        $this->layout('admin');
+        $this->view('pages/products/import-history-detail', [
+            'page_title' => 'Import #' . $log['id'],
+            'active_page' => 'products',
+            'log' => $log,
+            'aiRows' => $aiRows,
+        ]);
+    }
+
+    /**
+     * Download a CSV / JSON template. Minimal AI-mode example first (just
+     * sku + cost + vendor + category), then a fully-populated row for
+     * manual imports.
+     */
+    public function importTemplate(): void
+    {
+        $format = $_GET['format'] ?? 'csv';
+        if ($format === 'json') {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Content-Disposition: attachment; filename="product_import_template.json"');
+            echo json_encode([
+                '_notes' => [
+                    'ai_mode' => 'In AI mode only sku, cost_price, vendor and category are required - the rest is AI-generated.',
+                    'price_calculation' => 'AI mode: sell price = cost_price * (1 + margin/100) * (1 + vat/100). Set margin and VAT on the import screen.',
+                    'unknown_sku' => 'If AI cannot identify a SKU, the product is still created as status=draft for manual review.',
+                ],
+                'products' => [
+                    ['sku' => 'BX8071514600K', 'cost_price' => 4200.00, 'vendor' => 'Pinnacle', 'category' => 'CPUs', 'stock' => 20],
+                    [
+                        'sku' => 'SKU002', 'name' => 'Cotton T-Shirt', 'price' => 299.99, 'compare_price' => 349.99,
+                        'cost_price' => 150.00, 'vendor' => 'Acme Supplies', 'stock' => 25, 'category' => 'Clothing',
+                        'description' => 'Premium cotton t-shirt.', 'short_description' => 'Soft, breathable cotton.',
+                        'weight' => 0.3, 'status' => 'active', 'featured' => 1, 'image_url' => null,
+                    ],
+                ],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="product_import_template.csv"');
+        $out = fopen('php://output', 'w');
+        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($out, [
+            'sku', 'cost_price', 'vendor', 'category',
+            'name', 'price', 'compare_price', 'stock',
+            'description', 'short_description', 'weight', 'status', 'featured', 'image_url',
+        ]);
+        fputcsv($out, ['BX8071514600K', '4200.00', 'Pinnacle', 'CPUs', '', '', '', '20', '', '', '', '', '', '']);
+        fputcsv($out, ['SKU002', '150.00', 'Acme Supplies', 'Clothing', 'Cotton T-Shirt', '299.99', '349.99', '25', 'Premium cotton t-shirt.', 'Soft, breathable cotton.', '0.3', 'active', '1', '']);
+        fputcsv($out, ['UNKNOWN-123', '500.00', 'Pinnacle', 'Accessories', '', '', '', '10', '', '', '', '', '', '']);
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * Export rows that failed in a previous import as a CSV. User can fix
+     * and re-upload them.
+     */
+    public function exportFailedRows(int $id): void
+    {
+        $db = Database::getInstance();
+        $log = $db->query("SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
+        if (!$log || empty($log['errors'])) {
+            http_response_code(404);
+            echo 'No failed rows for this import';
+            exit;
+        }
+        $errors = json_decode($log['errors'], true) ?: [];
+        $filename = 'import_' . $id . '_failed_rows.csv';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        $out = fopen('php://output', 'w');
+        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($out, ['error_reason', 'sku_or_row']);
+        foreach ($errors as $err) {
+            $sku = '';
+            if (preg_match('/SKU\s+([A-Z0-9\-]+)/i', $err, $m)) {
+                $sku = $m[1];
+            } elseif (preg_match('/Row\s+(\d+)/', $err, $m)) {
+                $sku = 'Row ' . $m[1];
+            }
+            fputcsv($out, [$err, $sku]);
+        }
+        fclose($out);
+        exit;
     }
 }

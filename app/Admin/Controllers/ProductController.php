@@ -12,6 +12,7 @@ use App\Core\Controller;
 use App\Models\Product;
 use App\Models\Category;
 use App\Services\OpenAIService;
+use App\Services\ClaudeService;
 
 class ProductController extends Controller
 {
@@ -1131,6 +1132,20 @@ class ProductController extends Controller
     /**
      * Import product image from URL
      */
+    /**
+     * Pick the AI service for bulk imports. Claude (with web search) when
+     * ANTHROPIC_API_KEY is configured, otherwise fall back to OpenAI so
+     * existing installs keep working without an env change.
+     */
+    private function resolveAiService(): array
+    {
+        $claude = new ClaudeService();
+        if ($claude->hasApiKey()) {
+            return [$claude, 'claude'];
+        }
+        return [new OpenAIService(), 'openai'];
+    }
+
     private function importProductImage(\PDO $db, int $productId, string $imageUrl): void
     {
         // Skip if not a valid URL
@@ -1353,7 +1368,10 @@ class ProductController extends Controller
             $errors = [];
 
             $categoryMap = $this->getCategoryMap($db);
-            $openai = null;
+            // AI service: prefer Claude (Sonnet 4.6 with web search) for bulk imports if configured,
+            // otherwise fall back to OpenAI. Both implement generateCompleteProduct() with the same signature.
+            $aiService = null;
+            $aiServiceName = 'none';
 
             foreach ($data as $index => $row) {
                 $rowNum = $index + 1;
@@ -1382,9 +1400,11 @@ class ProductController extends Controller
 
                         // AI Generate for existing products too - enrich missing data
                         if ($aiGenerate) {
-                            $openai = $openai ?? new OpenAIService();
+                            if ($aiService === null) {
+                                [$aiService, $aiServiceName] = $this->resolveAiService();
+                            }
                             $existingProduct = $db->query("SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
-                            $aiResult = $openai->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
+                            $aiResult = $aiService->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
                                 'brand' => $row['brand'] ?? '',
                                 'category' => $row['category'] ?? '',
                                 'price' => $row['price'] ?? $existingProduct['price'] ?? 0,
@@ -1441,6 +1461,21 @@ class ProductController extends Controller
                             $this->saveProductAttributes($db, $existing['id'], $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
                         }
 
+                        // Download AI image only if product has no existing image
+                        if ($aiData && !empty($aiData['image_url'])) {
+                            $hasImage = (int) $db->query(
+                                "SELECT COUNT(*) FROM product_images WHERE product_id = ?",
+                                [$existing['id']]
+                            )->fetchColumn();
+                            if ($hasImage === 0) {
+                                try {
+                                    $this->importProductImage($db, $existing['id'], $aiData['image_url']);
+                                } catch (\Throwable $imgErr) {
+                                    $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage();
+                                }
+                            }
+                        }
+
                         $updated++;
                     } else {
                         if (!$createNew) {
@@ -1469,11 +1504,13 @@ class ProductController extends Controller
                             );
                         }
 
-                        // AI Generate: use real OpenAI service for complete product generation
+                        // AI Generate: use real AI service for complete product generation
                         $aiIdentified = false;
                         if ($aiGenerate) {
-                            $openai = $openai ?? new OpenAIService();
-                            $aiResult = $openai->generateCompleteProduct($sku, $shortDesc, [
+                            if ($aiService === null) {
+                                [$aiService, $aiServiceName] = $this->resolveAiService();
+                            }
+                            $aiResult = $aiService->generateCompleteProduct($sku, $shortDesc, [
                                 'brand' => $row['brand'] ?? '',
                                 'category' => $row['category'] ?? '',
                                 'price' => $row['price'] ?? 0,
@@ -1570,6 +1607,16 @@ class ProductController extends Controller
                             $this->saveProductAttributes($db, $productId, $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
                         }
 
+                        // Download product image from AI (Claude's web_search returns image URLs)
+                        if ($aiData && $aiIdentified && $productId && !empty($aiData['image_url'])) {
+                            try {
+                                $this->importProductImage($db, $productId, $aiData['image_url']);
+                            } catch (\Throwable $imgErr) {
+                                // Image failures should not break the import - they go in the error list
+                                $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage();
+                            }
+                        }
+
                         $created++;
                     }
 
@@ -1583,12 +1630,14 @@ class ProductController extends Controller
                 }
             }
 
-            // Log the import
+            // Log the import - filename column doubles as service indicator for AI imports
             try {
+                $filename = $aiGenerate ? "AI Import ({$aiServiceName})" : 'AI Import';
                 $db->query("
                     INSERT INTO product_import_logs (type, filename, status, total_products, created_products, updated_products, failed_products, errors, created_at, completed_at)
-                    VALUES ('ai_import', 'AI Import', 'completed', ?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES ('ai_import', ?, 'completed', ?, ?, ?, ?, ?, NOW(), NOW())
                 ", [
+                    $filename,
                     $created + $updated + $failed,
                     $created,
                     $updated,
@@ -1604,6 +1653,7 @@ class ProductController extends Controller
                 'created' => $created,
                 'updated' => $updated,
                 'failed' => $failed,
+                'ai_service' => $aiServiceName,
                 'errors' => $errors
             ]);
 

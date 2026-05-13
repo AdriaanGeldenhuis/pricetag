@@ -12,9 +12,22 @@ namespace Admin\Controllers;
 
 use App\Core\Controller;
 use App\Core\Database;
+use App\Policies\UserPolicy;
 
 class UserController extends Controller
 {
+    private ?UserPolicy $policy = null;
+
+    private function policy(): UserPolicy
+    {
+        // Lazy-init so a missing UserPolicy class doesn't break the rest of
+        // the controller. user() pulls the current admin from session.
+        if ($this->policy === null) {
+            $this->policy = new UserPolicy(user());
+        }
+        return $this->policy;
+    }
+
     public function index(): void
     {
         $db = Database::getInstance();
@@ -562,5 +575,213 @@ class UserController extends Controller
     {
         $this->data['_layout'] = $layout;
         return $this;
+    }
+
+    // ============================================================================
+    // Security features ported from app/Admin/Controllers/UserController.php
+    // (Phase 5b - 2026-05-13). Routes for these are registered in
+    // app/routes.php (admin.users.audit, admin.users.password.reset,
+    // admin.users.impersonate, admin.users.impersonate.stop) but were
+    // returning 500 because the live controller didn't have the methods.
+    // ============================================================================
+
+    /**
+     * Force a password reset on a target user. Sends them through the
+     * standard reset-token flow and kills all their existing sessions.
+     */
+    public function forcePasswordReset(int $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->jsonResponse(['success' => false, 'error' => 'Invalid CSRF token'], 400);
+            return;
+        }
+
+        $currentUser = user();
+        $db = Database::getInstance();
+        $targetUser = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        if (!$targetUser) {
+            $this->jsonResponse(['success' => false, 'error' => 'User not found.'], 404);
+            return;
+        }
+        if (!$this->policy()->forcePasswordReset($targetUser)) {
+            $this->jsonResponse(['success' => false, 'error' => 'Permission denied.'], 403);
+            return;
+        }
+
+        $db->beginTransaction();
+        try {
+            $token = bin2hex(random_bytes(32));
+            $db->query("DELETE FROM password_resets WHERE email = ?", [$targetUser['email']]);
+            $db->query("INSERT INTO password_resets (email, token, created_at) VALUES (?, ?, NOW())", [$targetUser['email'], $token]);
+            $db->query("DELETE FROM user_sessions WHERE user_id = ?", [$id]);
+            $this->logActivity((int) $currentUser['id'], 'force_password_reset', "Forced password reset for user: {$targetUser['email']}", ['target_user_id' => $id]);
+            $db->commit();
+            $this->jsonResponse([
+                'success' => true,
+                'message' => 'Password reset initiated. User has been logged out of all sessions.',
+            ]);
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log('Failed to force password reset: ' . $e->getMessage());
+            $this->jsonResponse(['success' => false, 'error' => 'Failed to initiate password reset.'], 500);
+        }
+    }
+
+    /**
+     * View the audit log for a user. Renders pages/users/audit which lists
+     * activities BY the user, ABOUT the user, role-change history, and
+     * login attempts.
+     */
+    public function auditLog(int $id): void
+    {
+        $db = Database::getInstance();
+        $targetUser = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        if (!$targetUser) {
+            if (function_exists('flash')) {
+                flash('error', 'User not found.');
+            }
+            $this->redirect('/admin/users');
+            return;
+        }
+        if (!$this->policy()->viewAuditLog($targetUser)) {
+            if (function_exists('flash')) {
+                flash('error', 'Only super admins can view audit logs.');
+            }
+            $this->redirect('/admin/users/' . $id);
+            return;
+        }
+
+        $logs = $db->query(
+            "SELECT al.*, u.first_name AS actor_first_name, u.last_name AS actor_last_name, u.email AS actor_email
+             FROM activity_logs al
+             LEFT JOIN users u ON al.user_id = u.id
+             WHERE al.user_id = ? OR al.subject_id = ? OR JSON_EXTRACT(al.properties, '$.target_user_id') = ?
+             ORDER BY al.created_at DESC LIMIT 200",
+            [$id, $id, $id]
+        )->fetchAll() ?: [];
+
+        $roleHistory = [];
+        try {
+            $roleHistory = $db->query(
+                "SELECT rh.*, u.first_name AS changer_first_name, u.last_name AS changer_last_name, u.email AS changer_email
+                 FROM role_history rh
+                 LEFT JOIN users u ON rh.changed_by = u.id
+                 WHERE rh.user_id = ? ORDER BY rh.created_at DESC",
+                [$id]
+            )->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            // role_history table may not exist on older installs
+        }
+
+        $loginHistory = [];
+        try {
+            $loginHistory = $db->query(
+                "SELECT ip_address, user_agent, success, created_at FROM login_attempts WHERE email = ? ORDER BY created_at DESC LIMIT 50",
+                [$targetUser['email']]
+            )->fetchAll() ?: [];
+        } catch (\Throwable $e) {
+            // login_attempts table may not exist on older installs
+        }
+
+        $this->layout('admin');
+        $this->view('pages/users/audit', [
+            'page_title' => 'Audit Log: ' . $targetUser['first_name'] . ' ' . $targetUser['last_name'],
+            'active_page' => 'users',
+            'user' => $targetUser,
+            'logs' => $logs,
+            'roleHistory' => $roleHistory,
+            'loginHistory' => $loginHistory,
+        ]);
+    }
+
+    /**
+     * Start impersonating another user. Stashes the original session id in
+     * impersonating_from so stopImpersonation() can restore it.
+     */
+    public function impersonate(int $id): void
+    {
+        if (!$this->validateCsrf()) {
+            $this->redirect('/admin/users');
+            return;
+        }
+        $currentUser = user();
+        $db = Database::getInstance();
+        $targetUser = $db->query("SELECT * FROM users WHERE id = ?", [$id])->fetch();
+        if (!$targetUser) {
+            if (function_exists('flash')) { flash('error', 'User not found.'); }
+            $this->redirect('/admin/users');
+            return;
+        }
+        if (!$this->policy()->impersonate($targetUser)) {
+            if (function_exists('flash')) {
+                flash('error', $this->policy()->getDenialReason('impersonate', $targetUser));
+            }
+            $this->redirect('/admin/users');
+            return;
+        }
+
+        $_SESSION['impersonating_from'] = (int) $currentUser['id'];
+        $_SESSION['impersonation_started'] = time();
+        $this->logActivity((int) $currentUser['id'], 'impersonation_start', "Started impersonating user: {$targetUser['email']}", ['target_user_id' => $id]);
+
+        $_SESSION['user_id'] = $id;
+        unset($_SESSION['_user_cache']);
+
+        if (function_exists('flash')) {
+            flash('warning', "You are now impersonating {$targetUser['first_name']} {$targetUser['last_name']}. Click 'Stop Impersonating' in the header to return to your account.");
+        }
+        $this->redirect('/');
+    }
+
+    /**
+     * Restore the original admin session after an impersonate() call.
+     */
+    public function stopImpersonation(): void
+    {
+        if (!isset($_SESSION['impersonating_from'])) {
+            if (function_exists('flash')) { flash('error', 'You are not currently impersonating anyone.'); }
+            $this->redirect('/');
+            return;
+        }
+        $originalUserId = (int) $_SESSION['impersonating_from'];
+        $impersonatedUserId = (int) ($_SESSION['user_id'] ?? 0);
+
+        $db = Database::getInstance();
+        $impersonatedUser = $db->query("SELECT email FROM users WHERE id = ?", [$impersonatedUserId])->fetch();
+
+        $_SESSION['user_id'] = $originalUserId;
+        unset($_SESSION['impersonating_from']);
+        unset($_SESSION['impersonation_started']);
+        unset($_SESSION['_user_cache']);
+
+        $this->logActivity($originalUserId, 'impersonation_end', 'Stopped impersonating user: ' . ($impersonatedUser['email'] ?? 'unknown'), ['impersonated_user_id' => $impersonatedUserId]);
+
+        if (function_exists('flash')) { flash('success', 'You have returned to your own account.'); }
+        $this->redirect('/admin/users');
+    }
+
+    private function logActivity(int $userId, string $type, string $description, array $properties = []): void
+    {
+        try {
+            Database::getInstance()->query(
+                "INSERT INTO activity_logs (user_id, type, description, properties, ip_address, user_agent, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, NOW())",
+                [
+                    $userId, $type, $description,
+                    json_encode($properties),
+                    function_exists('clientIp') ? clientIp() : ($_SERVER['REMOTE_ADDR'] ?? null),
+                    $_SERVER['HTTP_USER_AGENT'] ?? null,
+                ]
+            );
+        } catch (\Exception $e) {
+            error_log('Failed to log activity: ' . $e->getMessage());
+        }
+    }
+
+    private function jsonResponse(array $data, int $status = 200): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json');
+        echo json_encode($data);
     }
 }

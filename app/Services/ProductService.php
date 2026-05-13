@@ -1531,19 +1531,50 @@ class ProductService
             ob_start();
             try {
                 $imageService = new ProductImageService();
-                $imageResult = $imageService->generateProductImages($productId, [
-                    'name' => $updates['name'] ?? $product->name,
-                    'brand' => $aiData['brand'] ?? $existingBrand,
-                    'sku' => $product->sku,
-                    'category' => !empty($aiData['suggested_category'])
-                        ? (string) $aiData['suggested_category']
-                        : '',
-                    'short_description' => $aiData['short_description']
-                        ?? $product->short_description
-                        ?? '',
-                    'specifications' => $aiData['specifications'] ?? [],
-                ]);
-                $imagesGenerated = (int) ($imageResult['generated'] ?? 0);
+
+                // If the AI service returned image URLs (Claude with web_search
+                // finds the real manufacturer image), download those first.
+                // generateProductImages falls back to its own search to fill
+                // any remaining slots up to 4 total.
+                $aiUrls = [];
+                if (!empty($aiData['image_url']) && is_string($aiData['image_url'])) {
+                    $aiUrls[] = $aiData['image_url'];
+                }
+                if (!empty($aiData['image_candidates']) && is_array($aiData['image_candidates'])) {
+                    foreach ($aiData['image_candidates'] as $u) {
+                        if (is_string($u) && $u !== '' && !in_array($u, $aiUrls, true)) {
+                            $aiUrls[] = $u;
+                        }
+                    }
+                }
+                $existingImageCount = count($imageService->getProductImages($productId));
+                $altText = $updates['name'] ?? $product->name;
+                foreach ($aiUrls as $url) {
+                    if ($existingImageCount + $imagesGenerated >= 4) {
+                        break;
+                    }
+                    $isPrimary = ($existingImageCount + $imagesGenerated) === 0;
+                    $result = $imageService->downloadAndSaveImagePublic($productId, $url, (string) $altText, $isPrimary);
+                    if (!empty($result['success'])) {
+                        $imagesGenerated++;
+                    }
+                }
+
+                if ($existingImageCount + $imagesGenerated < 4) {
+                    $imageResult = $imageService->generateProductImages($productId, [
+                        'name' => $updates['name'] ?? $product->name,
+                        'brand' => $aiData['brand'] ?? $existingBrand,
+                        'sku' => $product->sku,
+                        'category' => !empty($aiData['suggested_category'])
+                            ? (string) $aiData['suggested_category']
+                            : '',
+                        'short_description' => $aiData['short_description']
+                            ?? $product->short_description
+                            ?? '',
+                        'specifications' => $aiData['specifications'] ?? [],
+                    ]);
+                    $imagesGenerated += (int) ($imageResult['generated'] ?? 0);
+                }
             } catch (\Throwable $e) {
                 logMessage('error', 'AI image generation failed', [
                     'product_id' => $productId, 'error' => $e->getMessage(),

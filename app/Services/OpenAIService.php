@@ -21,6 +21,28 @@ class OpenAIService
     }
 
     /**
+     * Per-call override of the model. The import UI uses this to let the
+     * operator pick a model per import without touching .env.
+     */
+    public function setModel(string $model): void
+    {
+        $model = trim($model);
+        if ($model !== '') {
+            $this->model = $model;
+        }
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    public function hasApiKey(): bool
+    {
+        return !empty($this->apiKey);
+    }
+
+    /**
      * Send a chat message and get a response
      */
     public function chat(string $message, array $context, ?string $conversationId = null): array
@@ -1586,21 +1608,55 @@ class OpenAIService
         $prompt .= "Respond with ONLY valid JSON. No markdown. No extra text.";
 
         try {
-            // Use shorter timeout and fewer tokens for bulk imports to avoid 504
-            $apiTimeout = $isBulkImport ? 20 : 30;
-            $maxTokens = $isBulkImport ? 2000 : 4000;
+            // Output budget: the JSON spec asks for ~17 fields including a
+            // 250-400 word HTML description, 8+ specs, attributes, SEO meta.
+            // The full response is typically 1500-2500 tokens. Cutting to
+            // 2000 during bulk imports truncated the JSON, which then
+            // failed to parse and the fallback returned almost-empty
+            // fields - that's where the "import only fills 20%" bug came
+            // from. Same generous limits as the per-product "Make
+            // Production Ready" button so both paths produce the same
+            // depth of content.
+            $apiTimeout = 60;
+            $maxTokens = 4000;
 
-            $response = $this->makeRequest('/chat/completions', [
+            $payload = [
                 'model' => $this->model,
                 'messages' => [
                     ['role' => 'system', 'content' => 'You are a product content writer. Write product descriptions and SEO content. Always respond with valid JSON only. NEVER change the product name - use it exactly as given. Product names MUST follow the structure: Brand first, then series/model/specs, then category type last (e.g. "ASUS ROG Strix RTX 4070 12GB Graphics Card").'],
                     ['role' => 'user', 'content' => $prompt],
                 ],
-                'max_tokens' => $maxTokens,
-                'temperature' => 0.3,
-            ], $apiTimeout);
+            ];
 
+            // GPT-5 family is a reasoning model: it spends
+            // max_completion_tokens on internal reasoning *before* writing
+            // any output. At the default reasoning_effort=medium, the
+            // reasoning step alone routinely burns 2-3K tokens. With
+            // max_completion_tokens=4000 that left ~1K for the JSON, which
+            // truncated mid-string - that's why every gpt-5 row came back
+            // with an empty description, no specs, and no attributes.
+            // Force minimal reasoning and give a much larger total budget.
+            // Also: temperature is fixed at 1 on gpt-5; sending a custom
+            // value returns a 400.
+            if (str_starts_with($this->model, 'gpt-5')) {
+                $payload['max_completion_tokens'] = 16000;
+                $payload['reasoning_effort'] = 'minimal';
+            } else {
+                $payload['max_tokens'] = $maxTokens;
+                $payload['temperature'] = 0.3;
+            }
+
+            $response = $this->makeRequest('/chat/completions', $payload, $apiTimeout);
+
+            // Surface the raw assistant text + token usage so we can see
+            // whether the model produced nothing, produced reasoning-only,
+            // or produced truncated output. Without this we were guessing
+            // from a downstream empty-fields symptom.
+            $usage = $response['choices'][0]['message']['usage'] ?? ($response['usage'] ?? []);
+            $finishReason = $response['choices'][0]['finish_reason'] ?? '';
             $content = $response['choices'][0]['message']['content'] ?? '';
+            $contentPreview = substr((string) $content, 0, 240);
+            error_log("AI raw response: model={$this->model} finish={$finishReason} usage=" . json_encode($usage) . " content=\"{$contentPreview}\"");
             $content = preg_replace('/^```json\s*/i', '', $content);
             $content = preg_replace('/^```\s*/i', '', $content);
             $content = preg_replace('/\s*```$/i', '', $content);

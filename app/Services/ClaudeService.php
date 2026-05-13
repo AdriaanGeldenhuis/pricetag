@@ -42,6 +42,23 @@ class ClaudeService
     }
 
     /**
+     * Per-call override of the model. The import UI uses this to let the
+     * operator pick a model per import without touching .env.
+     */
+    public function setModel(string $model): void
+    {
+        $model = trim($model);
+        if ($model !== '') {
+            $this->model = $model;
+        }
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    /**
      * Generate a complete product from a SKU.
      *
      * Returns the same shape as OpenAIService::generateCompleteProduct():
@@ -71,8 +88,14 @@ class ClaudeService
         }
 
         $isBulkImport = !empty($context['bulk_import']);
-        $maxTokens = $isBulkImport ? 6000 : 12000;
-        $timeout = $isBulkImport ? 60 : 120;
+        // Output budget: the JSON spec asks for ~17 fields including a
+        // 150-300 word description. 8K is plenty in practice; thinking is
+        // adaptive so the model only spends what it needs.
+        $maxTokens = 8000;
+        // Safety-net wall-clock. The real liveness guard is CURLOPT_LOW_SPEED_TIME
+        // inside callMessages (aborts if no bytes for 60s). This just stops a
+        // pathological run from leaking forever.
+        $timeout = 600;
 
         $systemBlocks = $this->buildSystemBlocks();
         $userPrompt = $this->buildUserPrompt($sku, $shortDescription, $context);
@@ -107,17 +130,23 @@ class ClaudeService
             // Extract image URLs from web_search results
             $imageCandidates = $this->extractImageCandidates($response);
 
+            $stopReason = (string) ($response['stop_reason'] ?? '');
+
             // Extract the final text block - the JSON we asked for
             $jsonText = $this->extractFinalText($response);
             if ($jsonText === '') {
-                return $this->buildFallback($sku, 'no_text_response', $this->extractUsage($response));
+                $reason = $stopReason !== '' ? "no_text_response(stop={$stopReason})" : 'no_text_response';
+                return $this->buildFallback($sku, $reason, $this->extractUsage($response));
             }
 
             $jsonText = $this->stripCodeFences($jsonText);
             $data = json_decode($jsonText, true);
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
-                error_log('ClaudeService JSON parse failed: ' . json_last_error_msg() . ' :: raw="' . substr($jsonText, 0, 200) . '"');
-                return $this->buildFallback($sku, 'json_parse_failed', $this->extractUsage($response));
+                error_log('ClaudeService JSON parse failed: ' . json_last_error_msg() . ' :: stop=' . $stopReason . ' :: raw="' . substr($jsonText, 0, 200) . '"');
+                $reason = $stopReason === 'max_tokens'
+                    ? 'json_truncated_at_max_tokens'
+                    : 'json_parse_failed: ' . json_last_error_msg();
+                return $this->buildFallback($sku, $reason, $this->extractUsage($response));
             }
 
             $data = $this->validateAndNormalize($data, $sku, $imageCandidates);
@@ -238,43 +267,174 @@ PROMPT;
         return implode("\n", $lines);
     }
 
+    /**
+     * Send the request with stream:true and reassemble the SSE event stream
+     * into a non-streaming-shaped response. Required for any request that
+     * involves adaptive thinking + web_search + large JSON output - those
+     * total response times routinely exceed 60-120s and a non-streaming
+     * call returns zero bytes until completion, which trips CURLOPT_TIMEOUT.
+     * Streaming sends bytes throughout, so the connection stays alive.
+     */
     private function callMessages(array $body, int $timeout): array
     {
+        $body['stream'] = true;
+
+        $blocks = [];
+        $stopReason = null;
+        $usage = [
+            'input_tokens' => 0,
+            'output_tokens' => 0,
+            'cache_creation_input_tokens' => 0,
+            'cache_read_input_tokens' => 0,
+        ];
+        $errorPayload = null;
+        $buffer = '';
+
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $this->baseUrl . '/messages',
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($body),
             CURLOPT_RETURNTRANSFER => true,
+            // No wall-clock cap on the total request: a single SKU with
+            // adaptive thinking + several web_search roundtrips + a large
+            // JSON output can legitimately run for several minutes.
+            // CURLOPT_LOW_SPEED_LIMIT/_TIME below catches a genuinely-dead
+            // connection (no bytes for 60s) while letting healthy slow
+            // requests complete. We still set a high ceiling via $timeout
+            // as a last-resort safety net (default ~10 min from the caller).
             CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_LOW_SPEED_LIMIT => 1,
+            CURLOPT_LOW_SPEED_TIME => 60,
             CURLOPT_HTTPHEADER => [
                 'x-api-key: ' . $this->apiKey,
                 'anthropic-version: ' . $this->apiVersion,
                 'content-type: application/json',
+                'accept: text/event-stream',
             ],
+            CURLOPT_WRITEFUNCTION => function ($ch, $chunk) use (&$buffer, &$blocks, &$stopReason, &$usage, &$errorPayload) {
+                $buffer .= $chunk;
+                while (($pos = strpos($buffer, "\n")) !== false) {
+                    $line = substr($buffer, 0, $pos);
+                    $buffer = substr($buffer, $pos + 1);
+                    $line = rtrim($line, "\r");
+                    if ($line === '' || strpos($line, 'data:') !== 0) {
+                        continue;
+                    }
+                    $json = trim(substr($line, 5));
+                    if ($json === '' || $json === '[DONE]') {
+                        continue;
+                    }
+                    $event = json_decode($json, true);
+                    if (!is_array($event)) {
+                        continue;
+                    }
+                    $this->applyStreamEvent($event, $blocks, $stopReason, $usage, $errorPayload);
+                }
+                return strlen($chunk);
+            },
         ]);
 
-        $raw = curl_exec($ch);
+        $ok = curl_exec($ch);
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err = curl_error($ch);
         curl_close($ch);
 
-        if ($raw === false) {
+        if ($ok === false) {
             throw new \RuntimeException("curl_error: {$err}");
         }
 
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
-            throw new \RuntimeException("invalid_json_response: HTTP {$status}");
-        }
-
-        if ($status >= 400) {
-            $errType = $decoded['error']['type'] ?? 'unknown';
-            $errMsg = $decoded['error']['message'] ?? 'unknown';
+        if ($errorPayload !== null) {
+            $errType = $errorPayload['type'] ?? 'unknown';
+            $errMsg = $errorPayload['message'] ?? 'unknown';
             throw new \RuntimeException("anthropic_api_error: {$status} {$errType} - {$errMsg}");
         }
 
-        return $decoded;
+        if ($status >= 400) {
+            // Some 4xx responses come back as a single non-streamed JSON body
+            // (e.g. malformed request rejected before the stream opens).
+            $decoded = json_decode($buffer, true);
+            $errType = $decoded['error']['type'] ?? 'unknown';
+            $errMsg = $decoded['error']['message'] ?? trim($buffer) ?: 'unknown';
+            throw new \RuntimeException("anthropic_api_error: {$status} {$errType} - " . substr((string) $errMsg, 0, 200));
+        }
+
+        return [
+            'content' => array_values($blocks),
+            'stop_reason' => $stopReason,
+            'usage' => $usage,
+        ];
+    }
+
+    /**
+     * Apply one SSE event to the reassembled message state. Anthropic's
+     * stream format documents each event type; we only care about the four
+     * that actually carry payload.
+     */
+    private function applyStreamEvent(array $event, array &$blocks, ?string &$stopReason, array &$usage, ?array &$errorPayload): void
+    {
+        $type = $event['type'] ?? '';
+        switch ($type) {
+            case 'message_start':
+                $msg = $event['message'] ?? [];
+                if (!empty($msg['usage']) && is_array($msg['usage'])) {
+                    foreach ($msg['usage'] as $k => $v) {
+                        if (array_key_exists($k, $usage)) {
+                            $usage[$k] = (int) $v;
+                        }
+                    }
+                }
+                break;
+            case 'content_block_start':
+                $idx = $event['index'] ?? null;
+                if ($idx !== null) {
+                    $blocks[$idx] = $event['content_block'] ?? [];
+                }
+                break;
+            case 'content_block_delta':
+                $idx = $event['index'] ?? null;
+                $delta = $event['delta'] ?? [];
+                if ($idx === null || !isset($blocks[$idx])) {
+                    break;
+                }
+                $dtype = $delta['type'] ?? '';
+                if ($dtype === 'text_delta') {
+                    $blocks[$idx]['text'] = ($blocks[$idx]['text'] ?? '') . ($delta['text'] ?? '');
+                } elseif ($dtype === 'thinking_delta') {
+                    $blocks[$idx]['thinking'] = ($blocks[$idx]['thinking'] ?? '') . ($delta['thinking'] ?? '');
+                } elseif ($dtype === 'input_json_delta') {
+                    $blocks[$idx]['partial_json'] = ($blocks[$idx]['partial_json'] ?? '') . ($delta['partial_json'] ?? '');
+                }
+                break;
+            case 'content_block_stop':
+                $idx = $event['index'] ?? null;
+                if ($idx === null || !isset($blocks[$idx])) {
+                    break;
+                }
+                if (isset($blocks[$idx]['partial_json'])) {
+                    $parsed = json_decode($blocks[$idx]['partial_json'], true);
+                    $blocks[$idx]['input'] = is_array($parsed) ? $parsed : [];
+                    unset($blocks[$idx]['partial_json']);
+                }
+                break;
+            case 'message_delta':
+                $delta = $event['delta'] ?? [];
+                if (!empty($delta['stop_reason'])) {
+                    $stopReason = (string) $delta['stop_reason'];
+                }
+                if (!empty($event['usage']) && is_array($event['usage'])) {
+                    foreach ($event['usage'] as $k => $v) {
+                        if (array_key_exists($k, $usage)) {
+                            $usage[$k] = (int) $v;
+                        }
+                    }
+                }
+                break;
+            case 'error':
+                $errorPayload = $event['error'] ?? ['type' => 'unknown', 'message' => 'unknown'];
+                break;
+        }
     }
 
     /**

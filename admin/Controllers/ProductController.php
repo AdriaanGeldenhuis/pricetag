@@ -1120,7 +1120,7 @@ class ProductController extends Controller
             return;
         }
 
-        $openai = new OpenAIService();
+        [$aiService, $aiServiceName] = $this->resolveAiService();
 
         // Get product brand from attributes
         $db = Database::getInstance();
@@ -1141,7 +1141,7 @@ class ProductController extends Controller
         $categoryName = !empty($categories) ? $categories[0]['name'] : '';
 
         // Use the SAME pipeline as everything else - pattern match first, then AI
-        $result = $openai->generateCompleteProduct($product->sku, $product->short_description ?? '', [
+        $result = $aiService->generateCompleteProduct($product->sku, $product->short_description ?? '', [
             'brand' => $brand,
             'category' => $categoryName,
             'price' => $product->price,
@@ -1178,10 +1178,10 @@ class ProductController extends Controller
             return;
         }
 
-        $openai = new OpenAIService();
+        [$aiService, $aiServiceName] = $this->resolveAiService();
 
-        if (!$openai->isConfigured()) {
-            $this->json(['success' => false, 'message' => 'OpenAI API key not configured. Please add OPENAI_API_KEY to your .env file.']);
+        if ($aiServiceName === 'openai' && !$aiService->isConfigured()) {
+            $this->json(['success' => false, 'message' => 'No AI key configured. Add ANTHROPIC_API_KEY (recommended, has image search) or OPENAI_API_KEY to .env.']);
             return;
         }
 
@@ -1204,7 +1204,7 @@ class ProductController extends Controller
         $categoryName = !empty($categories) ? $categories[0]['name'] : '';
 
         // Call comprehensive AI generation
-        $result = $openai->generateCompleteProduct($product->sku, $product->short_description ?? '', [
+        $result = $aiService->generateCompleteProduct($product->sku, $product->short_description ?? '', [
             'brand' => $brand,
             'category' => $categoryName,
             'price' => $product->price,
@@ -1213,7 +1213,8 @@ class ProductController extends Controller
         ]);
 
         if (empty($result['success']) || empty($result['data'])) {
-            $this->json(['success' => false, 'message' => $result['error'] ?? 'AI generation failed']);
+            $reason = $result['fallback_reason'] ?? $result['error'] ?? 'AI generation failed';
+            $this->json(['success' => false, 'message' => "AI generation failed (ai={$aiServiceName}, {$reason})"]);
             return;
         }
 
@@ -2465,13 +2466,156 @@ class ProductController extends Controller
         return $stmt;
     }
 
-    private function resolveAiService(): array
+    /**
+     * Pick the AI service for this request.
+     *
+     * When $preferredModel is passed (from the import UI's model picker),
+     * the routing is deterministic: any "claude-*" id goes to ClaudeService,
+     * any "gpt-*" id goes to OpenAIService, with the chosen model set as
+     * an override. Caller's tag string follows so failure messages can
+     * say "ai=claude (claude-haiku-4-5)" instead of just "ai=claude".
+     *
+     * Without a preference we fall back to: Claude if its key is present,
+     * OpenAI otherwise.
+     */
+    private function resolveAiService(?string $preferredModel = null): array
     {
+        $preferredModel = trim((string) $preferredModel);
+        if ($preferredModel !== '') {
+            if (str_starts_with($preferredModel, 'claude-')) {
+                $svc = new ClaudeService();
+                $svc->setModel($preferredModel);
+                return [$svc, 'claude (' . $preferredModel . ')'];
+            }
+            if (str_starts_with($preferredModel, 'gpt-')) {
+                $svc = new OpenAIService();
+                $svc->setModel($preferredModel);
+                return [$svc, 'openai (' . $preferredModel . ')'];
+            }
+        }
         $claude = new ClaudeService();
         if ($claude->hasApiKey()) {
             return [$claude, 'claude'];
         }
         return [new OpenAIService(), 'openai'];
+    }
+
+    /**
+     * Whitelist of models the import UI is allowed to ask for. Keeps
+     * arbitrary model strings out of the request body without going
+     * through CSRF/auth on a more invasive surface.
+     */
+    private const ALLOWED_IMPORT_MODELS = [
+        'claude-opus-4-7',
+        'claude-sonnet-4-6',
+        'claude-haiku-4-5',
+        'gpt-5-mini',
+        'gpt-5-nano',
+        'gpt-4.1-mini',
+        'gpt-4o-mini',
+    ];
+
+    private function sanitizeImportModel(?string $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+        $raw = trim($raw);
+        return in_array($raw, self::ALLOWED_IMPORT_MODELS, true) ? $raw : null;
+    }
+
+    /**
+     * Build a short, user-facing reason string for why the AI did not return
+     * a usable product name. Pulls from the AI service's structured result
+     * so the import error message tells the operator *why* a row stubbed out.
+     */
+    private function describeAiFailure(?array $aiResult, string $serviceName): string
+    {
+        if ($aiResult === null) {
+            return "ai={$serviceName}, no_call";
+        }
+        $method = $aiResult['method'] ?? 'unknown';
+        $usage = $aiResult['usage'] ?? [];
+        $tokenSummary = '';
+        if (!empty($usage)) {
+            $in = (int) ($usage['input_tokens'] ?? 0);
+            $out = (int) ($usage['output_tokens'] ?? 0);
+            $tokenSummary = " [tokens in/out: {$in}/{$out}]";
+        }
+        if ($method === 'fallback') {
+            $reason = (string) ($aiResult['fallback_reason'] ?? 'unknown');
+            return "ai={$serviceName}, fallback: " . substr($reason, 0, 120) . $tokenSummary;
+        }
+        $data = $aiResult['data'] ?? [];
+        if (empty($data['ai_identified'])) {
+            return "ai={$serviceName}, model returned ai_identified=false" . $tokenSummary;
+        }
+        if (empty($data['name'])) {
+            return "ai={$serviceName}, model returned empty name" . $tokenSummary;
+        }
+        return "ai={$serviceName}, name rejected by validator" . $tokenSummary;
+    }
+
+    /**
+     * Return a short, user-facing list of which content fields the AI
+     * didn't fill. Empty string when the response was complete. Used so
+     * the operator can see *which* fields are missing per row without
+     * needing server-log access - the symptom "description blank, no
+     * specs, no images" looks identical to "AI worked fine but the
+     * product simply isn't well-known" until you can see this list.
+     */
+    private function describeMissingAiFields(?array $aiData, int $imagesSaved = 0): string
+    {
+        if (!is_array($aiData)) {
+            return '';
+        }
+        $missing = [];
+        if (empty(trim((string) ($aiData['description'] ?? '')))) {
+            $missing[] = 'description';
+        }
+        if (empty(trim((string) ($aiData['short_description'] ?? '')))) {
+            $missing[] = 'short_description';
+        }
+        if (empty($aiData['specifications']) || !is_array($aiData['specifications'])) {
+            $missing[] = 'specifications';
+        }
+        if (empty($aiData['attributes']) || !is_array($aiData['attributes']) || count($aiData['attributes']) === 0) {
+            $missing[] = 'attributes';
+        }
+        // Only flag images as missing if NEITHER the AI returned URLs
+        // NOR the image-search fallback (generateProductImages, inside
+        // applyAiDataToProduct) actually saved anything. The previous
+        // check fired on AI-returned URLs alone, which always claimed
+        // "missing: images" for OpenAI (it never returns image URLs)
+        // even when the fallback succeeded - misleading the operator
+        // into thinking images weren't saved when they actually were.
+        if ($imagesSaved === 0) {
+            $missing[] = 'images';
+        }
+        if (empty(trim((string) ($aiData['meta_title'] ?? ''))) && empty(trim((string) ($aiData['meta_description'] ?? '')))) {
+            $missing[] = 'seo';
+        }
+        return implode(', ', $missing);
+    }
+
+    /**
+     * Tell the operator the most useful next step based on which fields
+     * came back empty and which AI service ran. Images are the common
+     * failure case for OpenAI rows (no built-in web image search) and
+     * Claude rows return URLs but they sometimes 404 on download - the
+     * recommendation differs.
+     */
+    private function describeRemediation(string $missingCsv, string $serviceName): string
+    {
+        $isImagesOnly = trim($missingCsv) === 'images';
+        $isClaude = str_starts_with($serviceName, 'claude');
+        if ($isImagesOnly) {
+            if ($isClaude) {
+                return 'Claude returned image URLs but downloading failed - try the Media tab to upload manually, or rerun with a different model.';
+            }
+            return 'OpenAI cannot search the web for image URLs - switch the model to one of the Claude options (Haiku 4.5 is fastest) to get manufacturer images automatically, or upload via the Media tab.';
+        }
+        return 'Re-run on the edit page (AI: Make Production Ready) or try a different model.';
     }
 
     /**
@@ -2489,6 +2633,7 @@ class ProductController extends Controller
             'vat_rate' => max(0.0, (float) ($source['vat_rate'] ?? 0)),
             'default_vendor_id' => !empty($source['default_vendor_id']) ? (int) $source['default_vendor_id'] : null,
             'default_category_id' => !empty($source['default_category_id']) ? (int) $source['default_category_id'] : null,
+            'ai_model' => $this->sanitizeImportModel($source['ai_model'] ?? null),
         ];
     }
 
@@ -2835,12 +2980,12 @@ class ProductController extends Controller
             }
         }
 
-        $this->q($db, 
+        $this->q($db,
             "INSERT INTO products
              (name, slug, sku, description, short_description, price, compare_price, cost_price,
-              category_id, vendor_id, stock_quantity, low_stock_threshold, weight, length, width, height,
+              vendor_id, stock_quantity, low_stock_threshold, weight, length, width, height,
               meta_title, meta_description, meta_keywords, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
             [
                 $name, $slug, $sku,
                 $row['description'] ?? '',
@@ -2848,7 +2993,7 @@ class ProductController extends Controller
                 !empty($row['price']) ? (float) $row['price'] : 0,
                 !empty($row['compare_price']) ? (float) $row['compare_price'] : null,
                 !empty($row['cost_price']) ? (float) $row['cost_price'] : null,
-                $categoryId, $vendorId,
+                $vendorId,
                 !empty($row['stock']) ? (int) $row['stock'] : 0,
                 10,
                 !empty($row['weight']) ? (float) $row['weight'] : null,
@@ -2861,7 +3006,9 @@ class ProductController extends Controller
                 $status,
             ]
         );
-        return (int) $db->lastInsertId();
+        $productId = (int) $db->lastInsertId();
+        $this->syncImportProductCategory($db, $productId, $categoryId);
+        return $productId;
     }
 
     private function updateProductFromImport(\PDO $db, int $productId, array $row, array $categoryMap): void
@@ -2894,13 +3041,10 @@ class ProductController extends Controller
                 $params[] = $value;
             }
         }
+        $categoryId = null;
         if (!empty($row['category'])) {
             $catKey = is_numeric($row['category']) ? (int) $row['category'] : strtolower(trim((string) $row['category']));
             $categoryId = $categoryMap[$catKey] ?? null;
-            if ($categoryId) {
-                $updates[] = "category_id = ?";
-                $params[] = $categoryId;
-            }
         }
         $vendorId = null;
         if (!empty($row['vendor_id'])) {
@@ -2929,6 +3073,24 @@ class ProductController extends Controller
             $params[] = $productId;
             $this->q($db, "UPDATE products SET " . implode(', ', $updates) . " WHERE id = ?", $params);
         }
+        $this->syncImportProductCategory($db, $productId, $categoryId);
+    }
+
+    /**
+     * Categories on products are a M2M relation via `product_categories`,
+     * not a column on `products`. When an import row carries a single
+     * category, replace any existing rows and mark this one primary.
+     */
+    private function syncImportProductCategory(\PDO $db, int $productId, ?int $categoryId): void
+    {
+        if ($categoryId === null) {
+            return;
+        }
+        $this->q($db, "DELETE FROM product_categories WHERE product_id = ?", [$productId]);
+        $this->q($db,
+            "INSERT INTO product_categories (product_id, category_id, is_primary) VALUES (?, ?, 1)",
+            [$productId, $categoryId]
+        );
     }
 
     /**
@@ -2999,6 +3161,14 @@ class ProductController extends Controller
      */
     private function runImportLoop(\PDO $db, array $data, array $options, ?callable $heartbeat = null): array
     {
+        // A row with AI enabled can spend several minutes inside Anthropic
+        // (web_search + adaptive thinking + structured output). Don't let
+        // PHP's max_execution_time guillotine the worker mid-row.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+        @ignore_user_abort(true);
+
         $updateExisting = (bool) $options['update_existing'];
         $createNew = (bool) $options['create_new'];
         $skipErrors = (bool) $options['skip_errors'];
@@ -3007,6 +3177,7 @@ class ProductController extends Controller
         $vatRate = (float) $options['vat_rate'];
         $defaultVendorId = $options['default_vendor_id'];
         $defaultCategoryId = $options['default_category_id'];
+        $aiModel = $options['ai_model'] ?? null;
 
         $created = 0; $updated = 0; $failed = 0;
         $errors = [];
@@ -3036,7 +3207,7 @@ class ProductController extends Controller
                     }
                     if ($aiGenerate) {
                         if ($aiService === null) {
-                            [$aiService, $aiServiceName] = $this->resolveAiService();
+                            [$aiService, $aiServiceName] = $this->resolveAiService($aiModel);
                         }
                         $existingProduct = $this->q($db, "SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
                         $aiResult = $aiService->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
@@ -3045,7 +3216,18 @@ class ProductController extends Controller
                             'price' => $row['price'] ?? $existingProduct['price'] ?? 0,
                             'existingName' => trim($row['name'] ?? $existingProduct['name'] ?? ''),
                             'existingDescription' => $row['description'] ?? $existingProduct['description'] ?? '',
-                            'bulk_import' => true,
+                            // Intentionally not passing bulk_import=true.
+                            // That flag skips fetchManufacturerData() inside
+                            // OpenAIService, which is what supplies the real
+                            // product context (DuckDuckGo search + product
+                            // page scrape). Without it the AI has only the
+                            // SKU + supplier line to work with and returns
+                            // empty description/specs/attributes. That's
+                            // what made every gpt-4o-mini / gpt-5-mini row
+                            // come back with 20% of the content the
+                            // per-product button produces (the button never
+                            // passed bulk_import=true). +10-30s/row cost
+                            // - use the queued import for batches >5 rows.
                         ]);
                         if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
                             $aiData = $aiResult['data'];
@@ -3062,21 +3244,35 @@ class ProductController extends Controller
                                     $row[$f] = (float) $aiData[$f];
                                 }
                             }
-                            if (empty($existingProduct['category_id']) && !empty($aiData['suggested_category'])) {
-                                $row['category'] = $aiData['suggested_category'];
+                            if (!empty($aiData['suggested_category']) && empty($row['category'])) {
+                                $hasCategory = (int) $this->q($db, "SELECT COUNT(*) FROM product_categories WHERE product_id = ?", [$existing['id']])->fetchColumn();
+                                if ($hasCategory === 0) {
+                                    $row['category'] = $aiData['suggested_category'];
+                                }
                             }
                         }
                     }
                     $this->updateProductFromImport($db, (int) $existing['id'], $row, $categoryMap);
                     if ($aiData) {
-                        $this->saveAiProductSpecifications($db, (int) $existing['id'], $aiData['specifications'] ?? []);
-                        $this->saveAiProductAttributes($db, (int) $existing['id'], $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
-                    }
-                    if ($aiData && !empty($aiData['image_url'])) {
-                        $hasImage = (int) $this->q($db, "SELECT COUNT(*) FROM product_images WHERE product_id = ?", [$existing['id']])->fetchColumn();
-                        if ($hasImage === 0) {
-                            try { $this->importProductImage($db, (int) $existing['id'], $aiData['image_url']); }
-                            catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
+                        // Single comprehensive write path: specs, attributes,
+                        // brand attribute, category sync, AND up to 4 images
+                        // from aiData.image_url + image_candidates (Claude's
+                        // web_search returns the manufacturer URL). force=false
+                        // so we don't clobber fields already set above.
+                        $applyResult = null;
+                        try {
+                            $applyResult = ProductService::getInstance()->applyAiDataToProduct(
+                                (int) $existing['id'],
+                                $aiData,
+                                ['force' => false, 'generate_images' => true]
+                            );
+                        } catch (\Throwable $applyErr) {
+                            $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
+                        }
+                        $imagesSaved = (int) ($applyResult['images_generated'] ?? 0);
+                        $missing = $this->describeMissingAiFields($aiData, $imagesSaved);
+                        if ($missing !== '') {
+                            $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
                     }
                     if ($aiGenerate && $aiResult !== null) {
@@ -3106,7 +3302,7 @@ class ProductController extends Controller
                     $aiIdentified = false;
                     if ($aiGenerate) {
                         if ($aiService === null) {
-                            [$aiService, $aiServiceName] = $this->resolveAiService();
+                            [$aiService, $aiServiceName] = $this->resolveAiService($aiModel);
                         }
                         $aiResult = $aiService->generateCompleteProduct($sku, $shortDesc, [
                             'brand' => $row['brand'] ?? '',
@@ -3114,7 +3310,8 @@ class ProductController extends Controller
                             'price' => $row['price'] ?? 0,
                             'existingName' => $name,
                             'existingDescription' => $row['description'] ?? '',
-                            'bulk_import' => true,
+                            // bulk_import=true intentionally NOT passed - see
+                            // the matching block above for the rationale.
                         ]);
                         if (!empty($aiResult['success']) && !empty($aiResult['data'])) {
                             $aiData = $aiResult['data'];
@@ -3150,7 +3347,8 @@ class ProductController extends Controller
                             $name = $sku;
                             $row['name'] = $sku;
                             $row['status'] = 'draft';
-                            $errors[] = "Row {$rowNum}: AI could not identify SKU {$sku} - created as draft for manual review";
+                            $reason = $this->describeAiFailure($aiResult, $aiServiceName);
+                            $errors[] = "Row {$rowNum}: AI could not identify SKU {$sku} ({$reason}) - created as draft for manual review";
                         } else {
                             if ($skipErrors) {
                                 $errors[] = "Row {$rowNum}: Name is required for new products";
@@ -3165,13 +3363,27 @@ class ProductController extends Controller
 
                     $productId = $this->createProductFromImport($db, $row, $categoryMap);
 
-                    if ($aiData && $aiIdentified && $productId) {
-                        $this->saveAiProductSpecifications($db, $productId, $aiData['specifications'] ?? []);
-                        $this->saveAiProductAttributes($db, $productId, $aiData['attributes'] ?? [], $aiData['suggested_category'] ?? '');
-                    }
-                    if ($aiData && $aiIdentified && $productId && !empty($aiData['image_url'])) {
-                        try { $this->importProductImage($db, $productId, $aiData['image_url']); }
-                        catch (\Throwable $imgErr) { $errors[] = "Row {$rowNum}: AI image download failed for {$sku}: " . $imgErr->getMessage(); }
+                    // Apply AI data (specs, attributes, brand, up to 4 images
+                    // from image_url + image_candidates) regardless of whether
+                    // ai_identified is true. OpenAI doesn't return an
+                    // ai_identified flag at all - gating on it dropped every
+                    // OpenAI row's specs/attributes/images on the floor.
+                    if ($aiData && $productId) {
+                        $applyResult = null;
+                        try {
+                            $applyResult = ProductService::getInstance()->applyAiDataToProduct(
+                                $productId,
+                                $aiData,
+                                ['force' => false, 'generate_images' => true]
+                            );
+                        } catch (\Throwable $applyErr) {
+                            $errors[] = "Row {$rowNum}: AI data apply failed for {$sku}: " . $applyErr->getMessage();
+                        }
+                        $imagesSaved = (int) ($applyResult['images_generated'] ?? 0);
+                        $missing = $this->describeMissingAiFields($aiData, $imagesSaved);
+                        if ($missing !== '') {
+                            $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
+                        }
                     }
                     if ($aiGenerate && $aiResult !== null) {
                         $this->logAiImport($db, $productId ?: null, $sku, $aiServiceName, $aiResult);
@@ -3358,13 +3570,16 @@ class ProductController extends Controller
             exit;
         }
         try {
-            [$aiService, $aiServiceName] = $this->resolveAiService();
+            $aiModel = $this->sanitizeImportModel($_POST['ai_model'] ?? null);
+            [$aiService, $aiServiceName] = $this->resolveAiService($aiModel);
             $aiResult = $aiService->generateCompleteProduct($sku, trim((string) ($row['short_description'] ?? '')), [
                 'brand' => $row['brand'] ?? '',
                 'category' => $row['category'] ?? '',
                 'price' => $row['price'] ?? 0,
                 'existingName' => $row['name'] ?? '',
-                'bulk_import' => true,
+                // bulk_import=true intentionally NOT passed - the dry-run
+                // exists to preview what a real import row will produce,
+                // and the real import path no longer sets it either.
             ]);
             $data = $aiResult['data'] ?? [];
             $cost = !empty($row['cost_price']) ? (float) $row['cost_price'] : null;

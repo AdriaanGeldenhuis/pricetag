@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Services\OpenAIService;
 use App\Services\ClaudeService;
+use App\Services\ImportJobService;
 
 class ProductController extends Controller
 {
@@ -1133,6 +1134,172 @@ class ProductController extends Controller
      * Import product image from URL
      */
     /**
+     * Enqueue a bulk import as a background job. Used by the front-end
+     * when the import is too big to comfortably run synchronously (200+
+     * AI-mode rows would tie up a browser tab for 20+ minutes). Returns
+     * the new job_id; the client then polls importJobStatus().
+     */
+    public function importEnqueue(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!$this->validateCsrf()) {
+            echo json_encode(['success' => false, 'error' => 'Invalid CSRF token']);
+            exit;
+        }
+
+        $data = json_decode($_POST['data'] ?? '[]', true);
+        if (empty($data) || !is_array($data)) {
+            echo json_encode(['success' => false, 'error' => 'No data provided']);
+            exit;
+        }
+
+        $options = $this->extractImportOptions($_POST);
+        $payload = array_merge($options, ['data' => $data]);
+
+        try {
+            $jobService = new ImportJobService();
+            $userId = $_SESSION['admin_user_id'] ?? $_SESSION['user_id'] ?? null;
+            $jobId = $jobService->enqueue($payload, $userId ? (int) $userId : null);
+            echo json_encode([
+                'success' => true,
+                'job_id' => $jobId,
+                'total_rows' => count($data),
+                'message' => 'Import queued. You can close this tab - it will keep running in the background.',
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Poll endpoint for a queued import. Returns status + progress so the
+     * UI can render a live progress bar without keeping an HTTP connection
+     * open for the full duration of the import.
+     */
+    public function importJobStatus(int $id): void
+    {
+        header('Content-Type: application/json');
+        try {
+            $job = (new ImportJobService())->get($id);
+            if (!$job) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'error' => 'Job not found']);
+                exit;
+            }
+            $progressPct = $job['total_rows'] > 0
+                ? min(100, (int) round(($job['processed_rows'] / $job['total_rows']) * 100))
+                : 0;
+            echo json_encode([
+                'success' => true,
+                'job' => [
+                    'id' => (int) $job['id'],
+                    'status' => $job['status'],
+                    'total_rows' => (int) $job['total_rows'],
+                    'processed_rows' => (int) $job['processed_rows'],
+                    'created' => (int) $job['created_products'],
+                    'updated' => (int) $job['updated_products'],
+                    'failed' => (int) $job['failed_products'],
+                    'progress_pct' => $progressPct,
+                    'errors' => $job['errors'],
+                    'import_log_id' => $job['import_log_id'] ? (int) $job['import_log_id'] : null,
+                    'ai_service' => $job['ai_service'],
+                    'error_message' => $job['error_message'],
+                    'created_at' => $job['created_at'],
+                    'started_at' => $job['started_at'],
+                    'completed_at' => $job['completed_at'],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    /**
+     * Detail page for one import log entry. Shows the summary plus every
+     * AI call from product_ai_imports (per-row confidence, image, cost)
+     * so the user can audit what happened.
+     */
+    public function importHistoryDetail(int $id): void
+    {
+        $db = db();
+        $log = $db->query("SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
+        if (!$log) {
+            http_response_code(404);
+            echo 'Import log not found';
+            exit;
+        }
+
+        $aiRows = [];
+        try {
+            $aiRows = $db->query(
+                "SELECT pai.*, p.name AS product_name, p.status AS product_status
+                 FROM product_ai_imports pai
+                 LEFT JOIN products p ON p.id = pai.product_id
+                 WHERE pai.created_at >= ? AND pai.created_at <= COALESCE(?, NOW())
+                 ORDER BY pai.created_at ASC",
+                [$log['created_at'], $log['completed_at'] ?? null]
+            )->fetchAll();
+        } catch (\Throwable $e) {
+            // product_ai_imports table not yet migrated - show empty list
+        }
+
+        if (!empty($log['errors'])) {
+            $log['errors'] = json_decode($log['errors'], true) ?: [];
+        } else {
+            $log['errors'] = [];
+        }
+
+        $this->layout('admin/layouts/main');
+        $this->view('admin/pages/products/import-history-detail', [
+            'title' => 'Import #' . $log['id'],
+            'log' => $log,
+            'aiRows' => $aiRows,
+        ]);
+    }
+
+    /**
+     * Export rows that failed in a previous import as a CSV. The user can
+     * re-upload this file to retry just the failed rows after fixing the
+     * data (e.g. correcting a wrong SKU, picking a vendor).
+     */
+    public function exportFailedRows(int $id): void
+    {
+        $db = db();
+        $log = $db->query("SELECT * FROM product_import_logs WHERE id = ? LIMIT 1", [$id])->fetch();
+        if (!$log || empty($log['errors'])) {
+            http_response_code(404);
+            echo 'No failed rows for this import';
+            exit;
+        }
+
+        $errors = json_decode($log['errors'], true) ?: [];
+        $filename = 'import_' . $id . '_failed_rows.csv';
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+        $out = fopen('php://output', 'w');
+        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($out, ['error_reason', 'sku_or_row']);
+        foreach ($errors as $err) {
+            // Errors look like "Row 5: AI could not identify SKU XYZ - created as draft"
+            // Extract the SKU when present so the user can paste it back into a new import.
+            $sku = '';
+            if (preg_match('/SKU\s+([A-Z0-9\-]+)/i', $err, $m)) {
+                $sku = $m[1];
+            } elseif (preg_match('/Row\s+(\d+)/', $err, $m)) {
+                $sku = 'Row ' . $m[1];
+            }
+            fputcsv($out, [$err, $sku]);
+        }
+        fclose($out);
+        exit;
+    }
+
+    /**
      * Dry-run: call AI on a single row and return the parsed response
      * without saving anything. Lets the user check naming, image URL,
      * specs etc. for one product before kicking off a full bulk import.
@@ -1636,13 +1803,13 @@ class ProductController extends Controller
     }
 
     /**
-     * Process import via AJAX (with column mapping)
+     * Process import via AJAX (with column mapping). Used for non-AI imports
+     * and small AI imports; large AI imports go through importEnqueue() and
+     * the background queue. Thin wrapper around runImportLoop().
      */
     public function importProcess(): void
     {
-        // Extend PHP execution time for AI-powered bulk imports (AI calls take ~3-5s each)
         set_time_limit(600);
-        // Prevent output buffering from holding up the connection
         if (function_exists('apache_setenv')) {
             @apache_setenv('no-gzip', '1');
         }
@@ -1656,37 +1823,77 @@ class ProductController extends Controller
         }
 
         $data = json_decode($_POST['data'] ?? '[]', true);
-        $updateExisting = ($_POST['update_existing'] ?? '1') === '1';
-        $createNew = ($_POST['create_new'] ?? '1') === '1';
-        $skipErrors = ($_POST['skip_errors'] ?? '0') === '1';
-        $aiGenerate = ($_POST['ai_generate'] ?? '0') === '1';
-
-        // AI-mode pricing & defaults
-        $marginPercent = max(0.0, (float) ($_POST['margin_percent'] ?? 0));
-        $vatRate = max(0.0, (float) ($_POST['vat_rate'] ?? 0));
-        $defaultVendorId = !empty($_POST['default_vendor_id']) ? (int) $_POST['default_vendor_id'] : null;
-        $defaultCategoryId = !empty($_POST['default_category_id']) ? (int) $_POST['default_category_id'] : null;
-
         if (empty($data)) {
             echo json_encode(['success' => false, 'error' => 'No data provided']);
             exit;
         }
 
+        $options = $this->extractImportOptions($_POST);
         $db = db();
 
         try {
-            $created = 0;
-            $updated = 0;
-            $failed = 0;
-            $errors = [];
+            $result = $this->runImportLoop($db, $data, $options);
+            $this->writeImportLog($db, $result, $options);
+            echo json_encode([
+                'success' => true,
+                'created' => $result['created'],
+                'updated' => $result['updated'],
+                'failed' => $result['failed'],
+                'ai_service' => $result['ai_service'],
+                'errors' => $result['errors'],
+            ]);
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        }
+        exit;
+    }
 
-            $categoryMap = $this->getCategoryMap($db);
-            // AI service: prefer Claude (Sonnet 4.6 with web search) for bulk imports if configured,
-            // otherwise fall back to OpenAI. Both implement generateCompleteProduct() with the same signature.
-            $aiService = null;
-            $aiServiceName = 'none';
+    /**
+     * Pull the option flags out of $_POST (or any other source array) so the
+     * same defaults apply whether the import comes from synchronous AJAX or
+     * a queued background job.
+     */
+    private function extractImportOptions(array $source): array
+    {
+        return [
+            'update_existing' => (($source['update_existing'] ?? '1') === '1' || ($source['update_existing'] ?? null) === true),
+            'create_new' => (($source['create_new'] ?? '1') === '1' || ($source['create_new'] ?? null) === true),
+            'skip_errors' => (($source['skip_errors'] ?? '0') === '1' || ($source['skip_errors'] ?? null) === true),
+            'ai_generate' => (($source['ai_generate'] ?? '0') === '1' || ($source['ai_generate'] ?? null) === true),
+            'margin_percent' => max(0.0, (float) ($source['margin_percent'] ?? 0)),
+            'vat_rate' => max(0.0, (float) ($source['vat_rate'] ?? 0)),
+            'default_vendor_id' => !empty($source['default_vendor_id']) ? (int) $source['default_vendor_id'] : null,
+            'default_category_id' => !empty($source['default_category_id']) ? (int) $source['default_category_id'] : null,
+        ];
+    }
 
-            foreach ($data as $index => $row) {
+    /**
+     * The core per-row loop used by both the synchronous import endpoint and
+     * the background queue worker. $heartbeat is invoked every 5 rows with
+     * the current progress so the queued path can publish status updates.
+     *
+     * Returns ['created','updated','failed','errors','ai_service'].
+     */
+    private function runImportLoop(\PDO $db, array $data, array $options, ?callable $heartbeat = null): array
+    {
+        $updateExisting = (bool) $options['update_existing'];
+        $createNew = (bool) $options['create_new'];
+        $skipErrors = (bool) $options['skip_errors'];
+        $aiGenerate = (bool) $options['ai_generate'];
+        $marginPercent = (float) $options['margin_percent'];
+        $vatRate = (float) $options['vat_rate'];
+        $defaultVendorId = $options['default_vendor_id'];
+        $defaultCategoryId = $options['default_category_id'];
+
+        $created = 0;
+        $updated = 0;
+        $failed = 0;
+        $errors = [];
+        $categoryMap = $this->getCategoryMap($db);
+        $aiService = null;
+        $aiServiceName = 'none';
+
+        foreach ($data as $index => $row) {
                 $rowNum = $index + 1;
 
                 try {
@@ -1951,40 +2158,106 @@ class ProductController extends Controller
                     }
                     throw $e;
                 }
+
+                // Heartbeat every 5 rows so the queue UI can show progress
+                if ($heartbeat !== null && (($index + 1) % 5 === 0)) {
+                    $heartbeat([
+                        'processed' => $created + $updated + $failed,
+                        'created' => $created,
+                        'updated' => $updated,
+                        'failed' => $failed,
+                        'errors' => $errors,
+                    ]);
+                }
             }
 
-            // Log the import - filename column doubles as service indicator for AI imports
-            try {
-                $filename = $aiGenerate ? "AI Import ({$aiServiceName})" : 'AI Import';
-                $db->query("
-                    INSERT INTO product_import_logs (type, filename, status, total_products, created_products, updated_products, failed_products, errors, created_at, completed_at)
-                    VALUES ('ai_import', ?, 'completed', ?, ?, ?, ?, ?, NOW(), NOW())
-                ", [
-                    $filename,
-                    $created + $updated + $failed,
-                    $created,
-                    $updated,
-                    $failed,
-                    !empty($errors) ? json_encode(array_slice($errors, 0, 100)) : null,
+            // Final heartbeat
+            if ($heartbeat !== null) {
+                $heartbeat([
+                    'processed' => $created + $updated + $failed,
+                    'created' => $created,
+                    'updated' => $updated,
+                    'failed' => $failed,
+                    'errors' => $errors,
                 ]);
-            } catch (\Exception $e) {
-                // Log table might not exist, ignore
             }
 
-            echo json_encode([
-                'success' => true,
+            return [
                 'created' => $created,
                 'updated' => $updated,
                 'failed' => $failed,
+                'errors' => $errors,
                 'ai_service' => $aiServiceName,
-                'errors' => $errors
-            ]);
+            ];
+    }
 
+    /**
+     * Write the final summary row to product_import_logs. Separated so the
+     * sync and async import paths both produce identical history entries.
+     * Returns the new log id, or null if the table doesn't exist yet.
+     */
+    private function writeImportLog(\PDO $db, array $result, array $options): ?int
+    {
+        try {
+            $type = $options['ai_generate'] ? 'ai_import' : 'import';
+            $filename = $options['ai_generate']
+                ? "AI Import ({$result['ai_service']})"
+                : 'CSV Import';
+            $db->query(
+                "INSERT INTO product_import_logs (type, filename, status, total_products, created_products, updated_products, failed_products, errors, created_at, completed_at)
+                 VALUES (?, ?, 'completed', ?, ?, ?, ?, ?, NOW(), NOW())",
+                [
+                    $type,
+                    $filename,
+                    $result['created'] + $result['updated'] + $result['failed'],
+                    $result['created'],
+                    $result['updated'],
+                    $result['failed'],
+                    !empty($result['errors']) ? json_encode(array_slice($result['errors'], 0, 100)) : null,
+                ]
+            );
+            return (int) $db->lastInsertId();
         } catch (\Exception $e) {
-            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            return null;
         }
+    }
 
-        exit;
+    /**
+     * Background-queue entry point. Called by the Scheduler when a queued
+     * import is picked up. Hands off to runImportLoop() with a heartbeat
+     * callback that publishes progress to product_import_jobs, then writes
+     * the final import log and marks the job completed.
+     */
+    public function processImportJob(array $job, ImportJobService $jobService): array
+    {
+        @set_time_limit(0);
+        $jobId = (int) $job['id'];
+        $payload = $job['payload'] ?? [];
+        $data = $payload['data'] ?? [];
+        $options = $this->extractImportOptions($payload);
+
+        $db = db();
+        try {
+            $result = $this->runImportLoop($db, $data, $options, function ($progress) use ($jobService, $jobId) {
+                $jobService->heartbeat($jobId, $progress);
+            });
+            $logId = $this->writeImportLog($db, $result, $options);
+            $jobService->complete(
+                $jobId,
+                [
+                    'processed' => $result['created'] + $result['updated'] + $result['failed'],
+                    'created' => $result['created'],
+                    'updated' => $result['updated'],
+                    'failed' => $result['failed'],
+                    'errors' => $result['errors'],
+                ],
+                $logId
+            );
+            return $result;
+        } catch (\Throwable $e) {
+            $jobService->fail($jobId, $e->getMessage());
+            throw $e;
+        }
     }
 
     /**

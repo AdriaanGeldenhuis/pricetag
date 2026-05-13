@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Services\ImportJobService;
 use PDO;
 
 class Scheduler
@@ -88,6 +89,46 @@ class Scheduler
         $this->schedule('health:check', function () {
             return $this->runHealthCheck();
         })->everyMinutes(5);
+
+        // Process queued product import jobs - every minute, but each tick
+        // claims at most one job and processes it to completion. With AI
+        // imports running 5-15s per row, a 200-row import locks the
+        // scheduler for ~25 minutes - that's intentional; other tasks
+        // resume once the import finishes.
+        $this->schedule('imports:process', function () {
+            return $this->processImportJobs();
+        })->everyMinutes(1);
+    }
+
+    /**
+     * Drain the import-job queue. Called from the scheduler tick.
+     * Lifts execution time limit since AI imports are long-running.
+     */
+    private function processImportJobs(): string
+    {
+        @set_time_limit(0);
+
+        $jobService = new ImportJobService();
+        $recovered = $jobService->recoverOrphaned();
+
+        $job = $jobService->claimNext();
+        if (!$job) {
+            return $recovered > 0
+                ? "No queued imports. Recovered {$recovered} orphaned jobs."
+                : 'No queued imports';
+        }
+
+        // Delegate the actual row processing to the controller's worker
+        // method so we have one canonical implementation. Constructed
+        // without going through the router because we're running in CLI.
+        $processor = new \App\Admin\Controllers\ProductController();
+        try {
+            $result = $processor->processImportJob($job, $jobService);
+            return "Job #{$job['id']}: created={$result['created']}, updated={$result['updated']}, failed={$result['failed']}";
+        } catch (\Throwable $e) {
+            $jobService->fail((int) $job['id'], $e->getMessage());
+            return "Job #{$job['id']} failed: " . $e->getMessage();
+        }
     }
 
     /**

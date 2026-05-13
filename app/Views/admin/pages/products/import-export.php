@@ -412,6 +412,43 @@
         </div>
     </div>
 
+    <!-- Recent Imports -->
+    <?php if (!empty($history)): ?>
+    <div class="admin-card" style="margin-top: 2rem;">
+        <div class="admin-card-header">
+            <h3 class="admin-card-title">Recent Imports</h3>
+        </div>
+        <div class="admin-card-body">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Source</th>
+                        <th>Created</th>
+                        <th>Updated</th>
+                        <th>Failed</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($history as $h): ?>
+                        <tr>
+                            <td style="font-size:0.8rem;color:var(--admin-text-muted);"><?= e($h['created_at']) ?></td>
+                            <td><?= e($h['filename'] ?? '-') ?></td>
+                            <td><?= (int) ($h['created_products'] ?? 0) ?></td>
+                            <td><?= (int) ($h['updated_products'] ?? 0) ?></td>
+                            <td><?= (int) ($h['failed_products'] ?? 0) ?></td>
+                            <td>
+                                <a href="<?= url('/admin/products/import/history/' . (int) $h['id']) ?>" class="admin-btn admin-btn-sm admin-btn-secondary">View</a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Export Section -->
     <div class="admin-card" style="margin-top: 2rem;">
         <div class="admin-card-header">
@@ -1928,7 +1965,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const aiEnabled = document.getElementById('aiGenerateAll').checked;
-        const batchSize = aiEnabled ? 1 : 50; // 1 product at a time for AI (each call ~5-15s), 50 without AI
+        // For AI mode with >50 rows we hand off to the background queue
+        // instead of running synchronously - otherwise the user's tab has
+        // to stay open for 10+ minutes.
+        const useQueue = aiEnabled && importData.length > 50;
+        const batchSize = aiEnabled ? 1 : 50;
         const batches = [];
         for (let i = 0; i < importData.length; i += batchSize) {
             batches.push(importData.slice(i, i + batchSize));
@@ -1942,6 +1983,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const vatRate = aiEnabled ? (document.getElementById('vatRate').value || '0') : '0';
         const defaultVendorId = aiEnabled ? (document.getElementById('defaultVendor').value || '') : '';
         const defaultCategoryId = aiEnabled ? (document.getElementById('defaultCategory').value || '') : '';
+
+        if (useQueue) {
+            return runQueuedImport(importData, {
+                update_existing: updateExisting,
+                create_new: createNew,
+                skip_errors: '1',
+                ai_generate: aiGenerate,
+                margin_percent: marginPercent,
+                vat_rate: vatRate,
+                default_vendor_id: defaultVendorId,
+                default_category_id: defaultCategoryId,
+            });
+        }
 
         let totalCreated = 0;
         let totalUpdated = 0;
@@ -2032,6 +2086,97 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         processAllBatches();
+    }
+
+    // Background-queue path: hand off the whole payload, then poll for progress.
+    // Used for AI mode with >50 rows so the user can close the tab.
+    async function runQueuedImport(importData, opts) {
+        const progress = document.getElementById('importProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressDetails = document.getElementById('progressDetails');
+
+        progress.style.display = 'block';
+        progressText.textContent = 'Queueing import...';
+
+        const fd = new FormData();
+        fd.append('_token', '<?= csrf_token() ?>');
+        fd.append('data', JSON.stringify(importData));
+        Object.keys(opts).forEach(k => fd.append(k, opts[k]));
+
+        try {
+            const res = await fetch('<?= url("/admin/products/import/enqueue") ?>', { method: 'POST', body: fd });
+            const json = await res.json();
+            if (!json.success) {
+                progressText.textContent = 'Failed to queue: ' + (json.error || 'unknown');
+                importBtn.disabled = false;
+                previewBtn.disabled = false;
+                return;
+            }
+            progressText.textContent = 'Import queued (job #' + json.job_id + '). Processing in background...';
+            progressDetails.innerHTML = '<em>You can close this tab - the import will keep running. Refresh this page to see progress.</em>';
+            pollJobStatus(json.job_id);
+        } catch (e) {
+            progressText.textContent = 'Failed to queue: ' + e.message;
+            importBtn.disabled = false;
+            previewBtn.disabled = false;
+        }
+    }
+
+    async function pollJobStatus(jobId) {
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressDetails = document.getElementById('progressDetails');
+
+        const poll = async () => {
+            try {
+                const res = await fetch('<?= url("/admin/products/import/jobs") ?>/' + jobId);
+                const json = await res.json();
+                if (!json.success) {
+                    progressText.textContent = 'Status check failed: ' + (json.error || 'unknown');
+                    return false;
+                }
+                const job = json.job;
+                progressFill.style.width = job.progress_pct + '%';
+                progressPercent.textContent = job.progress_pct + '%';
+                progressText.textContent = 'Job #' + job.id + ' - ' + job.status + ' (' + job.processed_rows + '/' + job.total_rows + ')';
+                let summary = 'Created: ' + job.created + ', Updated: ' + job.updated;
+                if (job.failed > 0) summary += ', Failed: ' + job.failed;
+                progressDetails.innerHTML = summary;
+
+                if (job.status === 'completed') {
+                    progressText.textContent = 'Import completed!';
+                    progressFill.style.width = '100%';
+                    progressPercent.textContent = '100%';
+                    if (job.import_log_id) {
+                        progressDetails.innerHTML = summary + '<br><br><a href="<?= url("/admin/products/import/history") ?>/' + job.import_log_id + '">View import details</a>';
+                    }
+                    return false;
+                }
+                if (job.status === 'failed') {
+                    progressText.textContent = 'Import failed: ' + (job.error_message || 'unknown');
+                    progressDetails.innerHTML = summary;
+                    return false;
+                }
+                if (job.status === 'cancelled') {
+                    progressText.textContent = 'Import cancelled';
+                    return false;
+                }
+                return true; // keep polling
+            } catch (e) {
+                progressText.textContent = 'Status check error: ' + e.message;
+                return true; // keep trying
+            }
+        };
+
+        const tick = async () => {
+            if (await poll()) {
+                setTimeout(tick, 3000);
+            }
+        };
+        tick();
     }
 
     // AI buttons

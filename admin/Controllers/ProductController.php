@@ -2466,13 +2466,62 @@ class ProductController extends Controller
         return $stmt;
     }
 
-    private function resolveAiService(): array
+    /**
+     * Pick the AI service for this request.
+     *
+     * When $preferredModel is passed (from the import UI's model picker),
+     * the routing is deterministic: any "claude-*" id goes to ClaudeService,
+     * any "gpt-*" id goes to OpenAIService, with the chosen model set as
+     * an override. Caller's tag string follows so failure messages can
+     * say "ai=claude (claude-haiku-4-5)" instead of just "ai=claude".
+     *
+     * Without a preference we fall back to: Claude if its key is present,
+     * OpenAI otherwise.
+     */
+    private function resolveAiService(?string $preferredModel = null): array
     {
+        $preferredModel = trim((string) $preferredModel);
+        if ($preferredModel !== '') {
+            if (str_starts_with($preferredModel, 'claude-')) {
+                $svc = new ClaudeService();
+                $svc->setModel($preferredModel);
+                return [$svc, 'claude (' . $preferredModel . ')'];
+            }
+            if (str_starts_with($preferredModel, 'gpt-')) {
+                $svc = new OpenAIService();
+                $svc->setModel($preferredModel);
+                return [$svc, 'openai (' . $preferredModel . ')'];
+            }
+        }
         $claude = new ClaudeService();
         if ($claude->hasApiKey()) {
             return [$claude, 'claude'];
         }
         return [new OpenAIService(), 'openai'];
+    }
+
+    /**
+     * Whitelist of models the import UI is allowed to ask for. Keeps
+     * arbitrary model strings out of the request body without going
+     * through CSRF/auth on a more invasive surface.
+     */
+    private const ALLOWED_IMPORT_MODELS = [
+        'claude-opus-4-7',
+        'claude-sonnet-4-6',
+        'claude-haiku-4-5',
+        'gpt-5-mini',
+        'gpt-5-nano',
+        'gpt-4.1-mini',
+        'gpt-4o-mini',
+    ];
+
+    private function sanitizeImportModel(?string $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+        $raw = trim($raw);
+        return in_array($raw, self::ALLOWED_IMPORT_MODELS, true) ? $raw : null;
     }
 
     /**
@@ -2522,6 +2571,7 @@ class ProductController extends Controller
             'vat_rate' => max(0.0, (float) ($source['vat_rate'] ?? 0)),
             'default_vendor_id' => !empty($source['default_vendor_id']) ? (int) $source['default_vendor_id'] : null,
             'default_category_id' => !empty($source['default_category_id']) ? (int) $source['default_category_id'] : null,
+            'ai_model' => $this->sanitizeImportModel($source['ai_model'] ?? null),
         ];
     }
 
@@ -3065,6 +3115,7 @@ class ProductController extends Controller
         $vatRate = (float) $options['vat_rate'];
         $defaultVendorId = $options['default_vendor_id'];
         $defaultCategoryId = $options['default_category_id'];
+        $aiModel = $options['ai_model'] ?? null;
 
         $created = 0; $updated = 0; $failed = 0;
         $errors = [];
@@ -3094,7 +3145,7 @@ class ProductController extends Controller
                     }
                     if ($aiGenerate) {
                         if ($aiService === null) {
-                            [$aiService, $aiServiceName] = $this->resolveAiService();
+                            [$aiService, $aiServiceName] = $this->resolveAiService($aiModel);
                         }
                         $existingProduct = $this->q($db, "SELECT * FROM products WHERE id = ?", [$existing['id']])->fetch();
                         $aiResult = $aiService->generateCompleteProduct($sku, trim($row['short_description'] ?? $existingProduct['short_description'] ?? ''), [
@@ -3167,7 +3218,7 @@ class ProductController extends Controller
                     $aiIdentified = false;
                     if ($aiGenerate) {
                         if ($aiService === null) {
-                            [$aiService, $aiServiceName] = $this->resolveAiService();
+                            [$aiService, $aiServiceName] = $this->resolveAiService($aiModel);
                         }
                         $aiResult = $aiService->generateCompleteProduct($sku, $shortDesc, [
                             'brand' => $row['brand'] ?? '',
@@ -3420,7 +3471,8 @@ class ProductController extends Controller
             exit;
         }
         try {
-            [$aiService, $aiServiceName] = $this->resolveAiService();
+            $aiModel = $this->sanitizeImportModel($_POST['ai_model'] ?? null);
+            [$aiService, $aiServiceName] = $this->resolveAiService($aiModel);
             $aiResult = $aiService->generateCompleteProduct($sku, trim((string) ($row['short_description'] ?? '')), [
                 'brand' => $row['brand'] ?? '',
                 'category' => $row['category'] ?? '',

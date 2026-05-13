@@ -42,6 +42,23 @@ class ClaudeService
     }
 
     /**
+     * Per-call override of the model. The import UI uses this to let the
+     * operator pick a model per import without touching .env.
+     */
+    public function setModel(string $model): void
+    {
+        $model = trim($model);
+        if ($model !== '') {
+            $this->model = $model;
+        }
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    /**
      * Generate a complete product from a SKU.
      *
      * Returns the same shape as OpenAIService::generateCompleteProduct():

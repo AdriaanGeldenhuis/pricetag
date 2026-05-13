@@ -797,6 +797,23 @@
                 </div>
                 <div class="ai-settings-grid">
                     <div class="ai-settings-field">
+                        <label for="aiModel">AI Model</label>
+                        <select id="aiModel">
+                            <optgroup label="Claude (returns product images)">
+                                <option value="claude-haiku-4-5">Claude Haiku 4.5 - fast, with images</option>
+                                <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6 - balanced, with images (current default)</option>
+                                <option value="claude-opus-4-7">Claude Opus 4.7 - best, slowest, with images</option>
+                            </optgroup>
+                            <optgroup label="OpenAI (no product images, fast)">
+                                <option value="gpt-5-nano">GPT-5 nano - cheapest, fastest</option>
+                                <option value="gpt-5-mini">GPT-5 mini</option>
+                                <option value="gpt-4.1-mini">GPT-4.1 mini</option>
+                                <option value="gpt-4o-mini">GPT-4o mini</option>
+                            </optgroup>
+                        </select>
+                        <small>Claude finds real product images via web search but takes longer per row. OpenAI is faster/cheaper but writes copy from training data only.</small>
+                    </div>
+                    <div class="ai-settings-field">
                         <label for="marginPercent">Profit Margin %</label>
                         <input type="number" id="marginPercent" min="0" max="500" step="0.01" value="25" placeholder="25">
                         <small>Applied to cost (excl VAT) before adding VAT</small>
@@ -1483,6 +1500,8 @@ document.addEventListener('DOMContentLoaded', function() {
             fd.append('row', JSON.stringify(row));
             fd.append('margin_percent', document.getElementById('marginPercent').value || '0');
             fd.append('vat_rate', document.getElementById('vatRate').value || '0');
+            const aiModelEl = document.getElementById('aiModel');
+            if (aiModelEl) fd.append('ai_model', aiModelEl.value || '');
 
             try {
                 const res = await fetch('<?= url('/admin/products/import/dry-run') ?>', { method: 'POST', body: fd });
@@ -1572,6 +1591,7 @@ document.addEventListener('DOMContentLoaded', function() {
             skipErrors: document.getElementById('skipErrors').checked,
             aiGenerate: document.getElementById('aiGenerateAll').checked,
             aiFields: aiFields,
+            aiModel: document.getElementById('aiModel') ? document.getElementById('aiModel').value || '' : '',
             marginPercent: document.getElementById('marginPercent') ? document.getElementById('marginPercent').value || '0' : '0',
             vatRate: document.getElementById('vatRate') ? document.getElementById('vatRate').value || '0' : '0',
             defaultVendorId: document.getElementById('defaultVendor') ? document.getElementById('defaultVendor').value || '' : '',
@@ -1614,6 +1634,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('skip_errors', options.skipErrors ? '1' : '0');
                 formData.append('ai_generate', options.aiGenerate ? '1' : '0');
                 formData.append('ai_fields', JSON.stringify(options.aiFields));
+                formData.append('ai_model', options.aiModel || '');
                 formData.append('margin_percent', options.marginPercent);
                 formData.append('vat_rate', options.vatRate);
                 formData.append('default_vendor_id', options.defaultVendorId);
@@ -1740,6 +1761,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fd.append('create_new', options.createNew ? '1' : '0');
         fd.append('skip_errors', '1');
         fd.append('ai_generate', '1');
+        fd.append('ai_model', options.aiModel || '');
         fd.append('margin_percent', options.marginPercent);
         fd.append('vat_rate', options.vatRate);
         fd.append('default_vendor_id', options.defaultVendorId);

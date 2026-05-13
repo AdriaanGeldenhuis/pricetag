@@ -21,6 +21,28 @@ class OpenAIService
     }
 
     /**
+     * Per-call override of the model. The import UI uses this to let the
+     * operator pick a model per import without touching .env.
+     */
+    public function setModel(string $model): void
+    {
+        $model = trim($model);
+        if ($model !== '') {
+            $this->model = $model;
+        }
+    }
+
+    public function getModel(): string
+    {
+        return $this->model;
+    }
+
+    public function hasApiKey(): bool
+    {
+        return !empty($this->apiKey);
+    }
+
+    /**
      * Send a chat message and get a response
      */
     public function chat(string $message, array $context, ?string $conversationId = null): array

@@ -29,6 +29,28 @@ class OpenAIService
      */
     private string $lastFetchedPageUrl = '';
 
+    /**
+     * Per-call trail of the manufacturer-page lookup that runs ahead of
+     * the AI call. Mirrors ProductImageService::$debugLog so the importer
+     * can stitch them together and surface "AI saw page X, page returned
+     * HTTP Y, harvested N image URLs" alongside the downstream download
+     * trail. Reset at the top of generateCompleteProduct().
+     *
+     * @var array<int,array<string,mixed>>
+     */
+    private array $imageDebugLog = [];
+
+    public function getImageDebugLog(): array
+    {
+        return $this->imageDebugLog;
+    }
+
+    private function recordImageDebug(array $entry): void
+    {
+        $entry['ts'] = date('H:i:s');
+        $this->imageDebugLog[] = $entry;
+    }
+
     public function __construct()
     {
         $this->apiKey = env('OPENAI_API_KEY', '');
@@ -940,6 +962,12 @@ class OpenAIService
             // image_candidates without changing this method's signature.
             if ($this->lastFetchedPageUrl !== '') {
                 $imgs = $this->extractImageUrlsFromHtml($pageData, $this->lastFetchedPageUrl, $brand);
+                $this->recordImageDebug([
+                    'kind' => 'harvest',
+                    'page_url' => $this->lastFetchedPageUrl,
+                    'count' => count($imgs),
+                    'first' => $imgs[0] ?? '',
+                ]);
                 if (!empty($imgs)) {
                     $this->lastImageCandidates = $imgs;
                     error_log('AI COMPLETE: harvested ' . count($imgs) . ' product image URL(s) from ' . $this->lastFetchedPageUrl);
@@ -1137,9 +1165,27 @@ class OpenAIService
 
         // Strategy A: Try direct manufacturer URL first (fastest, no DDG needed)
         $directUrl = $this->buildManufacturerUrl($sku, $brand, $productName);
+        $this->recordImageDebug([
+            'kind' => 'manufacturer_url',
+            'brand' => $brand,
+            'sku' => $sku,
+            'url' => $directUrl ?? '',
+            'outcome' => $directUrl ? 'built' : 'no_pattern_for_brand',
+        ]);
         if ($directUrl) {
             $page = $this->fetchPage($directUrl);
-            if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+            $bytes = is_string($page) ? strlen($page) : 0;
+            $bot = $page ? $this->isBotCheckPage($page) : false;
+            $outcome = !$page ? 'fetch_failed'
+                : ($bot ? 'bot_check'
+                : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok'));
+            $this->recordImageDebug([
+                'kind' => 'page_fetch',
+                'url' => $directUrl,
+                'outcome' => $outcome,
+                'bytes' => $bytes,
+            ]);
+            if ($page && $bytes > 1000 && !$bot) {
                 $this->lastFetchedPageUrl = $directUrl;
                 return $page;
             }
@@ -1153,7 +1199,15 @@ class OpenAIService
         $searchUrl = "https://html.duckduckgo.com/html/?q={$searchQuery}";
 
         $html = $this->fetchPage($searchUrl);
-        if (empty($html) || $this->isBotCheckPage($html)) {
+        $bytes = is_string($html) ? strlen($html) : 0;
+        $bot = $html ? $this->isBotCheckPage($html) : false;
+        $this->recordImageDebug([
+            'kind' => 'ddg_search',
+            'url' => $searchUrl,
+            'outcome' => !$html ? 'fetch_failed' : ($bot ? 'bot_check' : 'ok'),
+            'bytes' => $bytes,
+        ]);
+        if (empty($html) || $bot) {
             return null;
         }
 
@@ -1183,13 +1237,26 @@ class OpenAIService
                 }
             }
         }
+        $this->recordImageDebug([
+            'kind' => 'ddg_results',
+            'count' => count($resultUrls),
+            'first' => $resultUrls[0] ?? '',
+        ]);
 
         // Try manufacturer site first
         if ($manufacturerDomain) {
             foreach ($resultUrls as $url) {
                 if (stripos($url, $manufacturerDomain) !== false) {
                     $page = $this->fetchPage($url);
-                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+                    $bytes = is_string($page) ? strlen($page) : 0;
+                    $bot = $page ? $this->isBotCheckPage($page) : false;
+                    $this->recordImageDebug([
+                        'kind' => 'page_fetch',
+                        'url' => $url,
+                        'outcome' => !$page ? 'fetch_failed' : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                        'bytes' => $bytes,
+                    ]);
+                    if ($page && $bytes > 1000 && !$bot) {
                         $this->lastFetchedPageUrl = $url;
                         return $page;
                     }
@@ -1202,7 +1269,15 @@ class OpenAIService
             foreach ($trustedSpecSites as $specSite) {
                 if (stripos($url, $specSite) !== false) {
                     $page = $this->fetchPage($url);
-                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+                    $bytes = is_string($page) ? strlen($page) : 0;
+                    $bot = $page ? $this->isBotCheckPage($page) : false;
+                    $this->recordImageDebug([
+                        'kind' => 'page_fetch',
+                        'url' => $url,
+                        'outcome' => !$page ? 'fetch_failed' : ($bot ? 'bot_check' : ($bytes <= 1000 ? 'too_small_' . $bytes : 'ok')),
+                        'bytes' => $bytes,
+                    ]);
+                    if ($page && $bytes > 1000 && !$bot) {
                         $this->lastFetchedPageUrl = $url;
                         return $page;
                     }
@@ -1210,6 +1285,7 @@ class OpenAIService
             }
         }
 
+        $this->recordImageDebug(['kind' => 'no_page_found']);
         return null;
     }
 
@@ -1410,6 +1486,7 @@ class OpenAIService
         // manufacturer/spec-site page yields any product image URLs.
         $this->lastImageCandidates = [];
         $this->lastFetchedPageUrl = '';
+        $this->imageDebugLog = [];
 
         // Clean SKU - remove regional suffixes (needed for name validation below)
         $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
@@ -1544,7 +1621,14 @@ class OpenAIService
                 }
             } catch (\Throwable $e) {
                 error_log("AI COMPLETE: Manufacturer lookup failed for {$sku}: " . $e->getMessage());
+                $this->recordImageDebug(['kind' => 'manufacturer_exception', 'reason' => $e->getMessage()]);
             }
+        } else {
+            $this->recordImageDebug([
+                'kind' => 'manufacturer_skipped',
+                'reason' => $isBulkImport ? 'bulk_import_flag' : 'no_brand',
+                'brand' => $verifiedBrand,
+            ]);
         }
 
         // STEP 2: Ask AI to write content FOR the identified product

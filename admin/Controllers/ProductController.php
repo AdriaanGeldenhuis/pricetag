@@ -2647,7 +2647,34 @@ class ProductController extends Controller
         $parts = [];
         foreach ($entries as $e) {
             $kind = (string) ($e['kind'] ?? '');
-            if ($kind === 'fetch') {
+            if ($kind === 'manufacturer_url') {
+                $url = (string) ($e['url'] ?? '');
+                $outcome = (string) ($e['outcome'] ?? '');
+                $parts[] = "manu_url=" . ($url !== '' ? $url : $outcome);
+            } elseif ($kind === 'manufacturer_skipped') {
+                $parts[] = 'manu_skipped=' . (string) ($e['reason'] ?? '');
+            } elseif ($kind === 'manufacturer_exception') {
+                $parts[] = 'manu_exception: ' . substr((string) ($e['reason'] ?? ''), 0, 80);
+            } elseif ($kind === 'page_fetch') {
+                $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
+                $outcome = (string) ($e['outcome'] ?? '');
+                $bytes = (int) ($e['bytes'] ?? 0);
+                $bytesStr = $bytes ? '(' . round($bytes / 1024) . 'KB)' : '';
+                $parts[] = "page_fetch {$host}={$outcome}{$bytesStr}";
+            } elseif ($kind === 'ddg_search') {
+                $outcome = (string) ($e['outcome'] ?? '');
+                $bytes = (int) ($e['bytes'] ?? 0);
+                $bytesStr = $bytes ? '(' . round($bytes / 1024) . 'KB)' : '';
+                $parts[] = "ddg_search={$outcome}{$bytesStr}";
+            } elseif ($kind === 'ddg_results') {
+                $parts[] = 'ddg_results=' . (int) ($e['count'] ?? 0) . ' urls';
+            } elseif ($kind === 'no_page_found') {
+                $parts[] = 'no_page_found';
+            } elseif ($kind === 'harvest') {
+                $count = (int) ($e['count'] ?? 0);
+                $host = (string) parse_url((string) ($e['page_url'] ?? ''), PHP_URL_HOST);
+                $parts[] = "harvest {$host}={$count} urls";
+            } elseif ($kind === 'fetch') {
                 $host = (string) parse_url((string) ($e['url'] ?? ''), PHP_URL_HOST);
                 if ($e['outcome'] === 'ok') {
                     $bytes = (int) ($e['bytes'] ?? 0);
@@ -3346,7 +3373,13 @@ class ProductController extends Controller
                         if ($missing !== '') {
                             $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
-                        $imagesDebug = $applyResult['images_debug'] ?? [];
+                        $aiServiceImageDebug = method_exists($aiService, 'getImageDebugLog')
+                            ? $aiService->getImageDebugLog()
+                            : [];
+                        $imagesDebug = array_merge(
+                            $aiServiceImageDebug,
+                            $applyResult['images_debug'] ?? []
+                        );
                         if (!empty($imagesDebug)) {
                             $this->logImageDebug($sku, $imagesSaved, $imagesDebug);
                             if ($imagesSaved === 0) {
@@ -3463,7 +3496,13 @@ class ProductController extends Controller
                         if ($missing !== '') {
                             $errors[] = "Row {$rowNum}: AI returned partial data for {$sku} - missing: {$missing}. " . $this->describeRemediation($missing, $aiServiceName);
                         }
-                        $imagesDebug = $applyResult['images_debug'] ?? [];
+                        $aiServiceImageDebug = method_exists($aiService, 'getImageDebugLog')
+                            ? $aiService->getImageDebugLog()
+                            : [];
+                        $imagesDebug = array_merge(
+                            $aiServiceImageDebug,
+                            $applyResult['images_debug'] ?? []
+                        );
                         if (!empty($imagesDebug)) {
                             $this->logImageDebug($sku, $imagesSaved, $imagesDebug);
                             if ($imagesSaved === 0) {

@@ -154,6 +154,28 @@
                                     </svg>
                                 </a>
                                 <?php endif; ?>
+                                <?php if (user()['role'] === 'super_admin'): ?>
+                                <a href="<?= url('/admin/users/' . $u['id'] . '/audit') ?>" class="btn btn-sm btn-ghost" title="View Audit Log">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                    </svg>
+                                </a>
+                                <button type="button" onclick="forcePasswordReset(<?= (int) $u['id'] ?>)" class="btn btn-sm btn-ghost" title="Force Password Reset">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                    </svg>
+                                </button>
+                                <?php if ($u['role'] !== 'super_admin' && user()['id'] !== $u['id']): ?>
+                                <button type="button" onclick="impersonateUser(<?= (int) $u['id'] ?>)" class="btn btn-sm btn-ghost" title="Impersonate User">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                        <circle cx="12" cy="7" r="4"></circle>
+                                    </svg>
+                                </button>
+                                <?php endif; ?>
+                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>
@@ -170,4 +192,37 @@
         <?php endif; ?>
     </div>
 </div>
+
+<script>
+// Security actions on user rows. Endpoints live in
+// admin/Controllers/UserController.php (Phase 5b port).
+function forcePasswordReset(userId) {
+    if (!confirm('Force a password reset? The user will be logged out of all sessions and emailed a reset link.')) return;
+    const fd = new FormData();
+    fd.append('csrf_token', '<?= csrf_token() ?>');
+    fetch('<?= url('/admin/users') ?>/' + userId + '/password/reset', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(data => {
+        alert(data.message || data.error || 'Done');
+    })
+    .catch(err => alert('Request failed: ' + err.message));
+}
+
+function impersonateUser(userId) {
+    if (!confirm('Impersonate this user? You will be logged in as them until you click "Stop Impersonating".')) return;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '<?= url('/admin/users') ?>/' + userId + '/impersonate';
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrf_token';
+    csrf.value = '<?= csrf_token() ?>';
+    form.appendChild(csrf);
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
 

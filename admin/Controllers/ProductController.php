@@ -2611,9 +2611,9 @@ class ProductController extends Controller
         $isClaude = str_starts_with($serviceName, 'claude');
         if ($isImagesOnly) {
             if ($isClaude) {
-                return 'Claude returned image URLs but downloading failed - try the Media tab to upload manually, or rerun with a different model.';
+                return 'Claude returned image URLs but downloading failed - see the image trail line for the rejection reason, upload manually via the Media tab if needed.';
             }
-            return 'OpenAI cannot search the web for image URLs - switch the model to one of the Claude options (Haiku 4.5 is fastest) to get manufacturer images automatically, or upload via the Media tab.';
+            return 'OpenAI could not locate a manufacturer or spec-site page for this SKU (no <img> tags to harvest) - upload via the Media tab, or try a Claude model which can web_search for images directly.';
         }
         return 'Re-run on the edit page (AI: Make Production Ready) or try a different model.';
     }

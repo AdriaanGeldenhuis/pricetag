@@ -14,6 +14,21 @@ class OpenAIService
     private string $model;
     private string $baseUrl = 'https://api.openai.com/v1';
 
+    /**
+     * Product image URLs harvested from the manufacturer page that
+     * fetchManufacturerData() landed on. Reset on every call to
+     * generateCompleteProduct() so each SKU gets its own list.
+     *
+     * @var string[]
+     */
+    private array $lastImageCandidates = [];
+
+    /**
+     * URL of the page searchAndFetchProductPage() ultimately fetched.
+     * Used to resolve relative <img src="..."> paths into absolute URLs.
+     */
+    private string $lastFetchedPageUrl = '';
+
     public function __construct()
     {
         $this->apiKey = env('OPENAI_API_KEY', '');
@@ -918,6 +933,19 @@ class OpenAIService
         // Strategy 2: Try to fetch a full product page for more detailed specs
         $pageData = $this->searchAndFetchProductPage($sku, $brand, $productName);
         if ($pageData) {
+            // Harvest <img> URLs from the same page we're about to strip.
+            // extractProductText() throws all tags away, so we need to read
+            // image hints first. Stored on a class property so
+            // generateCompleteProduct can fold them into image_url +
+            // image_candidates without changing this method's signature.
+            if ($this->lastFetchedPageUrl !== '') {
+                $imgs = $this->extractImageUrlsFromHtml($pageData, $this->lastFetchedPageUrl, $brand);
+                if (!empty($imgs)) {
+                    $this->lastImageCandidates = $imgs;
+                    error_log('AI COMPLETE: harvested ' . count($imgs) . ' product image URL(s) from ' . $this->lastFetchedPageUrl);
+                }
+            }
+
             $pageText = $this->extractProductText($pageData);
             if ($pageText && strlen($pageText) > 200) {
                 // Combine search snippets with full page data
@@ -1105,11 +1133,14 @@ class OpenAIService
      */
     private function searchAndFetchProductPage(string $sku, string $brand, string $productName): ?string
     {
+        $this->lastFetchedPageUrl = '';
+
         // Strategy A: Try direct manufacturer URL first (fastest, no DDG needed)
         $directUrl = $this->buildManufacturerUrl($sku, $brand, $productName);
         if ($directUrl) {
             $page = $this->fetchPage($directUrl);
             if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+                $this->lastFetchedPageUrl = $directUrl;
                 return $page;
             }
         }
@@ -1158,7 +1189,10 @@ class OpenAIService
             foreach ($resultUrls as $url) {
                 if (stripos($url, $manufacturerDomain) !== false) {
                     $page = $this->fetchPage($url);
-                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) return $page;
+                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+                        $this->lastFetchedPageUrl = $url;
+                        return $page;
+                    }
                 }
             }
         }
@@ -1168,7 +1202,10 @@ class OpenAIService
             foreach ($trustedSpecSites as $specSite) {
                 if (stripos($url, $specSite) !== false) {
                     $page = $this->fetchPage($url);
-                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) return $page;
+                    if ($page && strlen($page) > 1000 && !$this->isBotCheckPage($page)) {
+                        $this->lastFetchedPageUrl = $url;
+                        return $page;
+                    }
                 }
             }
         }
@@ -1261,6 +1298,101 @@ class OpenAIService
     }
 
     /**
+     * Pull likely product image URLs out of a manufacturer or spec page's
+     * HTML. Order matters: og:image (set by sites to be the social-share
+     * preview - almost always the hero product photo on product pages)
+     * first, then twitter:image, link rel=image_src, then real <img src=...>
+     * tags inside the document. Relative paths get resolved against the
+     * page's URL. Returns up to 6 absolute http(s) URLs in priority order;
+     * the downstream applyAiDataToProduct call enforces SSRF, dim, and
+     * Content-Type checks per URL so we don't need to be too aggressive
+     * here. Junk like favicons / sprites / data: URIs is filtered out.
+     *
+     * @return string[]
+     */
+    private function extractImageUrlsFromHtml(string $html, string $baseUrl, string $brand): array
+    {
+        $urls = [];
+
+        $push = function (?string $candidate) use (&$urls, $baseUrl) {
+            if ($candidate === null) return;
+            $candidate = trim(html_entity_decode($candidate, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($candidate === '') return;
+            if (stripos($candidate, 'data:') === 0) return; // inline base64
+            // Resolve protocol-relative + relative URLs against the page URL.
+            if (str_starts_with($candidate, '//')) {
+                $scheme = parse_url($baseUrl, PHP_URL_SCHEME) ?: 'https';
+                $candidate = $scheme . ':' . $candidate;
+            } elseif ($candidate[0] === '/' || !preg_match('#^https?://#i', $candidate)) {
+                $parts = parse_url($baseUrl);
+                if (!$parts || empty($parts['scheme']) || empty($parts['host'])) return;
+                if ($candidate[0] === '/') {
+                    $candidate = $parts['scheme'] . '://' . $parts['host'] . $candidate;
+                } else {
+                    $pageDir = isset($parts['path']) ? rtrim(dirname($parts['path']), '/') . '/' : '/';
+                    $candidate = $parts['scheme'] . '://' . $parts['host'] . $pageDir . $candidate;
+                }
+            }
+            if (!preg_match('#^https?://#i', $candidate)) return;
+            // Strip obvious junk by URL substring. The downstream download
+            // path also rejects images <200x200 and non-image Content-Type,
+            // so this is just a cheap pre-filter.
+            $lower = strtolower($candidate);
+            $skipPatterns = [
+                'favicon', '/sprite', 'data:image',
+                '1x1.', 'pixel.gif', 'spacer.', 'blank.gif',
+                'social-', 'icon-', '/icons/', '/flags/',
+                'placeholder', 'loading.gif', 'loader.gif',
+            ];
+            foreach ($skipPatterns as $sp) {
+                if (str_contains($lower, $sp)) return;
+            }
+            // Must look like an image extension (allow query string or hash after).
+            if (!preg_match('~\.(?:jpe?g|png|webp|avif|gif)(?:\?|#|$)~i', $candidate)) return;
+            if (!in_array($candidate, $urls, true)) {
+                $urls[] = $candidate;
+            }
+        };
+
+        // 1. og:image / twitter:image / link rel=image_src - these are the
+        //    site's declared product hero image.
+        if (preg_match_all('#<meta[^>]+property\s*=\s*["\']og:image(?::secure_url)?["\'][^>]+content\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+        if (preg_match_all('#<meta[^>]+content\s*=\s*["\']([^"\']+)["\'][^>]+property\s*=\s*["\']og:image(?::secure_url)?["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+        if (preg_match_all('#<meta[^>]+name\s*=\s*["\']twitter:image[^"\']*["\'][^>]+content\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+        if (preg_match_all('#<link[^>]+rel\s*=\s*["\']image_src["\'][^>]+href\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $push($u);
+        }
+
+        // 2. Plain <img src="..."> tags. Bias toward URLs that contain the
+        //    brand name (often manufacturer CDNs include the brand) by
+        //    inserting them first when we find them.
+        $brandKey = strtolower(trim($brand));
+        $imgUrls = [];
+        if (preg_match_all('#<img\b[^>]+(?:data-src|data-original|src)\s*=\s*["\']([^"\']+)["\']#i', $html, $m)) {
+            foreach ($m[1] as $u) $imgUrls[] = $u;
+        }
+        // Stable sort: brand-matching URLs go first.
+        usort($imgUrls, function ($a, $b) use ($brandKey) {
+            if ($brandKey === '') return 0;
+            $aHas = stripos($a, $brandKey) !== false ? 1 : 0;
+            $bHas = stripos($b, $brandKey) !== false ? 1 : 0;
+            return $bHas - $aHas;
+        });
+        foreach ($imgUrls as $u) {
+            $push($u);
+            if (count($urls) >= 6) break;
+        }
+
+        return array_slice($urls, 0, 6);
+    }
+
+    /**
      * Generate a complete, production-ready product from SKU and/or short description.
      *
      * This is THE main method for all AI product generation. Every button and
@@ -1274,6 +1406,11 @@ class OpenAIService
      */
     public function generateCompleteProduct(string $sku, string $shortDescription = '', array $context = []): array
     {
+        // Reset per-call state. Set by fetchManufacturerData() below if the
+        // manufacturer/spec-site page yields any product image URLs.
+        $this->lastImageCandidates = [];
+        $this->lastFetchedPageUrl = '';
+
         // Clean SKU - remove regional suffixes (needed for name validation below)
         $cleanSku = preg_replace('/-(CA|US|EU|UK|AU|SA)$/i', '', $sku);
 
@@ -1737,6 +1874,19 @@ class OpenAIService
             $data['name'] = preg_replace('/\s+/', ' ', trim($data['name']));
 
             error_log("AI COMPLETE: Final product name='{$data['name']}', brand='{$data['brand']}', category='{$data['suggested_category']}'");
+
+            // Attach any image URLs harvested from the manufacturer page
+            // we scraped earlier in this call. applyAiDataToProduct already
+            // knows how to consume image_url + image_candidates - the same
+            // path Claude uses - so OpenAI rows now hit that path too,
+            // skipping the Bing/DDG scrape which currently returns 0 URLs
+            // (their HTML structure changed and the regex parsers no
+            // longer match). The downstream downloader enforces SSRF,
+            // size, and Content-Type checks per URL.
+            if (!empty($this->lastImageCandidates)) {
+                $data['image_url'] = $this->lastImageCandidates[0];
+                $data['image_candidates'] = $this->lastImageCandidates;
+            }
 
             // 'method' indicator lets callers (and the admin UI) tell the
             // difference between a real AI response, a pattern-match
